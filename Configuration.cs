@@ -10,6 +10,8 @@ internal class Configuration
     public bool Enabled { get; set; } = true;
     [JsonProperty("触发监控", Order = 0)]
     public bool Monitor { get; set; } = false;
+    [JsonProperty("监控间隔", Order = 0)]
+    public double Monitorinterval { get; set; } = 100f;
     [JsonProperty("默认速度", Order = 1)]
     public int Speed { get; set; } = 12;
     [JsonProperty("速度上限", Order = 2)]
@@ -50,25 +52,17 @@ internal class Configuration
         {
             LifeEvent = new List<LifeData>()
             {
-                new LifeData { MinLife = 0, MaxLife = 50, AiStyle = 15, AIPairs = new Dictionary<int, float>() { { 3, 7200f } } },
+                new LifeData { MinLife = 50, MaxLife = 100, AiStyle = 15, AIPairs = new Dictionary<int, float>() { { 3, 7200 } } },
             },
-
-            TimerEvent = new List<TimerData>()
-            {
-                new TimerData { Order = 1, AiStyle = 15, AIPairs = new Dictionary<int, float>() { { 1, 2 } } },
-                new TimerData { Order = 2, AiStyle = 15, AIPairs = new Dictionary<int, float>() { { 1, 3 } }},
-                new TimerData { Order = 3, AiStyle = 15, AIPairs = new Dictionary<int, float>() },
-            }
         };
 
         Dict!["克苏鲁之眼"] = new NpcData(true, DateTime.UtcNow, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange)
         {
-            LifeEvent = new List<LifeData>()
+            TimerEvent = new List<TimerData>()
             {
-                new LifeData { MinLife = 0, MaxLife = 50, AiStyle = 4, AIPairs = new Dictionary<int, float>() { { 3, 7200f } } },
-            },
+                new TimerData { Order = 1, AiStyle = 4, AIPairs = new Dictionary<int, float>() { { 0, 3 } },}
+            }
         };
-
         Dict!["世界吞噬怪"] = new NpcData(true, DateTime.UtcNow, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2.5f) { };
         Dict!["毁灭者"] = new NpcData(true, DateTime.UtcNow, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2f) { };
     }
@@ -77,29 +71,29 @@ internal class Configuration
     #region 怪物数据结构
     public class NpcData
     {
+        [JsonProperty("追击模式", Order = -1)]
+        public bool Track { get; set; }
+        [JsonProperty("追击距离", Order = 0)]
+        public float TrackRange { get; set; }
         [JsonProperty("最低加速", Order = 1)]
         public int Speed { get; set; }
         [JsonProperty("最高加速", Order = 2)]
         public int MaxSpeed { get; set; }
-        [JsonProperty("触发加速秒数", Order = 4)]
+        [JsonProperty("触发秒数", Order = 3)]
         public double InActive { get; set; }
         [JsonProperty("触发秒数上限", Order = 4)]
         public double MaxActive { get; set; }
         [JsonProperty("触发最小距离", Order = 5)]
         public float Range { get; set; }
-        [JsonProperty("触发最大距离", Order = 5)]
+        [JsonProperty("触发最大距离", Order = 6)]
         public float MaxRange { get; set; }
-        [JsonProperty("追击模式", Order = 5)]
-        public bool Track { get; set; }
-        [JsonProperty("追击距离", Order = 5)]
-        public float TrackRange { get; set; }
-        [JsonProperty("血量事件", Order = 6)]
+        [JsonProperty("血量事件", Order = 7)]
         public List<LifeData> LifeEvent { get; set; } = new();
-        [JsonProperty("冷却时间", Order = 7)]
+        [JsonProperty("冷却时间", Order = 8)]
         public double CoolTimer { get; set; }
-        [JsonProperty("时间事件", Order = 8)]
+        [JsonProperty("时间事件", Order = 9)]
         public List<TimerData> TimerEvent { get; set; } = new();
-        [JsonProperty("死亡次数", Order = 9)]
+        [JsonProperty("死亡次数", Order = 10)]
         public int Count { get; set; }
 
         [JsonIgnore][JsonProperty("冷却次数", Order = 20)]

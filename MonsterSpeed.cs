@@ -1,8 +1,9 @@
-﻿using Terraria;
+﻿using System.Text;
+using Microsoft.Xna.Framework;
+using Terraria;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
-using Microsoft.Xna.Framework;
 using static Plugin.Configuration;
 
 namespace Plugin;
@@ -13,7 +14,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 0, 4);
+    public override Version Version => new Version(1, 0, 5);
     public override string Description => "涡轮增压不蒸鸭";
     #endregion
 
@@ -85,12 +86,26 @@ public class MonsterSpeed : TerrariaPlugin
                         MinLife = 0, MaxLife = 50, AiStyle = args.Npc.aiStyle,
                         AIPairs = new Dictionary<int, float>() { }
                     },
+
+                    new LifeData
+                    {
+                        MinLife = 50, MaxLife = 100, AiStyle = args.Npc.aiStyle,
+                        AIPairs = new Dictionary<int, float>() { }
+                    },
                 },
                 TimerEvent = new List<TimerData>()
                 {
                     new TimerData
                     {
-                        Order = 1, AiStyle = args.Npc.aiStyle,
+                        Order = 1,
+                        AiStyle = args.Npc.aiStyle,
+                        AIPairs = new Dictionary<int, float>() { },
+                    },
+
+                    new TimerData
+                    {
+                        Order = 2,
+                        AiStyle = args.Npc.aiStyle,
                         AIPairs = new Dictionary<int, float>() { }
                     },
                 }
@@ -110,7 +125,16 @@ public class MonsterSpeed : TerrariaPlugin
         var name = TShock.Utils.GetNPCById(npcID).FullName;
         if (Config.Dict!.TryGetValue(name, out var data) && data != null)
         {
-            data.CDCount = 0;
+            if (data.TimerEvent != null &&
+                data.TimerEvent.Count > 0 &&
+                data.CDCount > data.TimerEvent.Count)
+            {
+                data.CDCount = data.TimerEvent.Count;
+            }
+            else
+            {
+                data.CDCount = 2;
+            }
             data.Count += 1;
             data.Speed = Math.Min(data.MaxSpeed, data.Speed + Config.Killed);
             data.CoolTimer = Math.Max(1, data.CoolTimer - Config.Ratio);
@@ -123,6 +147,7 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 怪物加速核心方法
+    private static DateTime BroadcastTime = DateTime.UtcNow; // 跟踪最后一次广播时间
     private void OnNpcAiUpdate(NpcAiUpdateEventArgs args)
     {
         var npc = args.Npc;
@@ -130,7 +155,7 @@ public class MonsterSpeed : TerrariaPlugin
         var name = TShock.Utils.GetNPCById(npc.type)?.FullName ?? "未知NPC";
         var plr = TShock.Players.FirstOrDefault(p => p != null && p.IsLoggedIn && p.Active);
         Config.Dict!.TryGetValue(name, out var data);
-
+        var mess = new StringBuilder();
         if (npc == null || data == null || !Config.Enabled || plr == null ||
             !npc.active || npc.townNPC || npc.SpawnedFromStatue || npc.netID == 488)
         {
@@ -168,62 +193,23 @@ public class MonsterSpeed : TerrariaPlugin
         var cd = timer.TotalSeconds >= data.InActive + Math.Max(data.CoolTimer, 1.0);
         if (cd || active)
         {
-            if (cd) //每次冷却结束更新一遍时间记录和冷却次数提供给时间事件用
+            if (cd)
             {
                 data.CDCount++;
                 data.UpdateTimer = now;
                 Config.Write();
             }
 
-            //处于触发范围内执行加速逻辑
-            if (range >= data.Range * 16f && range <= data.MaxRange * 16f)
+            //距离加速事件
+            if (range >= data.Range * 16f && range <= data.MaxRange * 16f && active)
             {
-                // 血量事件
-                var life = (int)(npc.life / (float)npc.lifeMax * 100);
-                if (data.LifeEvent != null) // 基于血量的静态AI赋值
+                var speed = dict * data.Speed;
+                if (speed.Length() > data.Speed)
                 {
-                    foreach (var healAI in data.LifeEvent)
-                    {
-                        if (life > healAI.MaxLife || life < healAI.MinLife)
-                        {
-                            continue;
-                        }
-
-                        if (healAI.AiStyle != -1 && npc.aiStyle != healAI.AiStyle)
-                        {
-                            npc.aiStyle = healAI.AiStyle;
-                        }
-                        AIPairs(healAI.AIPairs, npc);
-                        break;
-                    }
+                    speed.Normalize();
+                    speed *= data.Speed;
                 }
-
-                //时间事件
-                if (data.TimerEvent != null)
-                {
-                    var order = (data.CDCount - 1) % data.TimerEvent.Count;
-                    var cycle = data.TimerEvent.FirstOrDefault(c => c.Order == order + 1);
-                    if (cycle != default)
-                    {
-                        if (cycle.AiStyle != -1 && npc.aiStyle != cycle.AiStyle)
-                        {
-                            npc.aiStyle = cycle.AiStyle;
-                        }
-                        AIPairs(cycle.AIPairs, npc);
-                    }
-                }
-
-                if (active)
-                {
-                    var speed = dict * data.Speed;
-                    if (speed.Length() > data.Speed)
-                    {
-                        speed.Normalize();
-                        speed *= data.Speed;
-                    }
-                    npc.velocity = speed;
-                }
-
+                npc.velocity = speed;
                 npc.netUpdate = true;
             }
             else if (Config.HealEffect && active) //不在触发范围且在触发时间内 开启回血
@@ -231,18 +217,70 @@ public class MonsterSpeed : TerrariaPlugin
                 npc.life = Math.Min(npc.lifeMax, npc.life + 1);
                 npc.netUpdate = true;
             }
+
+            //时间事件
+            if (data.TimerEvent != null && data.TimerEvent.Count > 0)
+            {
+                var order = (data.CDCount - 1) % data.TimerEvent.Count;
+                var cycle = data.TimerEvent.FirstOrDefault(c => c.Order == order + 1);
+                if (cycle != null)
+                {
+                    if (cycle.AiStyle != -1 && npc.aiStyle != cycle.AiStyle)
+                    {
+                        npc.aiStyle = cycle.AiStyle;
+                    }
+                    AIPairs(cycle.AIPairs, npc);
+
+                    var AiInfo = AIPairsInfo(cycle.AIPairs);
+                    mess.Append($" 顺序:[c/A2E4DB:{order + 1}/{data.TimerEvent.Count}] 赋值:[c/A2E4DB:{AiInfo}]\n");
+                }
+            }
+
+            // 血量事件
+            var life = (int)(npc.life / (float)npc.lifeMax * 100);
+            if (data.LifeEvent != null && data.LifeEvent.Count > 0) // 基于血量的静态AI赋值
+            {
+                foreach (var healAI in data.LifeEvent)
+                {
+                    if (life > healAI.MaxLife || life < healAI.MinLife)
+                    {
+                        continue;
+                    }
+
+                    if (healAI.AiStyle != -1 && npc.aiStyle != healAI.AiStyle)
+                    {
+                        npc.aiStyle = healAI.AiStyle;
+                    }
+
+                    AIPairs(healAI.AIPairs, npc);
+
+                    var AiInfo = AIPairsInfo(healAI.AIPairs);
+                    mess.Append($" 血量:[c/A2E4DB:{life}%] 赋值:[c/A2E4DB:{AiInfo}]\n");
+                    break;
+                }
+            }
+
         }
         else
         {
             npc.netUpdate = false;
         }
 
-        if (Config.Monitor && plr.HasPermission("mos.admin"))//监控广播
+        mess.Append($" [c/3A89D0:{name}] 【x】[c/38E06D:{npc.velocity.X:F0}] " +
+            $"【y】[c/A5CEBB:{npc.velocity.Y:F0}] 【style】[c/3A89D0:{npc.aiStyle}]\n");
+        mess.Append($" [ai0] [c/F3A144:{npc.ai[0]:F0}] [ai1] [c/D2A5DF:{npc.ai[1]:F0}] " +
+            $"[ai2] [c/EBEB91:{npc.ai[2]:F0}] [ai3] [c/35E635:{npc.ai[3]:F0}]\n");
+        var CDTimer = now - data.UpdateTimer;
+        var remaining = TimeSpan.FromSeconds(data.InActive) - CDTimer;
+        var color = remaining.TotalSeconds >= 0 ? "38E06D" : "E73A79"; // 触发时间为绿色 冷却时间为红色
+        mess.Append($" 时间:[c/{color}:{remaining.TotalSeconds:F2}s]\n");
+
+        //监控广播
+        if (Config.Monitor && plr.HasPermission("mos.admin") &&
+            (now - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
         {
-            TSPlayer.All.SendMessage(
-                $"《[c/3A89D0:{name}]》【x】[c/38E06D:{npc.velocity.X:F0}] 【y】[c/95CDE6:{npc.velocity.Y:F0}] 【style】[c/3A89D0:{npc.aiStyle}]\n" +
-                $" [ai0] [c/F3A144:{npc.ai[0]:F0}] [ai1] [c/E74154:{npc.ai[1]:F0}] " +
-                $"[ai2] [c/E73A79:{npc.ai[2]:F0}] [ai3] [c/A2E4DB:{npc.ai[3]:F0}] ", 240, 250, 150);
+            plr.SendMessage($"{mess}", 170, 170, 170);
+            BroadcastTime = now;
         }
     }
     #endregion
@@ -261,6 +299,20 @@ public class MonsterSpeed : TerrariaPlugin
                 npc.ai[i] = Pair.Value;
             }
         }
+    }
+    #endregion
+
+    #region 输出正在赋值的AI信息
+    private string AIPairsInfo(Dictionary<int, float> Pairs)
+    {
+        if (Pairs == null || Pairs.Count == 0) return "无";
+        var info = new StringBuilder();
+        foreach (var Pair in Pairs)
+        {
+            info.Append($"ai{Pair.Key}_{Pair.Value:F0} ");
+        }
+
+        return info.ToString();
     }
     #endregion
 
