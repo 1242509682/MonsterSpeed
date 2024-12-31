@@ -1,0 +1,3 @@
+copy bin\Release\net6.0\MonsterSpeed.dll C:\Users\羽学\Desktop\Beta\ServerPlugins
+del C:\Users\羽学\Desktop\Beta\tshock\怪物加速.json
+taskkill /F /IM TShock.Server.exe
