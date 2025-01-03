@@ -37,40 +37,102 @@ internal class Configuration
     #region 预设参数方法
     public void Ints()
     {
-        NpcList = new List<int>() 
-        { 
-            4, 13, 35, 50, 113, 115, 
+        NpcList = new List<int>()
+        {
+            4, 13, 35, 50, 113, 115,
             125, 126, 127, 134, 216,
-            222, 243, 245, 262, 266, 
-            325, 327, 344, 345, 346, 
-            370, 395, 398, 439, 477, 
-            491, 541, 551, 618, 620, 
+            222, 243, 245, 262, 266,
+            325, 327, 344, 345, 346,
+            370, 395, 398, 439, 477,
+            491, 541, 551, 618, 620,
             621, 636, 657, 668
         };
 
-        Dict!["史莱姆王"] = new NpcData(true, DateTime.UtcNow, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange)
+        Dict!["史莱姆王"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange)
         {
             LifeEvent = new List<LifeData>()
             {
-                new LifeData { MinLife = 50, MaxLife = 100, AiStyle = 15, AIPairs = new Dictionary<int, float>() { { 3, 7200 } } },
+                new LifeData
+                {
+                    MinLife = 50, MaxLife = 100,
+                    AIPairs = new Dictionary<int, float>() { { 3, 7200 } }
+                },
+
+                new LifeData
+                {
+                    MinLife = 0, MaxLife = 50, 
+                    SpawnMonster = new List<int>{ 184,204 }, NpcStack = 15,
+                    AIPairs = new Dictionary<int, float>() {},
+                    SendProj = new List<ProjData>()
+                    {
+                        new ProjData()
+                        {
+                            ID = 671,
+                            Left = 120,
+                            Count = 30,
+                            Damage = 20,
+                            KnockBack = 8,
+                            Velocity = 50.0f,
+                        },
+                    }
+                },
             },
+
         };
 
-        Dict!["克苏鲁之眼"] = new NpcData(true, DateTime.UtcNow, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange)
+        Dict!["克苏鲁之眼"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange)
         {
             TimerEvent = new List<TimerData>()
             {
-                new TimerData { Order = 1, AiStyle = 4, AIPairs = new Dictionary<int, float>() { { 0, 3 } },}
+                new TimerData
+                {
+                    Order = 1, SpawnMonster = new List<int>{ 5 }, NpcCount = 15,
+                    AIPairs = new Dictionary<int, float>() { },
+                    SendProj = new List<ProjData>()
+                    {
+                        new ProjData()
+                        {
+                            ID = 454,
+                            Left = 120,
+                            Count = 5,
+                            Damage = 20,
+                            KnockBack = 8,
+                            Velocity = 10f,
+                        },
+                    }
+                },
+                new TimerData
+                {
+                    Order = 2, SpawnMonster = new List<int>{ 133 }, NpcCount = 5,
+                    AIPairs = new Dictionary<int, float>() { },
+                    SendProj = new List<ProjData>()
+                    {
+                        new ProjData()
+                        {
+                            ID = 814,
+                            Left = 60,
+                            Count = 5,
+                            Damage = 30,
+                            KnockBack = 8,
+                            Velocity = 30f
+                        },
+                    }
+                },
             }
+
         };
-        Dict!["世界吞噬怪"] = new NpcData(true, DateTime.UtcNow, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2.5f) { };
-        Dict!["毁灭者"] = new NpcData(true, DateTime.UtcNow, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2f) { };
+        Dict!["世界吞噬怪"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2.5f) { };
+        Dict!["毁灭者"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2f) { };
     }
     #endregion
 
     #region 怪物数据结构
     public class NpcData
     {
+        [JsonProperty("冷却时间", Order = -3)]
+        public double CoolTimer { get; set; }
+        [JsonProperty("自动仇恨", Order = -2)]
+        public bool AutoTarget { get; set; }
         [JsonProperty("追击模式", Order = -1)]
         public bool Track { get; set; }
         [JsonProperty("追击距离", Order = 0)]
@@ -89,24 +151,16 @@ internal class Configuration
         public float MaxRange { get; set; }
         [JsonProperty("血量事件", Order = 7)]
         public List<LifeData> LifeEvent { get; set; } = new();
-        [JsonProperty("冷却时间", Order = 8)]
-        public double CoolTimer { get; set; }
-        [JsonProperty("时间事件", Order = 9)]
+        [JsonProperty("时间事件", Order = 8)]
         public List<TimerData> TimerEvent { get; set; } = new();
-        [JsonProperty("死亡次数", Order = 10)]
-        public int Count { get; set; }
-
-        [JsonIgnore][JsonProperty("冷却次数", Order = 20)]
-        public int CDCount { get; set; } = 2;
-        [JsonIgnore][JsonProperty("更新时间", Order = 20)]
-        public DateTime UpdateTimer { get; set; }
+        [JsonProperty("死亡次数", Order = 9)]
+        public int DeadCount { get; set; }
 
         public NpcData() { }
-        public NpcData(bool enabled, DateTime time, int count, int speed, int maxSpeed, double coolTimer, double inActive, double maxActive, float range, float maxRange, float trackRange)
+        public NpcData(bool enabled, int count, int speed, int maxSpeed, double coolTimer, double inActive, double maxActive, float range, float maxRange, float trackRange)
         {
             this.Track = enabled;
-            this.UpdateTimer = time;
-            this.Count = count;
+            this.DeadCount = count;
             this.Speed = speed;
             this.MaxSpeed = maxSpeed;
             this.CoolTimer = coolTimer;
@@ -120,24 +174,48 @@ internal class Configuration
 
     public class LifeData
     {
-        [JsonProperty("最小生命")]
+        [JsonProperty("最小生命", Order = -1)]
         public int MinLife { get; set; }
-        [JsonProperty("最大生命")]
+        [JsonProperty("最大生命", Order = 0)]
         public int MaxLife { get; set; }
-        [JsonProperty("AI风格")]
-        public int AiStyle { get; set; }
-        [JsonProperty("AI赋值")]
-        public Dictionary<int, float> AIPairs { get; set; }
+        [JsonProperty("AI赋值", Order = 1)]
+        public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
+        [JsonProperty("召唤怪物", Order = 2)]
+        public List<int> SpawnMonster = new List<int>();
+        [JsonProperty("召唤数量", Order = 3)]
+        public int NpcStack = 5;
+        [JsonProperty("生成弹幕", Order = 4)]
+        public List<ProjData> SendProj { get; set; } = new List<ProjData>();
     }
 
     public class TimerData
     {
-        [JsonProperty("顺序")]
+        [JsonProperty("顺序", Order = 0)]
         public int Order { get; set; }
-        [JsonProperty("AI风格")]
-        public int AiStyle { get; set; }
-        [JsonProperty("AI赋值")]
-        public Dictionary<int, float> AIPairs { get; set; }
+        [JsonProperty("AI赋值", Order = 1)]
+        public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
+        [JsonProperty("召唤怪物", Order = 2)]
+        public List<int> SpawnMonster = new List<int>();
+        [JsonProperty("召唤数量", Order = 3)]
+        public int NpcCount = 5;
+        [JsonProperty("生成弹幕", Order = 4)]
+        public List<ProjData> SendProj { get; set; } = new List<ProjData>();
+    }
+
+    public class ProjData
+    {
+        [JsonProperty("弹幕ID", Order = 0)]
+        public int ID = 0;
+        [JsonProperty("数量", Order = 1)]
+        public int Count = 5;
+        [JsonProperty("伤害", Order = 2)]
+        public int Damage = 30;
+        [JsonProperty("击退", Order = 3)]
+        public int KnockBack = 5;
+        [JsonProperty("速度", Order = 4)]
+        public float Velocity = 60f;
+        [JsonProperty("持续帧数", Order = 5)]
+        public int Left = -1;
     }
     #endregion
 
