@@ -156,8 +156,11 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
-        var plr = Main.player[npc.target];
-        if (plr == null || !Config.NpcList.Contains(npc.type)) return;
+        // 获取玩家与怪物的距离和相对位置向量
+        var tar = npc.GetTargetData(true);
+        if (tar.Invalid || !Config.NpcList.Contains(npc.type)) return;
+        var range = Vector2.Distance(tar.Center, npc.Center);
+        var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
 
         //冷却时间条件
         var (cdCount, updateTimer) = GetOrAdd(name);
@@ -165,13 +168,11 @@ public class MonsterSpeed : TerrariaPlugin
         var active = timer.TotalSeconds <= data.InActive;
         var cd = timer.TotalSeconds >= data.InActive + Math.Max(data.CoolTimer, 1.0);
 
-        //获取玩家与怪物的距离和相对位置向量
-        var (dict, range) = GetPlyrRange(npc, plr);
         if (data.Track)
         {
             if (range > data.TrackRange * 16f) // 超距离追击
             {
-                var speed = dict * data.MaxSpeed + plr.velocity;
+                var speed = dict * data.MaxSpeed + tar.Velocity;
                 if (speed.Length() > data.MaxSpeed)
                 {
                     speed.Normalize();
@@ -386,16 +387,5 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
-    #region 获取玩家与怪物的距离
-    public static (Vector2 dict, float range) GetPlyrRange(NPC npc, Player plr)
-    {
-        if (plr == null) return (Vector2.Zero, float.MaxValue);
-        var plrCenter = new Vector2(plr.position.X + (plr.width / 2), plr.position.Y + (plr.height / 2));
-        var npcCenter = new Vector2(npc.position.X + (npc.width / 2), npc.position.Y + (npc.height / 2));
-        var dict = plrCenter - npcCenter;
-        var range = dict.Length();
-        return (dict, range);
-    }
-    #endregion
 
 }

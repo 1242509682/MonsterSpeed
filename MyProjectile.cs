@@ -1,8 +1,7 @@
-﻿using Terraria;
+﻿using Microsoft.Xna.Framework;
+using Terraria;
 using Terraria.DataStructures;
-using Microsoft.Xna.Framework;
 using static Plugin.Configuration;
-using static Plugin.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -32,31 +31,26 @@ internal class MyProjectile
         foreach (var proj in ProjData)
         {
             //限制弹幕数量
-            if (count >= proj.Count) return;
+            if (count >= proj.Count || proj.ID <= 0) continue;
 
-            if (proj.ID <= 0)
+            // 获取距离和方向向量
+            var tar = npc.GetTargetData(true);
+            var dict = tar.Center - npc.Center;
+
+            if (tar.Invalid) continue; // 目标无效则跳过
+
+            // 计算发射速度
+            var speed = proj.Velocity;
+            var velocity = dict.SafeNormalize(Vector2.Zero) * speed;
+
+            // 创建并发射弹幕
+            if (proj.Left != 0)
             {
-                continue;
-            }
+                Projectile.NewProjectile(Terraria.Projectile.GetNoneSource(),
+                    npc.Center.X, npc.Center.Y, velocity.X, velocity.Y, proj.ID, proj.Damage, proj.KnockBack,
+                    Main.myPlayer, 0f, proj.Left);
 
-            var plr = Main.player[npc.target]; // 获取目标玩家
-
-            if (plr.active && !plr.dead)
-            {
-                // 获取距离和方向向量
-                var (dict, Range) = GetPlyrRange(npc, plr);
-                // 计算发射速度
-                var speed = proj.Velocity;
-                var velocity = dict.SafeNormalize(Vector2.Zero) * speed;
-
-                // 创建并发射弹幕
-                if (proj.Left != 0)
-                {
-                    NewProjectile(Terraria.Projectile.GetNoneSource(),
-                        npc.Center.X, npc.Center.Y, velocity.X, velocity.Y, proj.ID, proj.Damage, proj.KnockBack,
-                        Main.myPlayer, 0, 0, 0, proj.Left);
-                    count++;
-                }
+                count++; // 更新计数器
             }
         }
     }
