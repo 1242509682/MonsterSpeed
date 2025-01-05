@@ -1,14 +1,12 @@
 ﻿using System.Text;
 using Microsoft.Xna.Framework;
-using MonsterSpeed;
 using Terraria;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
-using static Plugin.Configuration;
-using Command = MonsterSpeed.Command;
+using static MonsterSpeed.Configuration;
 
-namespace Plugin;
+namespace MonsterSpeed;
 
 [ApiVersion(2, 1)]
 public class MonsterSpeed : TerrariaPlugin
@@ -16,7 +14,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 0, 6);
+    public override Version Version => new Version(1, 0, 7);
     public override string Description => "涡轮增压不蒸鸭";
     #endregion
 

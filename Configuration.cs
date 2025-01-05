@@ -1,7 +1,8 @@
-﻿using Newtonsoft.Json;
-using TShockAPI;
+﻿using TShockAPI;
+using Newtonsoft.Json;
 
-namespace Plugin;
+
+namespace MonsterSpeed;
 
 internal class Configuration
 {
@@ -68,10 +69,11 @@ internal class Configuration
                         new ProjData()
                         {
                             ID = 671,
-                            Left = 120,
-                            Count = 30,
+                            Lift = 120,
+                            Count = 10,
                             Damage = 20,
                             KnockBack = 8,
+                            Angle = 15f,
                             Velocity = 50.0f,
                         },
                     }
@@ -93,11 +95,13 @@ internal class Configuration
                         new ProjData()
                         {
                             ID = 454,
-                            Left = 120,
+                            Lift = 60,
                             Count = 5,
                             Damage = 20,
                             KnockBack = 8,
-                            Velocity = 10f,
+                            Angle = 15f,
+                            Velocity = 105f,
+                            ai = new Dictionary<int, float>() { { 0, 50f } },
                         },
                     }
                 },
@@ -110,11 +114,12 @@ internal class Configuration
                         new ProjData()
                         {
                             ID = 814,
-                            Left = 60,
+                            Lift = 180,
                             Count = 5,
                             Damage = 30,
                             KnockBack = 8,
-                            Velocity = 30f
+                            Angle = -45f,
+                            Velocity = 100f,
                         },
                     }
                 },
@@ -172,13 +177,14 @@ internal class Configuration
         }
     }
 
+    //血量事件数据结构
     public class LifeData
     {
         [JsonProperty("最小生命", Order = -1)]
         public int MinLife { get; set; }
         [JsonProperty("最大生命", Order = 0)]
         public int MaxLife { get; set; }
-        [JsonProperty("AI赋值", Order = 1)]
+        [JsonProperty("怪物AI", Order = 1)]
         public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
         [JsonProperty("召唤怪物", Order = 2)]
         public List<int> SpawnMonster = new List<int>();
@@ -188,11 +194,12 @@ internal class Configuration
         public List<ProjData> SendProj { get; set; } = new List<ProjData>();
     }
 
+    //时间事件数据结构
     public class TimerData
     {
         [JsonProperty("顺序", Order = 0)]
         public int Order { get; set; }
-        [JsonProperty("AI赋值", Order = 1)]
+        [JsonProperty("怪物AI", Order = 1)]
         public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
         [JsonProperty("召唤怪物", Order = 2)]
         public List<int> SpawnMonster = new List<int>();
@@ -202,6 +209,7 @@ internal class Configuration
         public List<ProjData> SendProj { get; set; } = new List<ProjData>();
     }
 
+    //弹幕数据结构
     public class ProjData
     {
         [JsonProperty("弹幕ID", Order = 0)]
@@ -214,8 +222,12 @@ internal class Configuration
         public int KnockBack = 5;
         [JsonProperty("速度", Order = 4)]
         public float Velocity = 60f;
-        [JsonProperty("持续帧数", Order = 5)]
-        public int Left = -1;
+        [JsonProperty("角度", Order = 5)]
+        public float Angle = 15f;
+        [JsonProperty("弹幕AI", Order = 6)]
+        public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
+        [JsonProperty("持续帧数", Order = 7)]
+        public int Lift = 60;
     }
     #endregion
 

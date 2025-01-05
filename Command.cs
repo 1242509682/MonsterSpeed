@@ -1,5 +1,5 @@
 ﻿using TShockAPI;
-using static Plugin.MonsterSpeed;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 

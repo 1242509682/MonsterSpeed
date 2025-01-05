@@ -1,56 +1,63 @@
-﻿using Microsoft.Xna.Framework;
-using Terraria;
-using Terraria.DataStructures;
-using static Plugin.Configuration;
+﻿using Terraria;
+using Microsoft.Xna.Framework;
+using static MonsterSpeed.Configuration;
 
 namespace MonsterSpeed;
 
 internal class MyProjectile
 {
-    #region 生成弹幕方法：给弹幕生命赋值
-    public static int NewProjectile(IEntitySource spawnSource, float X, float Y, float SpeedX, float SpeedY, int Type, int Damage, float KnockBack, int Owner = -1, float ai0 = 0f, float ai1 = 0f, float ai2 = 0f, int Left = -1)
-    {
-        var index = Projectile.NewProjectile(spawnSource, X, Y, SpeedX, SpeedY, Type, Damage, KnockBack, Owner, ai0, ai1, ai2);
-        if (Left == 0)
-        {
-            Main.projectile[index].Kill();
-        }
-        else if (Left > 0)
-        {
-            Main.projectile[index].timeLeft = Left;
-        }
-        return index;
-    }
-    #endregion
-
-    #region 弹幕生成条件
-    public static void SpawnProjectile(List<ProjData> ProjData, NPC npc)
+    #region 弹幕生成方法
+    public static void SpawnProjectile(List<ProjData> data, NPC npc)
     {
         var count = Main.projectile.Count(p => p.active && p.owner == Main.myPlayer);
 
-        foreach (var proj in ProjData)
+        foreach (var proj in data)
         {
-            //限制弹幕数量
-            if (count >= proj.Count || proj.ID <= 0) continue;
-
             // 获取距离和方向向量
             var tar = npc.GetTargetData(true);
             var dict = tar.Center - npc.Center;
+            if (count >= proj.Count || proj.ID <= 0 || tar.Invalid) continue; // 目标无效则跳过
 
-            if (tar.Invalid) continue; // 目标无效则跳过
+            // 弧度：定义总角度范围的一半（从中心线两侧各偏移） 
+            var radian = proj.Angle * (float)Math.PI / 180;
+            // 计算每次发射的弧度增量
+            var AddRadian = radian * 2 / (proj.Count - 1);
 
-            // 计算发射速度
-            var speed = proj.Velocity;
-            var velocity = dict.SafeNormalize(Vector2.Zero) * speed;
+            // 初始化默认AI值
+            var ai0 = proj.ai != null && proj.ai.ContainsKey(0) ? proj.ai[0] : 0f;
+            var ai1 = proj.ai != null && proj.ai.ContainsKey(1) ? proj.ai[1] : 0f;
+            var ai2 = proj.ai != null && proj.ai.ContainsKey(2) ? proj.ai[2] : 0f;
 
-            // 创建并发射弹幕
-            if (proj.Left != 0)
+            // 根据弹幕数量属性发射多个弹幕，每次发射都进行速度衰减
+            for (var i = 0; i < proj.Count; i++)
             {
-                Projectile.NewProjectile(Terraria.Projectile.GetNoneSource(),
-                    npc.Center.X, npc.Center.Y, velocity.X, velocity.Y, proj.ID, proj.Damage, proj.KnockBack,
-                    Main.myPlayer, 0f, proj.Left);
+                // 计算衰减值，随着弹幕数量的增加而减慢
+                var decay = 1.0f - i / (float)proj.Count * (1.0f - 0.1f);
 
-                count++; // 更新计数器
+                // 应用发射速度
+                var speed = proj.Velocity * decay;
+                var vel = dict.SafeNormalize(Vector2.Zero) * speed;
+
+                // 应用角度偏移
+                var Angle = (i - (proj.Count - 1) / 2.0f) * AddRadian;
+                vel = vel.RotatedBy(Angle);
+
+                if (proj.ID != 0 && proj.Lift >= 0)
+                {
+                    // 创建并发射弹幕
+                    var newProj = Projectile.NewProjectile(Projectile.GetNoneSource(),
+                                                           npc.Center.X, npc.Center.Y, vel.X, vel.Y,
+                                                           proj.ID, proj.Damage, proj.KnockBack, Main.myPlayer,
+                                                           ai0, ai1, ai2);
+                    // 弹幕生命
+                    Main.projectile[newProj].timeLeft = proj.Lift > 0 ? proj.Lift : 0;
+                    if (proj.Lift == 0)
+                    {
+                        Main.projectile[newProj].Kill();
+                    }
+
+                    count++; // 更新计数器
+                }
             }
         }
     }
