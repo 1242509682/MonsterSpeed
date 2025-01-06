@@ -1,5 +1,6 @@
 ﻿using TShockAPI;
 using Newtonsoft.Json;
+using NuGet.Protocol.Plugins;
 
 
 namespace MonsterSpeed;
@@ -70,10 +71,12 @@ internal class Configuration
                         {
                             ID = 671,
                             Lift = 120,
-                            Count = 10,
                             Damage = 20,
+                            stack = 10,
                             KnockBack = 8,
+                            CEC = 10f,
                             Angle = 15f,
+                            Rotate = 0f,
                             Velocity = 50.0f,
                         },
                     }
@@ -96,13 +99,30 @@ internal class Configuration
                         {
                             ID = 454,
                             Lift = 60,
-                            Count = 5,
                             Damage = 20,
+                            stack = 5,
+                            interval = 40f,
                             KnockBack = 8,
+                            CEC = 5f,
                             Angle = 15f,
-                            Velocity = 105f,
+                            Rotate = 0f,
+                            Velocity = 25f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
                         },
+                        new ProjData()
+                        {
+                            ID = 814,
+                            Lift = 180,
+                            stack = 5,
+                            interval = 30f,
+                            Damage = 30,
+                            KnockBack = 8,
+                            CEC = 0f,
+                            Angle = -5f,
+                            Rotate = 0f,
+                            Velocity = 30f,
+                        },
+                        
                     }
                 },
                 new TimerData
@@ -115,11 +135,28 @@ internal class Configuration
                         {
                             ID = 814,
                             Lift = 180,
-                            Count = 5,
+                            stack = 15,
+                            interval = 10f,
                             Damage = 30,
                             KnockBack = 8,
-                            Angle = -45f,
+                            CEC = 10f,
+                            Angle = 15f,
+                            Rotate = 5f,
                             Velocity = 100f,
+                        },
+                        new ProjData()
+                        {
+                            ID = 454,
+                            Lift = 60,
+                            Damage = 20,
+                            stack = 15,
+                            interval = 10f,
+                            KnockBack = 8,
+                            CEC = 0f,
+                            Angle = 5f,
+                            Rotate = 0f,
+                            Velocity = 105f,
+                            ai = new Dictionary<int, float>() { { 0, 50f } },
                         },
                     }
                 },
@@ -214,20 +251,30 @@ internal class Configuration
     {
         [JsonProperty("弹幕ID", Order = 0)]
         public int ID = 0;
-        [JsonProperty("数量", Order = 1)]
-        public int Count = 5;
-        [JsonProperty("伤害", Order = 2)]
+        [JsonProperty("伤害", Order = 1)]
         public int Damage = 30;
-        [JsonProperty("击退", Order = 3)]
+        [JsonProperty("数量", Order = 2)]
+        public int stack = 5;
+        [JsonProperty("每发间隔", Order = 3)]
+        public float interval = 15f;
+        [JsonProperty("击退", Order = 4)]
         public int KnockBack = 5;
-        [JsonProperty("速度", Order = 4)]
-        public float Velocity = 60f;
-        [JsonProperty("角度", Order = 5)]
+        [JsonProperty("速度", Order = 5)]
+        public float Velocity = 10f;
+        [JsonProperty("衰减比例", Order = 6)]
+        public float decay = 0.9f;
+        [JsonProperty("中心扩缩", Order = 7)]
+        public float CEC = 0f;
+        [JsonProperty("偏移角度", Order = 8)]
         public float Angle = 15f;
-        [JsonProperty("弹幕AI", Order = 6)]
+        [JsonProperty("旋转角度", Order = 9)]
+        public float Rotate = 5f;
+        [JsonProperty("弹幕AI", Order = 10)]
         public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
-        [JsonProperty("持续帧数", Order = 7)]
-        public int Lift = 60;
+        [JsonProperty("弹幕生命", Order = 11)]
+        public int Lift = 120;
+        [JsonProperty("以玩家为中心", Order = 12)]
+        public bool TarCenter = false;
     }
     #endregion
 

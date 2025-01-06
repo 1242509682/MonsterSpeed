@@ -14,7 +14,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 0, 7);
+    public override Version Version => new Version(1, 0, 8);
     public override string Description => "涡轮增压不蒸鸭";
     #endregion
 
