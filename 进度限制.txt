@@ -1,0 +1,64 @@
+事件与进度
+None (无) - 0
+EyeOfCthulhu (克眼, 克苏鲁之眼) - 1
+SlimeKing (史莱姆王, 史莱姆之王, 史王) - 2
+EvilBoss (克脑, 克苏鲁之脑, 世界吞噬者, 世界吞噬怪, 世吞) - 3
+Skeletron (骷髅王) - 4
+QueenBee (蜂王) - 5
+Deerclops (鹿角怪, 独眼巨鹿) - 6
+WallOfFlesh (血肉墙, 肉山, 肉后, 困难模式) - 7
+MechBossAny (一王后) - 8
+TheTwins (双子魔眼) - 9
+TheDestroyer (毁灭者, 铁长直) - 10
+SkeletronPrime (机械骷髅王) - 11
+Plantera (世纪之花, 世花) - 12
+Golem (石巨人) - 13
+DukeFishron (猪鲨, 猪龙鱼公爵) - 14
+LunaticCultist (拜月教邪教徒, 拜月) - 15
+Moonlord (月球领主, 月亮领主, 月总) - 16
+EmpressOfLight (光之女皇, 光女) - 17
+QieenSlime (史莱姆皇后, 史后) - 18
+HalloweenTree (哀木) - 19
+HalloweenKing (南瓜王) - 20
+ChristmasTree (长绿尖叫怪) - 21
+ChristmasIceQueen (冰雪女皇) - 22
+ChristmasSantank (圣诞坦克) - 23
+Martians (火星飞碟, 飞碟) - 24
+Clown (小丑) - 25
+TowerSolar (日耀柱) - 26
+TowerVortex (星旋柱) - 27
+TowerNebula (星云柱) - 28
+TowerStardust (星尘柱) - 29
+Goblins (哥布林入侵, 哥布林) - 30
+Pirates (海盗入侵, 海盗) - 31
+Frost (霜月) - 32
+BloodMoon (血月) - 33
+DrakMageT1 (旧日一, 黑暗法师) - 34
+OrgeT2 (旧日二, 巨魔) - 35
+BetsyT3 (旧日三, 贝蒂斯, 双足翼龙) - 36
+Raining (雨天) - 37
+DyaTime (白天) - 38
+Night (夜晚) - 39
+WindyDay (大风天) - 40
+Halloween (万圣节) - 41
+Party (派对) - 42
+
+秘密世界
+DrunkWorld (2020, 醉酒世界) - 43
+tenthAnniversaryWorld (2021, 十周年) - 44
+ForTheWorthy (ftw) - 45
+RemixWorld (混乱世界, 颠倒世界) - 46
+NotTheBeesWorld (ntb, 蜂蜜世界) - 47
+DontStarveWorld (永恒领域, 饥荒) - 48
+zenithWorld (天顶世界, 天顶) - 49
+NoTrapsWorld (陷阱世界, 陷阱) - 50
+
+月相
+FullMoon (满月) - 51
+WaningGibbous (亏凸月) - 52
+ThirdQuarter (下弦月) - 53
+WaningCrescen (残月) - 54
+NewMoon (新月) - 55
+WaxingCrescent (娥眉月) - 56
+FirstQuarter (上弦月) - 57
+WaxingGibbous (盈凸月) - 58

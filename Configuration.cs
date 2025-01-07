@@ -1,6 +1,6 @@
-﻿using TShockAPI;
+﻿using MonsterSpeed.Progress;
 using Newtonsoft.Json;
-using NuGet.Protocol.Plugins;
+using TShockAPI;
 
 
 namespace MonsterSpeed;
@@ -12,27 +12,31 @@ internal class Configuration
     public bool Enabled { get; set; } = true;
     [JsonProperty("触发监控", Order = 0)]
     public bool Monitor { get; set; } = false;
-    [JsonProperty("监控间隔", Order = 0)]
+    [JsonProperty("监控间隔", Order = 1)]
     public double Monitorinterval { get; set; } = 100f;
-    [JsonProperty("默认速度", Order = 1)]
+    [JsonProperty("默认速度", Order = 2)]
     public int Speed { get; set; } = 12;
-    [JsonProperty("速度上限", Order = 2)]
+    [JsonProperty("速度上限", Order = 3)]
     public int MaxSpeed { get; set; } = 35;
-    [JsonProperty("触发秒数上限", Order = 3)]
+    [JsonProperty("触发秒数上限", Order = 4)]
     public double MaxActive { get; set; } = 15;
-    [JsonProperty("触发距离上限", Order = 4)]
+    [JsonProperty("默认最小触发距离", Order = 5)]
+    public float MinRange { get; set; } = 25f;
+    [JsonProperty("默认最大触发距离", Order = 6)]
     public float MaxRange { get; set; } = 84;
-    [JsonProperty("触发距离外回血", Order = 5)]
+    [JsonProperty("触发距离外回血", Order = 7)]
     public bool HealEffect { get; set; } = true;
-    [JsonProperty("默认追击距离", Order = 5)]
-    public float TrackRange { get; set; } = 50f;
-    [JsonProperty("击败后加速度", Order = 5)]
+    [JsonProperty("距离外每帧回血", Order = 8)]
+    public int HealCount { get; set; } = 1;
+    [JsonProperty("默认追击距离", Order = 9)]
+    public float TrackRange { get; set; } = 62f;
+    [JsonProperty("击败后加速度", Order = 10)]
     public int Killed { get; set; } = 2;
-    [JsonProperty("击败后减冷却", Order = 6)]
+    [JsonProperty("击败后减冷却", Order = 11)]
     public double Ratio { get; set; } = 0.5;
-    [JsonProperty("怪物ID表", Order = 7)]
+    [JsonProperty("怪物ID表", Order = 12)]
     public List<int> NpcList { get; set; }
-    [JsonProperty("怪物数据表", Order = 8)]
+    [JsonProperty("怪物数据表", Order = 13)]
     public Dictionary<string, NpcData>? Dict { get; set; } = new Dictionary<string, NpcData>();
     #endregion
 
@@ -50,34 +54,61 @@ internal class Configuration
             621, 636, 657, 668
         };
 
-        Dict!["史莱姆王"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange)
+        Dict!["史莱姆王"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, MinRange, MaxRange, TrackRange)
         {
             LifeEvent = new List<LifeData>()
             {
                 new LifeData
                 {
-                    MinLife = 50, MaxLife = 100,
-                    AIPairs = new Dictionary<int, float>() { { 3, 7200 } }
+                    MinLife = 75, MaxLife = 100,
+                    SpawnNPC = new List<SpawnNpcData>()
+                    {
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 184, 204 },
+                        }
+                    },
                 },
 
                 new LifeData
                 {
-                    MinLife = 0, MaxLife = 50, 
-                    SpawnMonster = new List<int>{ 184,204 }, NpcStack = 15,
-                    AIPairs = new Dictionary<int, float>() {},
+                    MinLife = 0, MaxLife = 75, 
+                    SpawnNPC = new List<SpawnNpcData>() 
+                    {
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 658, 659, 660 }
+                        }
+                    },
+
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
                         {
-                            ID = 671,
+                            ProjID = 671,
                             Lift = 120,
-                            Damage = 20,
+                            Damage = 10,
                             stack = 10,
+                            interval = 5f,
                             KnockBack = 8,
-                            CEC = 10f,
-                            Angle = 15f,
+                            Radius = 10f,
+                            Offset = 15f,
                             Rotate = 0f,
                             Velocity = 50.0f,
+                        },
+                        new ProjData()
+                        {
+                            ProjID = 351,
+                            Lift = 60,
+                            Damage = 10,
+                            stack = 30,
+                            interval = 1f,
+                            KnockBack = 8,
+                            Radius = 0f,
+                            Offset = 360f,
+                            Rotate = 2f,
+                            Velocity = 20f,
+                            ai = new Dictionary<int, float>() { { 0, 50f } },
                         },
                     }
                 },
@@ -85,86 +116,106 @@ internal class Configuration
 
         };
 
-        Dict!["克苏鲁之眼"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange)
+        Dict!["克苏鲁之眼"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, MinRange, MaxRange, TrackRange)
         {
             TimerEvent = new List<TimerData>()
             {
                 new TimerData
                 {
-                    Order = 1, SpawnMonster = new List<int>{ 5 }, NpcCount = 15,
-                    AIPairs = new Dictionary<int, float>() { },
+                    Order = 1,
+                    SpawnNPC = new List<SpawnNpcData>()
+                    {
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 5 }
+                        }
+                    },
+
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
                         {
-                            ID = 454,
-                            Lift = 60,
-                            Damage = 20,
-                            stack = 5,
-                            interval = 40f,
+                            ProjID = 115,
+                            Damage = 10,
+                            stack = 15,
+                            interval = 2f,
                             KnockBack = 8,
-                            CEC = 5f,
-                            Angle = 15f,
-                            Rotate = 0f,
                             Velocity = 25f,
+                            Radius = 15f,
+                            Offset = 5f,
+                            Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
+                            Lift = 180,
+                            TarCenter = false,
                         },
                         new ProjData()
                         {
-                            ID = 814,
-                            Lift = 180,
-                            stack = 5,
-                            interval = 30f,
-                            Damage = 30,
+                            ProjID = 44,
+                            Damage = 10,
+                            stack = 15,
+                            interval = 5f,
                             KnockBack = 8,
-                            CEC = 0f,
-                            Angle = -5f,
+                            Velocity = 10f,
+                            Radius = 4f,
+                            Offset = 15f,
                             Rotate = 0f,
-                            Velocity = 30f,
+                            ai = new Dictionary<int, float>(),
+                            Lift = 120,
+                            TarCenter = false,
                         },
                         
                     }
                 },
                 new TimerData
                 {
-                    Order = 2, SpawnMonster = new List<int>{ 133 }, NpcCount = 5,
-                    AIPairs = new Dictionary<int, float>() { },
+                    Order = 2,
+                    SpawnNPC = new List<SpawnNpcData>()
+                    {
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 133 }
+                        }
+                    },
+
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
                         {
-                            ID = 814,
-                            Lift = 180,
+                            ProjID = 814,
+                            Damage = 10,
                             stack = 15,
                             interval = 10f,
-                            Damage = 30,
                             KnockBack = 8,
-                            CEC = 10f,
-                            Angle = 15f,
-                            Rotate = 5f,
                             Velocity = 100f,
+                            Radius = 0f,
+                            Offset = 15f,
+                            Rotate = 2f,
+                            ai = new Dictionary<int, float>(),
+                            Lift = 180,
+                            TarCenter = false,
                         },
                         new ProjData()
                         {
-                            ID = 454,
-                            Lift = 60,
+                            ProjID = 454,
                             Damage = 20,
                             stack = 15,
                             interval = 10f,
                             KnockBack = 8,
-                            CEC = 0f,
-                            Angle = 5f,
-                            Rotate = 0f,
                             Velocity = 105f,
+                            Radius = 0f,
+                            Offset = 5f,
+                            Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
+                            Lift = 60,
+                            TarCenter = false,
                         },
                     }
                 },
             }
 
         };
-        Dict!["世界吞噬怪"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2.5f) { };
-        Dict!["毁灭者"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, 10f, MaxRange, TrackRange * 2f) { };
+        Dict!["世界吞噬怪"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, MinRange, MaxRange, TrackRange * 2.5f) { };
+        Dict!["毁灭者"] = new NpcData(true, 0, Speed, MaxSpeed, 5, 5f, MaxActive, MinRange, MaxRange, TrackRange * 2f) { };
     }
     #endregion
 
@@ -178,7 +229,7 @@ internal class Configuration
         [JsonProperty("追击模式", Order = -1)]
         public bool Track { get; set; }
         [JsonProperty("追击距离", Order = 0)]
-        public float TrackRange { get; set; }
+        public float TrackRange { get; set; } = 62f;
         [JsonProperty("最低加速", Order = 1)]
         public int Speed { get; set; }
         [JsonProperty("最高加速", Order = 2)]
@@ -188,9 +239,9 @@ internal class Configuration
         [JsonProperty("触发秒数上限", Order = 4)]
         public double MaxActive { get; set; }
         [JsonProperty("触发最小距离", Order = 5)]
-        public float Range { get; set; }
+        public float MinRange { get; set; } = 25f;
         [JsonProperty("触发最大距离", Order = 6)]
-        public float MaxRange { get; set; }
+        public float MaxRange { get; set; } = 84f;
         [JsonProperty("血量事件", Order = 7)]
         public List<LifeData> LifeEvent { get; set; } = new();
         [JsonProperty("时间事件", Order = 8)]
@@ -208,14 +259,14 @@ internal class Configuration
             this.CoolTimer = coolTimer;
             this.InActive = inActive;
             this.MaxActive = maxActive;
-            this.Range = range;
+            this.MinRange = range;
             this.MaxRange = maxRange;
             this.TrackRange = trackRange;
         }
     }
 
     //血量事件数据结构
-    public class LifeData
+    public class LifeData 
     {
         [JsonProperty("最小生命", Order = -1)]
         public int MinLife { get; set; }
@@ -223,11 +274,9 @@ internal class Configuration
         public int MaxLife { get; set; }
         [JsonProperty("怪物AI", Order = 1)]
         public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
-        [JsonProperty("召唤怪物", Order = 2)]
-        public List<int> SpawnMonster = new List<int>();
-        [JsonProperty("召唤数量", Order = 3)]
-        public int NpcStack = 5;
-        [JsonProperty("生成弹幕", Order = 4)]
+        [JsonProperty("生成怪物", Order = 2)]
+        public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
+        [JsonProperty("生成弹幕", Order = 3)]
         public List<ProjData> SendProj { get; set; } = new List<ProjData>();
     }
 
@@ -238,42 +287,57 @@ internal class Configuration
         public int Order { get; set; }
         [JsonProperty("怪物AI", Order = 1)]
         public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
-        [JsonProperty("召唤怪物", Order = 2)]
-        public List<int> SpawnMonster = new List<int>();
-        [JsonProperty("召唤数量", Order = 3)]
-        public int NpcCount = 5;
-        [JsonProperty("生成弹幕", Order = 4)]
+        [JsonProperty("生成怪物", Order = 2)]
+        public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
+        [JsonProperty("生成弹幕", Order = 3)]
         public List<ProjData> SendProj { get; set; } = new List<ProjData>();
+    }
+
+    //随从怪物结构
+    public class SpawnNpcData
+    {
+        [JsonProperty("怪物ID", Order = 0)]
+        public List<int> NPCID = new List<int>();
+        [JsonProperty("范围", Order = 1)]
+        public int Range = 25;
+        [JsonProperty("数量", Order = 2)]
+        public int NpcStack = 5;
+        [JsonProperty("间隔", Order = 3)]
+        public float Interval = 300;
+        [JsonProperty("进度限制", Order = 4)]
+        public ProgressType isProgress { get; set; } = ProgressType.None;
+        [JsonProperty("以玩家为中心", Order = 5)]
+        public bool TarCenter = false;
     }
 
     //弹幕数据结构
     public class ProjData
     {
         [JsonProperty("弹幕ID", Order = 0)]
-        public int ID = 0;
+        public int ProjID = 0;
         [JsonProperty("伤害", Order = 1)]
         public int Damage = 30;
         [JsonProperty("数量", Order = 2)]
         public int stack = 5;
-        [JsonProperty("每发间隔", Order = 3)]
+        [JsonProperty("间隔", Order = 3)]
         public float interval = 15f;
         [JsonProperty("击退", Order = 4)]
         public int KnockBack = 5;
         [JsonProperty("速度", Order = 5)]
         public float Velocity = 10f;
-        [JsonProperty("衰减比例", Order = 6)]
-        public float decay = 0.9f;
-        [JsonProperty("中心扩缩", Order = 7)]
-        public float CEC = 0f;
-        [JsonProperty("偏移角度", Order = 8)]
-        public float Angle = 15f;
-        [JsonProperty("旋转角度", Order = 9)]
+        [JsonProperty("半径", Order = 7)]
+        public float Radius = 0f;
+        [JsonProperty("偏移", Order = 8)]
+        public float Offset = 15f;
+        [JsonProperty("旋转", Order = 9)]
         public float Rotate = 5f;
         [JsonProperty("弹幕AI", Order = 10)]
         public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
-        [JsonProperty("弹幕生命", Order = 11)]
+        [JsonProperty("生命", Order = 11)]
         public int Lift = 120;
-        [JsonProperty("以玩家为中心", Order = 12)]
+        [JsonProperty("进度限制", Order = 12)]
+        public ProgressType isProgress { get; set; } = ProgressType.None;
+        [JsonProperty("以玩家为中心", Order = 13)]
         public bool TarCenter = false;
     }
     #endregion

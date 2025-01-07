@@ -1,9 +1,10 @@
-﻿using System.Text;
-using Microsoft.Xna.Framework;
-using Terraria;
-using TerrariaApi.Server;
+﻿using Terraria;
 using TShockAPI;
+using System.Text;
 using TShockAPI.Hooks;
+using TerrariaApi.Server;
+using MonsterSpeed.Progress;
+using Microsoft.Xna.Framework;
 using static MonsterSpeed.Configuration;
 
 namespace MonsterSpeed;
@@ -14,7 +15,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 0, 8);
+    public override Version Version => new Version(1, 0, 9);
     public override string Description => "涡轮增压不蒸鸭";
     #endregion
 
@@ -87,7 +88,7 @@ public class MonsterSpeed : TerrariaPlugin
                 TrackRange = Config.TrackRange,
                 Speed = Config.Speed,
                 MaxSpeed = Config.MaxSpeed,
-                Range = 10f,
+                MinRange = Config.MinRange,
                 MaxRange = Config.MaxRange,
                 CoolTimer = 5f,
                 InActive = 5f,
@@ -128,7 +129,7 @@ public class MonsterSpeed : TerrariaPlugin
             data.Speed = Math.Min(data.MaxSpeed, data.Speed + Config.Killed);
             data.CoolTimer = Math.Max(1, data.CoolTimer - Config.Ratio);
             data.InActive = Math.Min(data.MaxActive, data.InActive + Config.Ratio);
-            data.Range = Math.Max(1, data.Range - 1);
+            data.MinRange = Math.Max(1, data.MinRange - 1);
         }
 
         Config.Write();
@@ -188,7 +189,7 @@ public class MonsterSpeed : TerrariaPlugin
                 npc.netUpdate = true;
                 return;
             }
-            else if (range < data.Range) // 在最小距离内停止
+            else if (range < data.MinRange) // 在最小距离内停止
             {
                 npc.netUpdate = false;
                 return;
@@ -205,7 +206,7 @@ public class MonsterSpeed : TerrariaPlugin
             }
 
             //距离加速事件
-            if (range >= data.Range * 16f && range <= data.MaxRange * 16f && active)
+            if (range >= data.MinRange * 16f && range <= data.MaxRange * 16f && active)
             {
                 var speed = dict * data.Speed;
                 if (speed.Length() > data.Speed)
@@ -226,7 +227,7 @@ public class MonsterSpeed : TerrariaPlugin
             }
             else if (Config.HealEffect && active) //不在触发范围且在触发时间内 开启回血
             {
-                npc.life = Math.Min(npc.lifeMax, npc.life + 1);
+                npc.life = Math.Min(npc.lifeMax, npc.life + Config.HealCount);
             }
 
             //时间事件
@@ -240,24 +241,9 @@ public class MonsterSpeed : TerrariaPlugin
                     AIPairs(cycle.AIPairs, npc);
 
                     //召唤怪物
-                    if (cycle.SpawnMonster != null && cycle.SpawnMonster.Count > 0)
+                    if (cycle.SpawnNPC != null && cycle.SpawnNPC.Count > 0)
                     {
-                        foreach (var npcid in cycle.SpawnMonster)
-                        {
-                            var count = Main.npc.Count(p => p.active && p.type == npcid);
-                            if (count >= cycle.NpcCount) continue;
-
-                            var nPCById = TShock.Utils.GetNPCById(npcid);
-                            if (nPCById != null && nPCById.type != 113 &&
-                                nPCById.type != 0 && nPCById.type < Terraria.ID.NPCID.Count)
-                            {
-                                TSPlayer.Server.SpawnNPC(nPCById.type, nPCById.FullName, 1,
-                                    Terraria.Utils.ToTileCoordinates(npc.Center).X,
-                                    Terraria.Utils.ToTileCoordinates(npc.Center).Y, 15, 15);
-
-                                count++;
-                            }
-                        }
+                        SpawnMonsters(cycle.SpawnNPC, npc);
                     }
 
                     //生成弹幕
@@ -292,24 +278,10 @@ public class MonsterSpeed : TerrariaPlugin
                         npc.TargetClosest(true);
                     }
 
-                    //召唤怪物
-                    if (heal.SpawnMonster != null && heal.SpawnMonster.Count > 0)
+                    // 召唤怪物的方法
+                    if (heal.SpawnNPC != null && heal.SpawnNPC.Count > 0)
                     {
-                        foreach (var npcid in heal.SpawnMonster)
-                        {
-                            var count = Main.npc.Count(p => p.active && p.type == npcid);
-                            if (count >= heal.NpcStack) continue;
-
-                            var nPCById = TShock.Utils.GetNPCById(npcid);
-                            if (nPCById != null && nPCById.type != 113 &&
-                                nPCById.type != 0 && nPCById.type < Terraria.ID.NPCID.Count)
-                            {
-                                TSPlayer.Server.SpawnNPC(nPCById.type, nPCById.FullName, 1,
-                                    Terraria.Utils.ToTileCoordinates(npc.Center).X,
-                                    Terraria.Utils.ToTileCoordinates(npc.Center).Y, 15, 15);
-                                count++;
-                            }
-                        }
+                        SpawnMonsters(heal.SpawnNPC, npc);
                     }
 
                     //生成弹幕
@@ -351,6 +323,62 @@ public class MonsterSpeed : TerrariaPlugin
             TSPlayer.All.SendMessage($"{mess}", 170, 170, 170);
             BroadcastTime = now;
         }
+
+    }
+    #endregion
+
+    #region 召唤怪物方法
+    private static Dictionary<int, float> Cooldowns = new Dictionary<int, float>(); //用于追踪生成随从NPC冷却时间
+    private void SpawnMonsters(List<SpawnNpcData> datas, NPC npc)
+    {
+        foreach (var data in datas)
+        {
+            if (data == null || !ProgressChecker.IsProgress(data.isProgress)) continue;
+
+            foreach (var id in data.NPCID)
+            {
+                var Stack = Main.npc.Count(p => p.active && p.type == id);
+                if (Stack >= data.NpcStack) continue;
+
+                // 检查是否已经有冷却时间设置，如果没有则初始化为0（即没有冷却）
+                if (!Cooldowns.ContainsKey(id))
+                {
+                    Cooldowns[id] = 0f;
+                }
+
+                // 如果冷却时间为0或小于等于0，则允许生成怪物
+                if (Cooldowns[id] <= 0f)
+                {
+                    var npc2 = TShock.Utils.GetNPCById(id);
+                    if (npc2 == null) return;
+
+                    if (npc2.type != 113 && npc2.type != 0 && npc2.type < Terraria.ID.NPCID.Count)
+                    {
+                        //以“玩家为中心”为true 以玩家为中心,否则以被击中的npc为中心
+                        var tar = npc.GetTargetData(true);
+                        var pos = data.TarCenter
+                                ? new Vector2(tar.Center.X, tar.Center.Y)
+                                : new Vector2(npc.Center.X, npc.Center.Y);
+
+                        // 新的生成位置
+                        var NewPos = Terraria.Utils.ToTileCoordinates(pos);// 将世界坐标转换为瓷砖坐标
+
+                        //召唤怪物
+                        TSPlayer.Server.SpawnNPC(npc2.type, npc2.FullName, data.NpcStack,
+                                                 NewPos.X, NewPos.Y, data.Range, data.Range);
+
+                        // 设置冷却时间
+                        Cooldowns[id] = data.Interval;
+                        Stack++;
+                    }
+                }
+                else
+                {
+                    // 减少冷却时间
+                    Cooldowns[id] -= 1f;
+                }
+            }
+        }
     }
     #endregion
 
@@ -384,6 +412,5 @@ public class MonsterSpeed : TerrariaPlugin
         return info.ToString();
     }
     #endregion
-
 
 }
