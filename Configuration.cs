@@ -66,6 +66,10 @@ internal class Configuration
                         new SpawnNpcData()
                         {
                             NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 184, 204 },
+                        },
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 658, 659, 660 }, isProgress = ProgressType.WallOfFlesh
                         }
                     },
                 },

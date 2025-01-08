@@ -26,8 +26,7 @@ internal class MyProjectile
         var dict = tar.Center - npc.Center;
 
         // 数量超标 目标无效 或 不在进度则跳过
-        if (stack[index] >= proj.stack || proj.ProjID <= 0 || tar.Invalid ||
-            !ProgressChecker.IsProgress(proj.isProgress))
+        if (stack[index] >= proj.stack || proj.ProjID <= 0 || tar.Invalid)
         {
             Next(data);
             return;
@@ -85,7 +84,7 @@ internal class MyProjectile
             }
 
             //弹幕生命>=0时才发射
-            if (proj.Lift >= 0)
+            if (proj.Lift >= 0 && ProgressChecker.IsProgress(proj.isProgress))
             {
                 // 创建并发射弹幕
                 var newProj = Projectile.NewProjectile(Projectile.GetNoneSource(),
