@@ -1,14 +1,44 @@
-﻿using Terraria;
-using MonsterSpeed.Progress;
-using Microsoft.Xna.Framework;
-using static MonsterSpeed.Configuration;
+﻿using Microsoft.Xna.Framework;
+using Newtonsoft.Json;
+using Terraria;
 
 namespace MonsterSpeed;
+
+//弹幕数据结构
+public class ProjData
+{
+    [JsonProperty("弹幕ID", Order = 0)]
+    public int ProjID = 0;
+    [JsonProperty("伤害", Order = 1)]
+    public int Damage = 30;
+    [JsonProperty("数量", Order = 2)]
+    public int stack = 5;
+    [JsonProperty("间隔", Order = 3)]
+    public float interval = 15f;
+    [JsonProperty("击退", Order = 4)]
+    public int KnockBack = 5;
+    [JsonProperty("速度", Order = 5)]
+    public float Velocity = 10f;
+    [JsonProperty("半径", Order = 7)]
+    public float Radius = 0f;
+    [JsonProperty("偏移", Order = 8)]
+    public float Angle = 15f;
+    [JsonProperty("旋转", Order = 9)]
+    public float Rotate = 5f;
+    [JsonProperty("弹幕AI", Order = 10)]
+    public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
+    [JsonProperty("生命周期", Order = 11)]
+    public int Lift = 120;
+    [JsonProperty("以玩家为中心", Order = 13)]
+    public bool TarCenter = false;
+}
 
 internal class MyProjectile
 {
     #region 弹幕生成方法
     private static int index = 0;
+    private static bool reverse;
+    public static int SPCount = new int(); //用于追踪所有弹幕生成次数
     private static Dictionary<int, int> stack = new Dictionary<int, int>();
     private static Dictionary<int, float> cooldowns = new Dictionary<int, float>();
     public static void SpawnProjectile(List<ProjData> data, NPC npc)
@@ -36,7 +66,8 @@ internal class MyProjectile
         if (!cooldowns.ContainsKey(index) || cooldowns[index] <= 0f)
         {
             // 弧度：定义总角度范围的一半（从中心线两侧各偏移） 
-            var radian = proj.Offset * (float)Math.PI / 180;
+            var radian = proj.Angle * (float)Math.PI / 180;
+
             // 计算每次发射的弧度增量
             var addRadian = radian * 2 / (proj.stack - 1);
 
@@ -84,13 +115,19 @@ internal class MyProjectile
             }
 
             //弹幕生命>=0时才发射
-            if (proj.Lift >= 0 && ProgressChecker.IsProgress(proj.isProgress))
+            if (proj.Lift >= 0)
             {
                 // 创建并发射弹幕
                 var newProj = Projectile.NewProjectile(Projectile.GetNoneSource(),
                                                        NewPos.X, NewPos.Y, vel.X, vel.Y,
                                                        proj.ProjID, proj.Damage, proj.KnockBack,
                                                        Main.myPlayer, ai0, ai1, ai2);
+
+                if (newProj == -1)
+                {
+                    newProj = Projectile.FindOldestProjectile();
+                }
+
                 // 弹幕生命
                 Main.projectile[newProj].timeLeft = proj.Lift > 0 ? proj.Lift : 0;
                 if (proj.Lift == 0)
@@ -122,6 +159,7 @@ internal class MyProjectile
             }
             stack[index] = 0;
             cooldowns[index] = 0f; // 重置冷却时间
+            SPCount++; //增加弹幕生成次数
         }
     }
     #endregion
