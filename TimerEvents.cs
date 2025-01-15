@@ -56,7 +56,7 @@ internal class TimerEvents
     #endregion
 
     #region 时间事件
-    private static Dictionary<string, DateTime> TextTime = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
+    private static Dictionary<string, DateTime> TextTime = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次冷却记录时间
     public static void TimerEvent(NPC npc, StringBuilder mess, NpcData? data, Vector2 dict, float range)
     {
         if (data == null || data.TimerEvent == null) return;
@@ -80,13 +80,8 @@ internal class TimerEvents
         //更新计数器和时间
         if ((DateTime.UtcNow - CD_Timer).TotalSeconds >= data.CoolTimer)
         {
-            if (data.TimerEvent.Count > 0)
-            {
-                CD_Count = (CD_Count + 1) % data.TimerEvent.Count;
-            }
-
-            CD_Timer = DateTime.UtcNow;
-            UpdateTrack(npc.FullName, CD_Count, CD_Timer);
+            //跳转下一个事件
+            NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
         }
 
         // 时间事件
@@ -104,6 +99,9 @@ internal class TimerEvents
                 {
                     all = false;
                     mess.Append($" 血量条件未满足: 血量 {life}% < {cycle.NpcLift} \n");
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 武器条件
@@ -119,6 +117,9 @@ internal class TimerEvents
                         npc.netSpam = 0;
                         npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
                     }
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 进度条件
@@ -127,6 +128,9 @@ internal class TimerEvents
                 {
                     all = false;
                     mess.Append($" 进度条件未满足: 当前进度不符合 {cycle.Progress.ToString()}\n");
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 召怪条件
@@ -135,6 +139,9 @@ internal class TimerEvents
                 {
                     all = false;
                     mess.Append($" 召怪条件未满足: 当前召怪次数 {MyMonster.SNCount} < {cycle.MonsterCount}\n");
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 弹发条件
@@ -143,6 +150,9 @@ internal class TimerEvents
                 {
                     all = false;
                     mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {MyProjectile.SPCount} < {cycle.ProjectileCount}\n");
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 死亡次数条件
@@ -151,14 +161,20 @@ internal class TimerEvents
                 {
                     all = false;
                     mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {cycle.DeadCount}\n");
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 距离条件
                 var RC = range >= cycle.Range * 16;
-                if(cycle.Range != -1 && !RC)
+                if (cycle.Range != -1 && !RC)
                 {
                     all = false;
                     mess.Append($" 距离条件未满足: 玩家距离 {range} < {cycle.Range} 格\n");
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 //速度条件
@@ -169,6 +185,9 @@ internal class TimerEvents
                 {
                     all = false;
                     mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {cycle.Speed}\n");
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 玩家生命条件
@@ -183,6 +202,9 @@ internal class TimerEvents
                         npc.netSpam = 0;
                         npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
                     }
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 玩家防御条件
@@ -197,6 +219,9 @@ internal class TimerEvents
                         npc.netSpam = 0;
                         npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
                     }
+
+                    //循环执行
+                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
                 }
 
                 // 满足所有条件
@@ -229,6 +254,21 @@ internal class TimerEvents
 
         mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%]" +
                     $" 召怪:[c/A2E4DB:{MyMonster.SNCount}] 弹发:[c/A2E4DB:{MyProjectile.SPCount}]\n");
+    }
+    #endregion
+
+    #region 让计数器自动前进到下一个事件
+    private static void NextEvent(ref int CD_Count, ref DateTime CD_Timer, NpcData data, string npcName)
+    {
+        if (data.TimerEvent.Count > 0)
+        {
+            // 更新计数器以指向下一个事件
+            CD_Count = (CD_Count + 1) % data.TimerEvent.Count;
+            // 重置定时器
+            CD_Timer = DateTime.UtcNow;
+            // 更新时间
+            UpdateTrack(npcName, CD_Count, CD_Timer);
+        }
     }
     #endregion
 

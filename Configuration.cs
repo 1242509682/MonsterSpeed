@@ -248,7 +248,9 @@ internal class Configuration
         public double CoolTimer { get; set; }
         [JsonProperty("倒计时文字间隔", Order = 21)]
         public double TextInterval { get; set; } = 1000f;
-        [JsonProperty("时间事件", Order = 22)]
+        [JsonProperty("循环执行", Order = 22)]
+        public bool Loop { get; set; }
+        [JsonProperty("时间事件", Order = 23)]
         public List<TimerData> TimerEvent { get; set; } = new();
 
         public NpcData() { }
