@@ -25,7 +25,7 @@ internal class Configuration
     [JsonProperty("插件开关", Order = -1)]
     public bool Enabled { get; set; } = true;
     [JsonProperty("监控间隔", Order = 0)]
-    public double Monitorinterval { get; set; } = 500f;
+    public double Monitorinterval { get; set; } = 0;
     [JsonProperty("怪物ID表", Order = 1)]
     public List<int> NpcList { get; set; }
     [JsonProperty("怪物数据表", Order = 2)]
@@ -48,12 +48,13 @@ internal class Configuration
 
         Dict!["史莱姆王"] = new NpcData(0, 62f, 25, 35, 5)
         {
+            Loop = true,
             Teleport = 10,
             TimerEvent = new List<TimerData>()
             {
                 new TimerData
                 {
-                    NpcLift = "75,100",
+                    NpcLift = "50,100",
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -65,23 +66,34 @@ internal class Configuration
                     {
                         new ProjData()
                         {
-                            ProjID = 671,
-                            Lift = 120,
+                            Type = 671,
+                            Lift = 180,
                             Damage = 10,
                             stack = 10,
-                            interval = 5f,
+                            interval = 8f,
                             KnockBack = 8,
                             Radius = 10f,
                             Angle = 15f,
                             Rotate = 0f,
-                            Velocity = 50.0f,
+                            Velocity = 30.0f,
+                            UpdateProj = new List<ProjData2>()
+                            {
+                                new ProjData2()
+                                {
+                                    Type = 814,
+                                    Interval = 1.0f,
+                                    Velocity = 1.0f,
+                                    Radius = 40f,
+                                    Angle = 30f,
+                                }
+                            }
                         },
                     }
                 },
 
                 new TimerData
                 {
-                    NpcLift = "0,75",
+                    NpcLift = "0,50",
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -94,7 +106,7 @@ internal class Configuration
                     {
                         new ProjData()
                         {
-                            ProjID = 351,
+                            Type = 351,
                             Lift = 60,
                             Damage = 10,
                             stack = 30,
@@ -130,22 +142,31 @@ internal class Configuration
                     {
                         new ProjData()
                         {
-                            ProjID = 115,
+                            Type = 115,
                             Damage = 10,
                             stack = 15,
-                            interval = 2f,
+                            interval = 5f,
                             KnockBack = 8,
-                            Velocity = 25f,
+                            Velocity = 20f,
                             Radius = 15f,
                             Angle = 5f,
                             Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
                             Lift = 180,
                             TarCenter = false,
+                            UpdateProj = new List<ProjData2>()
+                            {
+                                new ProjData2()
+                                {
+                                    Interval = 2,
+                                    Velocity = 25,
+                                    Angle = 10,
+                                }
+                            }
                         },
                         new ProjData()
                         {
-                            ProjID = 44,
+                            Type = 44,
                             Damage = 10,
                             stack = 15,
                             interval = 5f,
@@ -158,11 +179,12 @@ internal class Configuration
                             Lift = 120,
                             TarCenter = false,
                         },
-                        
+
                     }
                 },
                 new TimerData
                 {
+                    Timer = 10,
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -175,7 +197,7 @@ internal class Configuration
                     {
                         new ProjData()
                         {
-                            ProjID = 814,
+                            Type = 671,
                             Damage = 10,
                             stack = 15,
                             interval = 10f,
@@ -190,7 +212,7 @@ internal class Configuration
                         },
                         new ProjData()
                         {
-                            ProjID = 454,
+                            Type = 454,
                             Damage = 20,
                             stack = 15,
                             interval = 10f,
@@ -234,22 +256,17 @@ internal class Configuration
         public int TrackSpeed { get; set; }
         [JsonProperty("传送冷却", Order = 1)]
         public int Teleport { get; set; } = -1;
-        [JsonProperty("免疫陷阱", Order = 2)]
-        public bool trapImmune { get; set; }
-        [JsonProperty("免疫熔岩", Order = 3)]
-        public bool lavaImmune { get; set; }
-        [JsonProperty("能够穿墙", Order = 4)]
-        public bool NoTileCollide { get; set; }
         [JsonProperty("修改防御", Order = 5)]
         public int Defense { get; set; } = -1;
         [JsonProperty("每秒回血", Order = 6)]
         public int AutoHeal { get; set; } = 1;
-        [JsonProperty("冷却时间", Order = 20)]
-        public double CoolTimer { get; set; }
-        [JsonProperty("倒计时文字间隔", Order = 21)]
+
+        [JsonProperty("倒计时文字间隔", Order = 20)]
         public double TextInterval { get; set; } = 1000f;
-        [JsonProperty("循环执行", Order = 22)]
+        [JsonProperty("循环执行", Order = 21)]
         public bool Loop { get; set; }
+        [JsonProperty("冷却时间", Order = 22)]
+        public double CoolTimer { get; set; }
         [JsonProperty("时间事件", Order = 23)]
         public List<TimerData> TimerEvent { get; set; } = new();
 

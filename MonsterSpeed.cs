@@ -15,7 +15,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 2, 1);
+    public override Version Version => new Version(1, 2, 2);
     public override string Description => "涡轮增压不蒸鸭";
     #endregion
 
@@ -30,6 +30,7 @@ public class MonsterSpeed : TerrariaPlugin
         ServerApi.Hooks.NpcAIUpdate.Register(this, this.OnNpcAiUpdate);
         TShockAPI.Commands.ChatCommands.Add(new TShockAPI.Command("mos.admin", Command.CMD, "怪物加速", "mos"));
     }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -110,6 +111,7 @@ public class MonsterSpeed : TerrariaPlugin
             data.DeadCount += 1;
             MyMonster.SNCount = 0;
             MyProjectile.SPCount = 0;
+
             Config.Write();
             TimerEvents.UpdateTrack(args.npc.FullName, CD_Count, CD_Timer);
         }
@@ -177,18 +179,13 @@ public class MonsterSpeed : TerrariaPlugin
                 npc.velocity = speedMax;
 
                 //自动转换仇恨目标
-                if (data.AutoTarget)
-                {
-                    npc.TargetClosest(true);
-                    npc.netSpam = 0;
-                    npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
-                }
+                AutoTar(npc, data);
 
                 //超距离传送
                 if (data.Teleport > 0 && (!Teleport.ContainsKey(npc.FullName) ||
                    (DateTime.UtcNow - Teleport[npc.FullName]).TotalSeconds >= data.Teleport))
                 {
-                    npc.Teleport(tar.Center,10);
+                    npc.Teleport(tar.Center, 10);
                     Teleport[npc.FullName] = DateTime.UtcNow;
                 }
 
@@ -204,16 +201,23 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
+    #region 自动仇恨方法
+    internal static void AutoTar(NPC npc, NpcData data)
+    {
+        if (data.AutoTarget)
+        {
+            npc.TargetClosest(true);
+            npc.netSpam = 0;
+            npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
+        }
+    } 
+    #endregion
+
     #region 自定义修改
     private Dictionary<string, DateTime> HealTimes = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
     private void Custom(NPC npc, NpcData data)
     {
         if (data == null) return;
-
-        //免疫岩浆 免疫陷阱 能够穿墙
-        npc.lavaImmune |= data.lavaImmune;
-        npc.trapImmune |= data.trapImmune;
-        npc.noTileCollide |= data.NoTileCollide;
 
         //修改防御
         if (data.Defense > 0)

@@ -12,6 +12,8 @@ namespace MonsterSpeed;
 //时间事件数据结构
 public class TimerData
 {
+    [JsonProperty("下组事件延长秒数", Order = -23)]
+    public int Timer { get; set; } = 0;
     [JsonProperty("血量范围", Order = -22)]
     public string NpcLift { get; set; } = "0,100";
     [JsonProperty("进度限制", Order = -21)]
@@ -56,216 +58,179 @@ internal class TimerEvents
     #endregion
 
     #region 时间事件
-    private static Dictionary<string, DateTime> TextTime = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次冷却记录时间
     public static void TimerEvent(NPC npc, StringBuilder mess, NpcData? data, Vector2 dict, float range)
     {
-        if (data == null || data.TimerEvent == null) return;
+        if (data == null || data.TimerEvent == null || data.TimerEvent.Count <= 0) return;
+
         var (CD_Count, CD_Timer) = GetOrAdd(npc.FullName);
 
+        var life = (int)(npc.life / (float)npc.lifeMax * 100);
+
         //时间事件冷却倒计时（悬浮文本）
-        if (!TextTime.ContainsKey(npc.FullName))
-        {
-            TextTime[npc.FullName] = DateTime.UtcNow;
-        }
+        TextExtended(npc, data, CD_Timer);
 
-        if ((DateTime.UtcNow - TextTime[npc.FullName]).TotalMilliseconds >= data.TextInterval)
-        {
-            var CoolTimer = TimeSpan.FromSeconds(data.CoolTimer) - (DateTime.UtcNow - CD_Timer);
-            TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, $"Time {CoolTimer.TotalSeconds:F2}",
-                                 (int)Color.LightGoldenrodYellow.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
-
-            TextTime[npc.FullName] = DateTime.UtcNow;
-        }
-
-        //更新计数器和时间
+        //更新计数器和时间 跳转下一个事件
+        var cycle = data.TimerEvent[CD_Count];
         if ((DateTime.UtcNow - CD_Timer).TotalSeconds >= data.CoolTimer)
         {
-            //跳转下一个事件
-            NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
+            NextEvent(ref CD_Count, ref CD_Timer, data, cycle.Timer, npc.FullName);
         }
 
         // 时间事件
-        var life = (int)(npc.life / (float)npc.lifeMax * 100);
-        if (data.TimerEvent.Count > 0)
+        if (cycle != null)
         {
-            var cycle = data.TimerEvent.ElementAtOrDefault(CD_Count);
-            if (cycle != null)
+            var all = true; //达成所有条件标识
+            var loop = false;
+
+            // 生命条件
+            var LC = LifeCondition(life, cycle);
+            if (!LC && cycle.NpcLift != "0,100")
             {
-                var all = true; //达成所有条件标识
+                all = false;
+                loop = true;
+                mess.Append($" 血量条件未满足: 血量 {life}% < {cycle.NpcLift} \n");
+            }
 
-                // 生命条件
-                var LC = LifeCondition(life, cycle);
-                if (!LC && cycle.NpcLift != "0,100")
+            // 武器条件
+            var plr = TShock.Players.FirstOrDefault(p => p != null && p.Active && p.IsLoggedIn)!.TPlayer;
+            var WC = cycle.WeaponName == GetPlayerWeapon(plr);
+            if (cycle.WeaponName != "无" && !WC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {cycle.WeaponName}\n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            // 进度条件
+            var PC = ProgressChecker.IsProgress(cycle.Progress);
+            if (cycle.Progress != (ProgressType)(-1) && !PC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 进度条件未满足: 当前进度不符合 {cycle.Progress.ToString()}\n");
+            }
+
+            // 召怪条件
+            var MC = MyMonster.SNCount >= cycle.MonsterCount;
+            if (cycle.MonsterCount != -1 && !MC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 召怪条件未满足: 当前召怪次数 {MyMonster.SNCount} < {cycle.MonsterCount}\n");
+            }
+
+            // 弹发条件
+            var PrC = MyProjectile.SPCount >= cycle.ProjectileCount;
+            if (cycle.ProjectileCount != -1 && !MC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {MyProjectile.SPCount} < {cycle.ProjectileCount}\n");
+            }
+
+            // 死亡次数条件
+            var DC = data.DeadCount >= cycle.DeadCount;
+            if (cycle.DeadCount != -1 && !DC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {cycle.DeadCount}\n");
+            }
+
+            // 距离条件
+            var RC = range >= cycle.Range * 16;
+            if (cycle.Range != -1 && !RC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 距离条件未满足: 玩家距离 {range} < {cycle.Range} 格\n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            //速度条件
+            var absX = Math.Abs(npc.velocity.X);
+            var absY = Math.Abs(npc.velocity.Y);
+            var SP = absX >= cycle.Speed || absY >= cycle.Speed;
+            if (cycle.Speed != -1 && !SP)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {cycle.Speed}\n");
+            }
+
+            // 玩家生命条件
+            var PL = plr.statLife <= cycle.PlayerLife;
+            if (cycle.PlayerLife != -1 && !PL)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {cycle.PlayerLife} \n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            // 玩家防御条件
+            var DE = plr.statDefense <= cycle.PlrDefense;
+            if (cycle.PlrDefense != -1 && !DE)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {cycle.PlrDefense} \n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            //循环执行
+            if (data.Loop && loop)
+            {
+                NextEvent(ref CD_Count, ref CD_Timer, data, cycle.Timer, npc.FullName);
+            }
+
+            // 满足所有条件
+            if (all)
+            {
+                // AI赋值
+                AIPairs(cycle.AIPairs, npc);
+
+                // 召唤怪物
+                if (cycle.SpawnNPC != null && cycle.SpawnNPC.Count > 0)
                 {
-                    all = false;
-                    mess.Append($" 血量条件未满足: 血量 {life}% < {cycle.NpcLift} \n");
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
+                    MyMonster.SpawnMonsters(cycle.SpawnNPC, npc);
                 }
 
-                // 武器条件
-                var plr = TShock.Players.FirstOrDefault(p => p != null && p.Active && p.IsLoggedIn)!.TPlayer;
-                var WC = cycle.WeaponName == GetPlayerWeapon(plr);
-                if (cycle.WeaponName != "无" && !WC)
+                // 生成弹幕
+                if (cycle.SendProj != null && cycle.SendProj.Count > 0)
                 {
-                    all = false;
-                    mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {cycle.WeaponName}\n");
-                    if (data.AutoTarget)
-                    {
-                        npc.TargetClosest(true);
-                        npc.netSpam = 0;
-                        npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
-                    }
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
+                    MyProjectile.SpawnProjectile(cycle.SendProj, npc);
                 }
 
-                // 进度条件
-                var PC = ProgressChecker.IsProgress(cycle.Progress);
-                if (cycle.Progress != (ProgressType)(-1) && !PC)
+                // 监控
+                if (cycle.AIPairs.Count > 0)
                 {
-                    all = false;
-                    mess.Append($" 进度条件未满足: 当前进度不符合 {cycle.Progress.ToString()}\n");
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                // 召怪条件
-                var MC = MyMonster.SNCount >= cycle.MonsterCount;
-                if (cycle.MonsterCount != -1 && !MC)
-                {
-                    all = false;
-                    mess.Append($" 召怪条件未满足: 当前召怪次数 {MyMonster.SNCount} < {cycle.MonsterCount}\n");
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                // 弹发条件
-                var PrC = MyProjectile.SPCount >= cycle.ProjectileCount;
-                if (cycle.ProjectileCount != -1 && !MC)
-                {
-                    all = false;
-                    mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {MyProjectile.SPCount} < {cycle.ProjectileCount}\n");
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                // 死亡次数条件
-                var DC = data.DeadCount >= cycle.DeadCount;
-                if (cycle.DeadCount != -1 && !DC)
-                {
-                    all = false;
-                    mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {cycle.DeadCount}\n");
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                // 距离条件
-                var RC = range >= cycle.Range * 16;
-                if (cycle.Range != -1 && !RC)
-                {
-                    all = false;
-                    mess.Append($" 距离条件未满足: 玩家距离 {range} < {cycle.Range} 格\n");
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                //速度条件
-                var absX = Math.Abs(npc.velocity.X);
-                var absY = Math.Abs(npc.velocity.Y);
-                var SP = absX >= cycle.Speed || absY >= cycle.Speed;
-                if (cycle.Speed != -1 && !SP)
-                {
-                    all = false;
-                    mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {cycle.Speed}\n");
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                // 玩家生命条件
-                var PL = plr.statLife <= cycle.PlayerLife;
-                if (cycle.PlayerLife != -1 && !PL)
-                {
-                    all = false;
-                    mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {cycle.PlayerLife} \n");
-                    if (data.AutoTarget)
-                    {
-                        npc.TargetClosest(true);
-                        npc.netSpam = 0;
-                        npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
-                    }
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                // 玩家防御条件
-                var DE = plr.statDefense <= cycle.PlrDefense;
-                if (cycle.PlrDefense != -1 && !DE)
-                {
-                    all = false;
-                    mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {cycle.PlrDefense} \n");
-                    if (data.AutoTarget)
-                    {
-                        npc.TargetClosest(true);
-                        npc.netSpam = 0;
-                        npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
-                    }
-
-                    //循环执行
-                    if (data.Loop) NextEvent(ref CD_Count, ref CD_Timer, data, npc.FullName);
-                }
-
-                // 满足所有条件
-                if (all)
-                {
-                    // AI赋值
-                    AIPairs(cycle.AIPairs, npc);
-
-                    // 召唤怪物
-                    if (cycle.SpawnNPC != null && cycle.SpawnNPC.Count > 0)
-                    {
-                        MyMonster.SpawnMonsters(cycle.SpawnNPC, npc);
-                    }
-
-                    // 生成弹幕
-                    if (cycle.SendProj != null && cycle.SendProj.Count > 0)
-                    {
-                        MyProjectile.SpawnProjectile(cycle.SendProj, npc);
-                    }
-
-                    // 监控
-                    if (cycle.AIPairs.Count > 0)
-                    {
-                        var AiInfo = AIPairsInfo(cycle.AIPairs);
-                        mess.Append($" ai赋值:[c/A2E4DB:{AiInfo}]\n");
-                    }
+                    var AiInfo = AIPairsInfo(cycle.AIPairs);
+                    mess.Append($" ai赋值:[c/A2E4DB:{AiInfo}]\n");
                 }
             }
         }
 
         mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%]" +
-                    $" 召怪:[c/A2E4DB:{MyMonster.SNCount}] 弹发:[c/A2E4DB:{MyProjectile.SPCount}]\n");
+        $" 召怪:[c/A2E4DB:{MyMonster.SNCount}] 弹发:[c/A2E4DB:{MyProjectile.SPCount}]\n");
     }
     #endregion
 
     #region 让计数器自动前进到下一个事件
-    private static void NextEvent(ref int CD_Count, ref DateTime CD_Timer, NpcData data, string npcName)
+    private static void NextEvent(ref int CD_Count, ref DateTime CD_Timer, NpcData data, int Timer, string npcName)
     {
-        if (data.TimerEvent.Count > 0)
+        if (data.TimerEvent != null && data.TimerEvent.Count > 0)
         {
             // 更新计数器以指向下一个事件
             CD_Count = (CD_Count + 1) % data.TimerEvent.Count;
-            // 重置定时器
-            CD_Timer = DateTime.UtcNow;
+
+            // 如果当前周期有指定的延长秒数，则使用它来更新冷却时间；否则使用默认值0
+            var Add = Timer >= 0 ? Timer : 0;
+
+            // 获取当前UTC时间并加上指定的秒数作为新的冷却结束时间
+            CD_Timer = DateTime.UtcNow.AddSeconds(Add);
+
             // 更新时间
             UpdateTrack(npcName, CD_Count, CD_Timer);
         }
@@ -337,6 +302,28 @@ internal class TimerEvents
 
         // 确保min <= max
         return (true, Math.Min(min, max), Math.Max(min, max));
+    }
+    #endregion
+
+    #region 时间事件冷却倒计时方法（悬浮文本）
+    private static Dictionary<string, DateTime> TextTime = new Dictionary<string, DateTime>();// 跟踪每个NPC上次冷却记录时间
+    private static void TextExtended(NPC npc, NpcData? data, DateTime CD_Timer)
+    {
+        if (data == null) return;
+
+        if (!TextTime.ContainsKey(npc.FullName))
+        {
+            TextTime[npc.FullName] = DateTime.UtcNow;
+        }
+
+        if ((DateTime.UtcNow - TextTime[npc.FullName]).TotalMilliseconds >= data.TextInterval)
+        {
+            var CoolTimer = TimeSpan.FromSeconds(data.CoolTimer) - (DateTime.UtcNow - CD_Timer);
+            TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, $"Time {CoolTimer.TotalSeconds:F2}",
+                                 (int)Color.LightGoldenrodYellow.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
+
+            TextTime[npc.FullName] = DateTime.UtcNow;
+        }
     }
     #endregion
 
