@@ -12,8 +12,31 @@ namespace MonsterSpeed;
 //时间事件数据结构
 public class TimerData
 {
-    [JsonProperty("下组事件延长秒数", Order = -23)]
+    [JsonProperty("下组事件延长秒数", Order = -100)]
     public int Timer { get; set; } = 0;
+
+    [JsonProperty("触发条件", Order = -51)]
+    public List<ConditionData> Condition { get; set; }
+
+    [JsonProperty("修改防御", Order = -10)]
+    public int Defense { get; set; } = 0;
+    [JsonProperty("回血间隔", Order = -9)]
+    public int AutoHealInterval { get; set; } = 10;
+    [JsonProperty("百分比回血", Order = -8)]
+    public int AutoHeal { get; set; } = 1;
+
+
+    [JsonProperty("怪物AI", Order = 1)]
+    public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
+    [JsonProperty("生成怪物", Order = 2)]
+    public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
+    [JsonProperty("生成弹幕", Order = 3)]
+    public List<ProjData> SendProj { get; set; } = new List<ProjData>();
+}
+
+//触发条件数据结构
+public class ConditionData
+{
     [JsonProperty("血量范围", Order = -22)]
     public string NpcLift { get; set; } = "0,100";
     [JsonProperty("进度限制", Order = -21)]
@@ -34,29 +57,10 @@ public class TimerData
     public float Range { get; set; } = -1;
     [JsonProperty("速度条件", Order = -13)]
     public float Speed { get; set; } = -1;
-
-    [JsonProperty("怪物AI", Order = 1)]
-    public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
-    [JsonProperty("生成怪物", Order = 2)]
-    public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
-    [JsonProperty("生成弹幕", Order = 3)]
-    public List<ProjData> SendProj { get; set; } = new List<ProjData>();
 }
 
 internal class TimerEvents
 {
-    #region 冷却计数与更新冷却时间方法
-    public static readonly Dictionary<string, (int CDCount, DateTime UpdateTimer)> CoolTrack = new();
-    public static (int CDCount, DateTime UpdateTimer) GetOrAdd(string key)
-    {
-        return CoolTrack.TryGetValue(key, out var value) ? value : (CoolTrack[key] = (0, DateTime.UtcNow));
-    }
-    public static void UpdateTrack(string key, int cdCount, DateTime updateTimer)
-    {
-        CoolTrack[key] = (cdCount, updateTimer);
-    }
-    #endregion
-
     #region 时间事件
     public static void TimerEvent(NPC npc, StringBuilder mess, NpcData? data, Vector2 dict, float range)
     {
@@ -70,143 +74,68 @@ internal class TimerEvents
         TextExtended(npc, data, CD_Timer);
 
         //更新计数器和时间 跳转下一个事件
-        var cycle = data.TimerEvent[CD_Count];
+        var Event = data.TimerEvent[CD_Count];
         if ((DateTime.UtcNow - CD_Timer).TotalSeconds >= data.CoolTimer)
         {
-            NextEvent(ref CD_Count, ref CD_Timer, data, cycle.Timer, npc.FullName);
+            NextEvent(ref CD_Count, ref CD_Timer, data, Event.Timer, npc.FullName);
         }
 
         // 时间事件
-        if (cycle != null)
+        if (Event != null)
         {
             var all = true; //达成所有条件标识
             var loop = false;
 
-            // 生命条件
-            var LC = LifeCondition(life, cycle);
-            if (!LC && cycle.NpcLift != "0,100")
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 血量条件未满足: 血量 {life}% < {cycle.NpcLift} \n");
-            }
-
-            // 武器条件
-            var plr = TShock.Players.FirstOrDefault(p => p != null && p.Active && p.IsLoggedIn)!.TPlayer;
-            var WC = cycle.WeaponName == GetPlayerWeapon(plr);
-            if (cycle.WeaponName != "无" && !WC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {cycle.WeaponName}\n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
-
-            // 进度条件
-            var PC = ProgressChecker.IsProgress(cycle.Progress);
-            if (cycle.Progress != (ProgressType)(-1) && !PC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 进度条件未满足: 当前进度不符合 {cycle.Progress.ToString()}\n");
-            }
-
-            // 召怪条件
-            var MC = MyMonster.SNCount >= cycle.MonsterCount;
-            if (cycle.MonsterCount != -1 && !MC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 召怪条件未满足: 当前召怪次数 {MyMonster.SNCount} < {cycle.MonsterCount}\n");
-            }
-
-            // 弹发条件
-            var PrC = MyProjectile.SPCount >= cycle.ProjectileCount;
-            if (cycle.ProjectileCount != -1 && !MC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {MyProjectile.SPCount} < {cycle.ProjectileCount}\n");
-            }
-
-            // 死亡次数条件
-            var DC = data.DeadCount >= cycle.DeadCount;
-            if (cycle.DeadCount != -1 && !DC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {cycle.DeadCount}\n");
-            }
-
-            // 距离条件
-            var RC = range >= cycle.Range * 16;
-            if (cycle.Range != -1 && !RC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 距离条件未满足: 玩家距离 {range} < {cycle.Range} 格\n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
-
-            //速度条件
-            var absX = Math.Abs(npc.velocity.X);
-            var absY = Math.Abs(npc.velocity.Y);
-            var SP = absX >= cycle.Speed || absY >= cycle.Speed;
-            if (cycle.Speed != -1 && !SP)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {cycle.Speed}\n");
-            }
-
-            // 玩家生命条件
-            var PL = plr.statLife <= cycle.PlayerLife;
-            if (cycle.PlayerLife != -1 && !PL)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {cycle.PlayerLife} \n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
-
-            // 玩家防御条件
-            var DE = plr.statDefense <= cycle.PlrDefense;
-            if (cycle.PlrDefense != -1 && !DE)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {cycle.PlrDefense} \n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
+            //触发条件
+            Condition(npc, mess, data, range, life, Event, ref all, ref loop);
 
             //循环执行
             if (data.Loop && loop)
             {
-                NextEvent(ref CD_Count, ref CD_Timer, data, cycle.Timer, npc.FullName);
+                NextEvent(ref CD_Count, ref CD_Timer, data, Event.Timer, npc.FullName);
             }
 
             // 满足所有条件
             if (all)
             {
                 // AI赋值
-                AIPairs(cycle.AIPairs, npc);
+                AIPairs(Event.AIPairs, npc);
 
                 // 召唤怪物
-                if (cycle.SpawnNPC != null && cycle.SpawnNPC.Count > 0)
+                if (Event.SpawnNPC != null && Event.SpawnNPC.Count > 0)
                 {
-                    MyMonster.SpawnMonsters(cycle.SpawnNPC, npc);
+                    MyMonster.SpawnMonsters(Event.SpawnNPC, npc);
                 }
 
                 // 生成弹幕
-                if (cycle.SendProj != null && cycle.SendProj.Count > 0)
+                if (Event.SendProj != null && Event.SendProj.Count > 0)
                 {
-                    MyProjectile.SpawnProjectile(cycle.SendProj, npc);
+                    MyProjectile.SpawnProjectile(Event.SendProj, npc);
+                }
+
+                // 修改防御
+                if (Event.Defense > 0)
+                {
+                    if (npc.defense != Event.Defense)
+                    {
+                        npc.defense = Event.Defense;
+                    }
+                }
+                else //否则恢复默认
+                {
+                    npc.defense = npc.defDefense;
+                }
+
+                // 自动回血
+                if (Event.AutoHeal > 0)
+                {
+                    AutoHeal(npc, Event);
                 }
 
                 // 监控
-                if (cycle.AIPairs.Count > 0)
+                if (Event.AIPairs.Count > 0)
                 {
-                    var AiInfo = AIPairsInfo(cycle.AIPairs);
+                    var AiInfo = AIPairsInfo(Event.AIPairs);
                     mess.Append($" ai赋值:[c/A2E4DB:{AiInfo}]\n");
                 }
             }
@@ -214,6 +143,146 @@ internal class TimerEvents
 
         mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%]" +
         $" 召怪:[c/A2E4DB:{MyMonster.SNCount}] 弹发:[c/A2E4DB:{MyProjectile.SPCount}]\n");
+    }
+    #endregion
+
+    #region 自动回血
+    public static Dictionary<string, DateTime> HealTimes = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
+    public static void AutoHeal(NPC npc, TimerData Event)
+    {
+        if (!HealTimes.ContainsKey(npc.FullName))
+        {
+            HealTimes[npc.FullName] = DateTime.UtcNow.AddSeconds(-1); // 初始化为1秒前，确保第一次调用时立即回血
+        }
+
+        if ((DateTime.UtcNow - HealTimes[npc.FullName]).TotalMilliseconds >= Event.AutoHealInterval * 1000) // 回血间隔
+        {
+            // 将AutoHeal视为百分比并计算相应的生命值恢复量
+            var num = (int)(npc.lifeMax * (Event.AutoHeal / 100.0f));
+            npc.life = (int)Math.Min(npc.lifeMax, npc.life + num);
+            HealTimes[npc.FullName] = DateTime.UtcNow;
+        }
+    }
+    #endregion
+
+    #region 触发条件
+    private static void Condition(NPC npc, StringBuilder mess, NpcData? data, float range, int life, TimerData Event, ref bool all, ref bool loop)
+    {
+        if (data is null) return;
+        if (Event.Condition != null && Event.Condition.Count > 0)
+        {
+            foreach (var Condition in Event.Condition)
+            {
+                // 生命条件
+                var LC = LifeCondition(life, Condition);
+                if (!LC && Condition.NpcLift != "0,100")
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 血量条件未满足: 血量 {life}% < {Condition.NpcLift} \n");
+                }
+
+                // 武器条件
+                var plr = TShock.Players.FirstOrDefault(p => p != null && p.Active && p.IsLoggedIn)!.TPlayer;
+                var WC = Condition.WeaponName == GetPlayerWeapon(plr);
+                if (Condition.WeaponName != "无" && !WC)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {Condition.WeaponName}\n");
+                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+                }
+
+                // 进度条件
+                var PC = ProgressChecker.IsProgress(Condition.Progress);
+                if (Condition.Progress != (ProgressType)(-1) && !PC)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 进度条件未满足: 当前进度不符合 {Condition.Progress.ToString()}\n");
+                }
+
+                // 召怪条件
+                var MC = MyMonster.SNCount >= Condition.MonsterCount;
+                if (Condition.MonsterCount != -1 && !MC)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 召怪条件未满足: 当前召怪次数 {MyMonster.SNCount} < {Condition.MonsterCount}\n");
+                }
+
+                // 弹发条件
+                var PrC = MyProjectile.SPCount >= Condition.ProjectileCount;
+                if (Condition.ProjectileCount != -1 && !MC)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {MyProjectile.SPCount} < {Condition.ProjectileCount}\n");
+                }
+
+                // 死亡次数条件
+                var DC = data.DeadCount >= Condition.DeadCount;
+                if (Condition.DeadCount != -1 && !DC)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {Condition.DeadCount}\n");
+                }
+
+                // 距离条件
+                var RC = range >= Condition.Range * 16;
+                if (Condition.Range != -1 && !RC)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 距离条件未满足: 玩家距离 {range} < {Condition.Range} 格\n");
+                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+                }
+
+                //速度条件
+                var absX = Math.Abs(npc.velocity.X);
+                var absY = Math.Abs(npc.velocity.Y);
+                var SP = absX >= Condition.Speed || absY >= Condition.Speed;
+                if (Condition.Speed != -1 && !SP)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {Condition.Speed}\n");
+                }
+
+                // 玩家生命条件
+                var PL = plr.statLife <= Condition.PlayerLife;
+                if (Condition.PlayerLife != -1 && !PL)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {Condition.PlayerLife} \n");
+                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+                }
+
+                // 玩家防御条件
+                var DE = plr.statDefense <= Condition.PlrDefense;
+                if (Condition.PlrDefense != -1 && !DE)
+                {
+                    all = false;
+                    loop = true;
+                    mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {Condition.PlrDefense} \n");
+                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+                }
+            }
+        }
+    } 
+    #endregion
+
+    #region 冷却计数与更新冷却时间方法
+    public static readonly Dictionary<string, (int CDCount, DateTime UpdateTimer)> CoolTrack = new();
+    public static (int CDCount, DateTime UpdateTimer) GetOrAdd(string key)
+    {
+        return CoolTrack.TryGetValue(key, out var value) ? value : (CoolTrack[key] = (0, DateTime.UtcNow));
+    }
+    public static void UpdateTrack(string key, int cdCount, DateTime updateTimer)
+    {
+        CoolTrack[key] = (cdCount, updateTimer);
     }
     #endregion
 
@@ -269,7 +338,7 @@ internal class TimerEvents
     #endregion
 
     #region 生命条件
-    private static bool LifeCondition(int life, TimerData? cycle)
+    private static bool LifeCondition(int life, ConditionData? cycle)
     {
         var flag = true;
         if (cycle == null) return false;

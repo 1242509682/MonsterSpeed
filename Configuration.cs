@@ -54,7 +54,7 @@ internal class Configuration
             {
                 new TimerData
                 {
-                    NpcLift = "50,100",
+                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "50,100" } },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -62,6 +62,7 @@ internal class Configuration
                             NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 184, 204 },
                         }
                     },
+
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
@@ -93,7 +94,9 @@ internal class Configuration
 
                 new TimerData
                 {
-                    NpcLift = "0,50",
+                    Defense = 50,
+                    AutoHealInterval = 5,
+                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,50" } },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -130,6 +133,8 @@ internal class Configuration
             {
                 new TimerData
                 {
+                    AutoHealInterval = 5,
+                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -182,9 +187,12 @@ internal class Configuration
 
                     }
                 },
+
                 new TimerData
                 {
                     Timer = 10,
+                    Defense = 50,
+                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -233,10 +241,18 @@ internal class Configuration
         Dict!["世界吞噬怪"] = new NpcData(0, 62 * 2.5f, 25f, 35, 5)
         {
             Teleport = 20,
+            TimerEvent = new List<TimerData>()
+            {
+                new TimerData() { Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } } }
+            }
         };
         Dict!["毁灭者"] = new NpcData(0, 62 * 2f, 25f, 35, 5)
         {
             Teleport = 20,
+            TimerEvent = new List<TimerData>()
+            {
+                new TimerData() { Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } } }
+            }
         };
     }
     #endregion
@@ -256,10 +272,6 @@ internal class Configuration
         public int TrackSpeed { get; set; }
         [JsonProperty("传送冷却", Order = 1)]
         public int Teleport { get; set; } = -1;
-        [JsonProperty("修改防御", Order = 5)]
-        public int Defense { get; set; } = -1;
-        [JsonProperty("每秒回血", Order = 6)]
-        public int AutoHeal { get; set; } = 1;
 
         [JsonProperty("倒计时文字间隔", Order = 20)]
         public double TextInterval { get; set; } = 1000f;
@@ -269,6 +281,7 @@ internal class Configuration
         public double CoolTimer { get; set; }
         [JsonProperty("时间事件", Order = 23)]
         public List<TimerData> TimerEvent { get; set; } = new();
+
 
         public NpcData() { }
         public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double coolTimer)

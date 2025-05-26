@@ -1,4 +1,5 @@
-﻿using TShockAPI;
+﻿using Terraria;
+using TShockAPI;
 using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
@@ -19,6 +20,36 @@ internal class Command
             args.Parameters[0].ToLower() == "reset")
         {
             Config.Dict.Clear();
+
+            var NewNpc = !Config.Dict!.ContainsKey(Lang.GetNPCNameValue(4));
+            if (NewNpc)
+            {
+                var newData = new Configuration.NpcData()
+                {
+                    DeadCount = 0,
+                    AutoTarget = true,
+                    TrackSpeed = 35,
+                    TrackRange = 62,
+                    TrackStopRange = 25,
+                    CoolTimer = 5f,
+                    TextInterval = 1000f,
+                    TimerEvent = new List<TimerData>()
+                    {
+                        new TimerData()
+                        {
+                            Condition = new List<ConditionData>()
+                            {
+                                new ConditionData()
+                                {
+                                    NpcLift = "0,100"
+                                }
+                            }
+                        }
+                    },
+                };
+                Config.Dict[Lang.GetNPCNameValue(4)] = newData;
+            }
+
             Config.Write();
             args.Player.SendSuccessMessage($"已清理《怪物加速》的怪物数据");
             return;
