@@ -43,7 +43,20 @@ internal class Command
                                 {
                                     NpcLift = "0,100"
                                 }
-                            }
+                            },
+
+                            SendProj = new List<ProjData>()
+                            {
+                                new ProjData()
+                                {
+                                    Type = 115,
+                                    Damage = 30,
+                                    stack = 15,
+                                    interval = 60f,
+                                    KnockBack = 5,
+                                    Velocity = 10f,
+                                }
+                            },
                         }
                     },
                 };

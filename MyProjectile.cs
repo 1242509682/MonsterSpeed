@@ -1,5 +1,6 @@
 ﻿using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
+using Org.BouncyCastle.Asn1.X509;
 using Terraria;
 using TShockAPI;
 
@@ -9,9 +10,9 @@ namespace MonsterSpeed;
 public class ProjData2
 {
     [JsonProperty("弹幕ID", Order = 0)]
-    public int Type = 0;
+    public int Type = 115;
     [JsonProperty("间隔", Order = 1)]
-    public float Interval = 60;
+    public float Interval = 15f;
     [JsonProperty("速度", Order = 2)]
     public float Velocity = 0f;
     [JsonProperty("半径", Order = 3)]
@@ -28,23 +29,23 @@ public class ProjData2
 public class ProjData
 {
     [JsonProperty("弹幕ID", Order = 0)]
-    public int Type = 0;
+    public int Type = 115;
     [JsonProperty("伤害", Order = 1)]
     public int Damage = 30;
     [JsonProperty("数量", Order = 2)]
     public int stack = 5;
     [JsonProperty("间隔", Order = 3)]
-    public float interval = 15f;
+    public float interval = 30f;
     [JsonProperty("击退", Order = 4)]
     public int KnockBack = 5;
-    [JsonProperty("速度", Order = 5)]
+    [JsonProperty("速度", Order = 6)]
     public float Velocity = 10f;
     [JsonProperty("半径", Order = 7)]
     public float Radius = 0f;
     [JsonProperty("偏移", Order = 8)]
-    public float Angle = 15f;
+    public float Angle = 0;
     [JsonProperty("旋转", Order = 9)]
-    public float Rotate = 5f;
+    public float Rotate = 0;
     [JsonProperty("弹幕AI", Order = 10)]
     public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
     [JsonProperty("生命周期", Order = 11)]
@@ -75,12 +76,12 @@ internal class MyProjectile
         // 初始化每个弹幕的发射间隔
         if (!EachCooldowns.ContainsKey(Index)) EachCooldowns[Index] = 0;
 
-        // 获取距离和方向向量
-        var tar = npc.GetTargetData(true);
-        var dict = tar.Center - npc.Center;
+        // 获取距离和方向向量 新增目标筛选逻辑
+        var plr = Main.player[npc.target];
+        var dict = plr.Center - npc.Center;
 
         // 数量超标 目标无效 或 不在进度则跳过
-        if (SendStack[Index] >= proj.stack || proj.Type <= 0 || tar.Invalid)
+        if (SendStack[Index] >= proj.stack || proj.Type <= 0 || plr == null)
         {
             Next(data);
             return;
@@ -102,7 +103,7 @@ internal class MyProjectile
 
             //以“玩家为中心”为true 以玩家为中心,否则以被击中的npc为中心
             var pos = proj.TarCenter
-                    ? new Vector2(tar.Center.X, tar.Center.Y)
+                    ? new Vector2(plr.Center.X, plr.Center.Y)
                     : new Vector2(npc.Center.X, npc.Center.Y);
 
 
@@ -115,7 +116,6 @@ internal class MyProjectile
 
             // 应用角度偏移
             var Angle = (SendStack[Index] - (proj.stack - 1) / 2.0f) * addRadian;
-            vel = vel.RotatedBy(Angle);
 
             // 如果旋转角度不为0，则设置旋转角度
             if (proj.Rotate != 0)
@@ -152,7 +152,7 @@ internal class MyProjectile
                 // 更新弹幕
                 if (proj.UpdateProj != null && proj.UpdateProj.Count > 0)
                 {
-                    UpdateProjectile(proj.UpdateProj, npc, tar, newProj, proj.stack);
+                    UpdateProjectile(proj.UpdateProj, npc, plr, newProj, proj.stack);
                 }
             }
 
@@ -186,7 +186,7 @@ internal class MyProjectile
 
     #region 额外弹幕方法
     private static Dictionary<int, float> Cooldowns = new Dictionary<int, float>();
-    private static void UpdateProjectile(List<ProjData2> projs, NPC npc, Terraria.DataStructures.NPCAimedTarget tar, int index, int stack)
+    private static void UpdateProjectile(List<ProjData2> projs, NPC npc, Player plr, int index, int stack)
     {
         if (projs == null || projs.Count <= 0) return;
 
@@ -212,7 +212,7 @@ internal class MyProjectile
                 var velocity = newProj.Velocity * decay;
 
                 var speed2 = velocity != 0 ? velocity : proj.velocity.Length();
-                var vel = (tar.Center - npc.Center).SafeNormalize(Vector2.Zero) * speed2;
+                var vel = (plr.Center - npc.Center).SafeNormalize(Vector2.Zero) * speed2;
 
                 var angle = newProj.Angle * Math.PI / 180;
                 var radian = angle != 0 ? angle : 0;
@@ -246,7 +246,7 @@ internal class MyProjectile
                     proj.ai[1] = ai1;
                 if (proj.ai[2] != ai2)
                     proj.ai[2] = ai2;
-                
+
                 TSPlayer.All.SendData(PacketTypes.ProjectileNew, null, index);
                 Cooldowns[index] = newProj.Interval;
             }
