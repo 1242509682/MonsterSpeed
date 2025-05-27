@@ -46,87 +46,6 @@ internal class Configuration
             621, 636, 657, 668
         };
 
-        Dict!["史莱姆王"] = new NpcData(0, 62f, 25, 35, 5)
-        {
-            Loop = true,
-            Teleport = 10,
-            TimerEvent = new List<TimerData>()
-            {
-                new TimerData
-                {
-                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "50,100" } },
-                    SpawnNPC = new List<SpawnNpcData>()
-                    {
-                        new SpawnNpcData()
-                        {
-                            NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 184, 204 },
-                        }
-                    },
-
-                    SendProj = new List<ProjData>()
-                    {
-                        new ProjData()
-                        {
-                            Type = 671,
-                            Lift = 180,
-                            Damage = 10,
-                            stack = 10,
-                            interval = 8f,
-                            KnockBack = 8,
-                            Radius = 10f,
-                            Angle = 15f,
-                            Rotate = 0f,
-                            Velocity = 30.0f,
-                            UpdateProj = new List<ProjData2>()
-                            {
-                                new ProjData2()
-                                {
-                                    Type = 814,
-                                    Interval = 1.0f,
-                                    Velocity = 1.0f,
-                                    Radius = 40f,
-                                    Angle = 30f,
-                                }
-                            }
-                        },
-                    }
-                },
-
-                new TimerData
-                {
-                    Defense = 50,
-                    AutoHealInterval = 5,
-                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,50" } },
-                    SpawnNPC = new List<SpawnNpcData>()
-                    {
-                        new SpawnNpcData()
-                        {
-                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 658, 659, 660 }
-                        }
-                    },
-
-                    SendProj = new List<ProjData>()
-                    {
-                        new ProjData()
-                        {
-                            Type = 351,
-                            Lift = 60,
-                            Damage = 10,
-                            stack = 30,
-                            interval = 1f,
-                            KnockBack = 8,
-                            Radius = 0f,
-                            Angle = 360f,
-                            Rotate = 2f,
-                            Velocity = 20f,
-                            ai = new Dictionary<int, float>() { { 0, 50f } },
-                        },
-                    }
-                },
-            },
-
-        };
-
         Dict!["克苏鲁之眼"] = new NpcData(0, 62, 25f, 35, 5)
         {
             TimerEvent = new List<TimerData>()
@@ -135,14 +54,6 @@ internal class Configuration
                 {
                     AutoHealInterval = 5,
                     Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } },
-                    SpawnNPC = new List<SpawnNpcData>()
-                    {
-                        new SpawnNpcData()
-                        {
-                            NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 5 }
-                        }
-                    },
-
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
@@ -152,18 +63,19 @@ internal class Configuration
                             stack = 15,
                             interval = 5f,
                             KnockBack = 8,
-                            Velocity = 20f,
+                            Velocity = 5f,
                             Radius = 15f,
                             Angle = 5f,
                             Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
                             Lift = 180,
                             TarCenter = false,
-                            UpdateProj = new List<ProjData2>()
+                            UpdateTime = 500f,
+                            UpdateProj = new List<UpdateProjData>()
                             {
-                                new ProjData2()
+                                new UpdateProjData()
                                 {
-                                    Interval = 2,
+                                    Backer = true,
                                     Velocity = 25,
                                     Angle = 10,
                                 }
@@ -238,6 +150,87 @@ internal class Configuration
             }
 
         };
+
+        Dict!["史莱姆王"] = new NpcData(0, 62f, 25, 35, 5)
+        {
+            Loop = true,
+            Teleport = 10,
+            TimerEvent = new List<TimerData>()
+            {
+                new TimerData
+                {
+                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "50,100" } },
+                    SpawnNPC = new List<SpawnNpcData>()
+                    {
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 184, 204 },
+                        }
+                    },
+
+                    SendProj = new List<ProjData>()
+                    {
+                        new ProjData()
+                        {
+                            Type = 671,
+                            Lift = 180,
+                            Damage = 10,
+                            stack = 10,
+                            interval = 8f,
+                            KnockBack = 8,
+                            Radius = 10f,
+                            Angle = 15f,
+                            Rotate = 0f,
+                            Velocity = 30.0f,
+                            UpdateTime = 2000f,
+                            UpdateProj = new List<UpdateProjData>()
+                            {
+                                new UpdateProjData()
+                                {
+                                    Velocity = 1.0f,
+                                    Radius = 40f,
+                                    Angle = 30f,
+                                }
+                            }
+                        },
+                    }
+                },
+
+                new TimerData
+                {
+                    Defense = 50,
+                    AutoHealInterval = 5,
+                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,50" } },
+                    SpawnNPC = new List<SpawnNpcData>()
+                    {
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 658, 659, 660 }
+                        }
+                    },
+
+                    SendProj = new List<ProjData>()
+                    {
+                        new ProjData()
+                        {
+                            Type = 351,
+                            Lift = 60,
+                            Damage = 10,
+                            stack = 30,
+                            interval = 1f,
+                            KnockBack = 8,
+                            Radius = 0f,
+                            Angle = 360f,
+                            Rotate = 2f,
+                            Velocity = 20f,
+                            ai = new Dictionary<int, float>() { { 0, 50f } },
+                        },
+                    }
+                },
+            },
+
+        };
+        
         Dict!["世界吞噬怪"] = new NpcData(0, 62 * 2.5f, 25f, 35, 5)
         {
             Teleport = 20,

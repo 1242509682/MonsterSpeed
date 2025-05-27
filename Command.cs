@@ -21,7 +21,7 @@ internal class Command
         {
             Config.Dict.Clear();
 
-            var NewNpc = !Config.Dict!.ContainsKey(Lang.GetNPCNameValue(4));
+            var NewNpc = !Config.Dict!.ContainsKey(Lang.GetNPCNameValue(Terraria.ID.NPCID.EyeofCthulhu));
             if (NewNpc)
             {
                 var newData = new Configuration.NpcData()

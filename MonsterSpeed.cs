@@ -21,10 +21,15 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 注册与释放
-    public MonsterSpeed(Main game) : base(game) { }
+    public MonsterSpeed(Main game) : base(game) 
+    {
+        MyProjectile.SpawnPorj = new SpawnProj[1001];
+    }
+
     public override void Initialize()
     {
         LoadConfig();
+        ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
         GeneralHooks.ReloadEvent += ReloadConfig;
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
         ServerApi.Hooks.NpcStrike.Register(this, this.OnNpcStrike);
@@ -37,6 +42,7 @@ public class MonsterSpeed : TerrariaPlugin
         if (disposing)
         {
             GeneralHooks.ReloadEvent -= ReloadConfig;
+            ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
             ServerApi.Hooks.NpcKilled.Deregister(this, this.OnNPCKilled);
             ServerApi.Hooks.NpcStrike.Deregister(this, this.OnNpcStrike);
             ServerApi.Hooks.NpcAIUpdate.Deregister(this, this.OnNpcAiUpdate);
@@ -57,6 +63,13 @@ public class MonsterSpeed : TerrariaPlugin
     {
         Config = Configuration.Read();
         Config.Write();
+    }
+    #endregion
+
+    #region 世界更新事件
+    private void OnGameUpdate(EventArgs args)
+    {
+        GameTimer.Update();
     }
     #endregion
 
@@ -236,8 +249,6 @@ public class MonsterSpeed : TerrariaPlugin
             npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
         }
     }
-    #endregion
-
-
+    #endregion.
 
 }

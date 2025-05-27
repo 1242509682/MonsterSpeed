@@ -25,7 +25,6 @@ public class TimerData
     [JsonProperty("百分比回血", Order = -8)]
     public int AutoHeal { get; set; } = 1;
 
-
     [JsonProperty("怪物AI", Order = 1)]
     public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
     [JsonProperty("生成怪物", Order = 2)]

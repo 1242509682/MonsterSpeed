@@ -25,28 +25,28 @@ internal class MyMonster
 {
     #region 召唤怪物方法
     public static int SNCount = new int(); //用于追踪所有NPC生成次数
-    private static Dictionary<int, float> Cooldowns = new Dictionary<int, float>(); //用于追踪生成随从NPC冷却时间
-    public static void SpawnMonsters(List<SpawnNpcData> datas, NPC npc)
+    private static Dictionary<int, float> SpawnTimer = new Dictionary<int, float>(); //用于追踪生成随从NPC冷却时间
+    public static void SpawnMonsters(List<SpawnNpcData> SpawnNpc, NPC npc)
     {
         var flag = false;
-        foreach (var data in datas)
+        foreach (var mos in SpawnNpc)
         {
             //配置为空
-            if (data == null) continue;
+            if (mos == null) continue;
 
-            foreach (var id in data.NPCID)
+            foreach (var id in mos.NPCID)
             {
                 var Stack = Main.npc.Count(p => p.active && p.type == id);
-                if (Stack >= data.NpcStack) continue;
+                if (Stack >= mos.NpcStack) continue;
 
                 // 检查是否已经有冷却时间设置，如果没有则初始化为0（即没有冷却）
-                if (!Cooldowns.ContainsKey(id))
+                if (!SpawnTimer.ContainsKey(id))
                 {
-                    Cooldowns[id] = 0f;
+                    SpawnTimer[id] = 0f;
                 }
 
                 // 如果冷却时间为0或小于等于0，则允许生成怪物
-                if (Cooldowns[id] <= 0f)
+                if (SpawnTimer[id] <= 0f)
                 {
                     var npc2 = TShock.Utils.GetNPCById(id);
                     if (npc2 == null) return;
@@ -54,20 +54,20 @@ internal class MyMonster
                     if (npc2.type != 113 && npc2.type != 0 && npc2.type < Terraria.ID.NPCID.Count)
                     {
                         //以“玩家为中心”为true 以玩家为中心,否则以被击中的npc为中心
-                        var tar = npc.GetTargetData(true);
-                        var pos = data.TarCenter
-                                ? new Vector2(tar.Center.X, tar.Center.Y)
+                        var plr = Main.player[npc.target];
+                        var pos = mos.TarCenter
+                                ? new Vector2(plr.Center.X, plr.Center.Y)
                                 : new Vector2(npc.Center.X, npc.Center.Y);
 
                         // 新的生成位置
                         var NewPos = Terraria.Utils.ToTileCoordinates(pos);// 将世界坐标转换为瓷砖坐标
 
                         //召唤怪物
-                        TSPlayer.Server.SpawnNPC(npc2.type, npc2.FullName, data.NpcStack,
-                                                 NewPos.X, NewPos.Y, data.Range, data.Range);
+                        TSPlayer.Server.SpawnNPC(npc2.type, npc2.FullName, mos.NpcStack,
+                                                 NewPos.X, NewPos.Y, mos.Range, mos.Range);
 
                         // 设置冷却时间
-                        Cooldowns[id] = data.Interval;
+                        SpawnTimer[id] = mos.Interval;
                         Stack++;
                         flag = true;
                     }
@@ -75,7 +75,7 @@ internal class MyMonster
                 else
                 {
                     // 减少冷却时间
-                    Cooldowns[id] -= 1f;
+                    SpawnTimer[id] -= 1f;
                 }
             }
         }
