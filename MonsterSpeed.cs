@@ -29,7 +29,7 @@ public class MonsterSpeed : TerrariaPlugin
     public override void Initialize()
     {
         LoadConfig();
-        ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
+        //ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
         GeneralHooks.ReloadEvent += ReloadConfig;
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
         ServerApi.Hooks.NpcStrike.Register(this, this.OnNpcStrike);
@@ -42,7 +42,7 @@ public class MonsterSpeed : TerrariaPlugin
         if (disposing)
         {
             GeneralHooks.ReloadEvent -= ReloadConfig;
-            ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
+            //ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
             ServerApi.Hooks.NpcKilled.Deregister(this, this.OnNPCKilled);
             ServerApi.Hooks.NpcStrike.Deregister(this, this.OnNpcStrike);
             ServerApi.Hooks.NpcAIUpdate.Deregister(this, this.OnNpcAiUpdate);
