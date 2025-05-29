@@ -1,9 +1,7 @@
 ﻿using System.Text;
 using Microsoft.Xna.Framework;
-using MonsterSpeed.Progress;
 using Newtonsoft.Json;
 using Terraria;
-using Terraria.ID;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 
@@ -16,7 +14,7 @@ public class TimerData
     public int Timer { get; set; } = 0;
 
     [JsonProperty("触发条件", Order = -51)]
-    public List<ConditionData> Condition { get; set; }
+    public List<Conditions> Condition { get; set; }
 
     [JsonProperty("修改防御", Order = -10)]
     public int Defense { get; set; } = 0;
@@ -24,38 +22,24 @@ public class TimerData
     public int AutoHealInterval { get; set; } = 10;
     [JsonProperty("百分比回血", Order = -8)]
     public int AutoHeal { get; set; } = 1;
-
+    [JsonProperty("白光AI", Order = -7)]
+    public bool HallowBoss { get; set; } = false;
+    [JsonProperty("猪鲨AI", Order = -6)]
+    public bool DukeFishron { get; set; } = false;
+    [JsonProperty("鹿角怪AI", Order = -5)]
+    public bool Deerclops { get; set; } = false;
+    [JsonProperty("鹦鹉螺AI", Order = -4)]
+    public bool BloodNautilus { get; set; } = false;
+    [JsonProperty("保持头顶", Order = -3)]
+    public bool AlwaysTop { get; set; } = false;
+    [JsonProperty("发射物品", Order = -2)]
+    public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
     [JsonProperty("怪物AI", Order = 1)]
     public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
     [JsonProperty("生成怪物", Order = 2)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
     [JsonProperty("生成弹幕", Order = 3)]
     public List<ProjData> SendProj { get; set; } = new List<ProjData>();
-}
-
-//触发条件数据结构
-public class ConditionData
-{
-    [JsonProperty("血量范围", Order = -22)]
-    public string NpcLift { get; set; } = "0,100";
-    [JsonProperty("进度限制", Order = -21)]
-    public ProgressType Progress { get; set; } = (ProgressType)(-1);
-    [JsonProperty("玩家生命", Order = -20)]
-    public int PlayerLife { get; set; } = -1;
-    [JsonProperty("玩家防御", Order = -19)]
-    public int PlrDefense { get; set; } = -1;
-    [JsonProperty("玩家武器", Order = -18)]
-    public string WeaponName { get; set; } = "无";
-    [JsonProperty("召怪次数", Order = -17)]
-    public int MonsterCount { get; set; } = -1;
-    [JsonProperty("弹发次数", Order = -16)]
-    public int ProjectileCount { get; set; } = -1;
-    [JsonProperty("死亡次数", Order = -15)]
-    public int DeadCount { get; set; } = -1;
-    [JsonProperty("距离条件", Order = -14)]
-    public float Range { get; set; } = -1;
-    [JsonProperty("速度条件", Order = -13)]
-    public float Speed { get; set; } = -1;
 }
 
 internal class TimerEvents
@@ -86,7 +70,7 @@ internal class TimerEvents
             var loop = false;
 
             //触发条件
-            Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+            Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
 
             //循环执行
             if (data.Loop && loop)
@@ -137,11 +121,57 @@ internal class TimerEvents
                     var AiInfo = AIPairsInfo(Event.AIPairs);
                     mess.Append($" ai赋值:[c/A2E4DB:{AiInfo}]\n");
                 }
+
+                TR_AI(Event, npc);
             }
         }
 
         mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%]" +
         $" 召怪:[c/A2E4DB:{MyMonster.SNCount}] 弹发:[c/A2E4DB:{MyProjectile.SPCount}]\n");
+    }
+
+    private static void TR_AI(TimerData Event, NPC npc)
+    {
+        Player plr = Main.player[npc.target];
+
+        //猪鲨AI
+        if (Event.DukeFishron)
+        {
+            npc.AI_069_DukeFishron();
+        }
+
+        //鹦鹉螺AI
+        if (Event.BloodNautilus)
+        {
+            npc.AI_117_BloodNautilus();
+        }
+
+        //白光AI
+        if (Event.HallowBoss)
+        {
+            npc.AI_120_HallowBoss();
+        }
+
+        //始终保持保持玩家头顶
+        if (Event.AlwaysTop)
+        {
+            npc.AI_120_HallowBoss_DashTo(plr.position);
+        }
+
+        //鹿角怪AI
+        if (Event.Deerclops)
+        {
+            npc.AI_123_Deerclops();
+        }
+
+        //持续发射物品(指定物品ID)
+        if (Event.ShootItemList != null)
+        {
+            foreach (var item in Event.ShootItemList)
+            {
+                npc.AI_87_BigMimic_ShootItem(item);
+            }
+        }
     }
     #endregion
 
@@ -162,115 +192,6 @@ internal class TimerEvents
             HealTimes[npc.FullName] = DateTime.UtcNow;
         }
     }
-    #endregion
-
-    #region 触发条件
-    private static void Condition(NPC npc, StringBuilder mess, NpcData? data, float range, int life, TimerData Event, ref bool all, ref bool loop)
-    {
-        if (data is null) return;
-        if (Event.Condition != null && Event.Condition.Count > 0)
-        {
-            foreach (var Condition in Event.Condition)
-            {
-                // 生命条件
-                var LC = LifeCondition(life, Condition);
-                if (!LC && Condition.NpcLift != "0,100")
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 血量条件未满足: 血量 {life}% < {Condition.NpcLift} \n");
-                }
-
-                // 武器条件
-                var plr = TShock.Players.FirstOrDefault(p => p != null && p.Active && p.IsLoggedIn)!.TPlayer;
-                var WC = Condition.WeaponName == GetPlayerWeapon(plr);
-                if (Condition.WeaponName != "无" && !WC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {Condition.WeaponName}\n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-
-                // 进度条件
-                var PC = ProgressChecker.IsProgress(Condition.Progress);
-                if (Condition.Progress != (ProgressType)(-1) && !PC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 进度条件未满足: 当前进度不符合 {Condition.Progress.ToString()}\n");
-                }
-
-                // 召怪条件
-                var MC = MyMonster.SNCount >= Condition.MonsterCount;
-                if (Condition.MonsterCount != -1 && !MC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 召怪条件未满足: 当前召怪次数 {MyMonster.SNCount} < {Condition.MonsterCount}\n");
-                }
-
-                // 弹发条件
-                var PrC = MyProjectile.SPCount >= Condition.ProjectileCount;
-                if (Condition.ProjectileCount != -1 && !MC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {MyProjectile.SPCount} < {Condition.ProjectileCount}\n");
-                }
-
-                // 死亡次数条件
-                var DC = data.DeadCount >= Condition.DeadCount;
-                if (Condition.DeadCount != -1 && !DC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {Condition.DeadCount}\n");
-                }
-
-                // 距离条件
-                var RC = range >= Condition.Range * 16;
-                if (Condition.Range != -1 && !RC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 距离条件未满足: 玩家距离 {range} < {Condition.Range} 格\n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-
-                //速度条件
-                var absX = Math.Abs(npc.velocity.X);
-                var absY = Math.Abs(npc.velocity.Y);
-                var SP = absX >= Condition.Speed || absY >= Condition.Speed;
-                if (Condition.Speed != -1 && !SP)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {Condition.Speed}\n");
-                }
-
-                // 玩家生命条件
-                var PL = plr.statLife <= Condition.PlayerLife;
-                if (Condition.PlayerLife != -1 && !PL)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {Condition.PlayerLife} \n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-
-                // 玩家防御条件
-                var DE = plr.statDefense <= Condition.PlrDefense;
-                if (Condition.PlrDefense != -1 && !DE)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {Condition.PlrDefense} \n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-            }
-        }
-    } 
     #endregion
 
     #region 冷却计数与更新冷却时间方法
@@ -336,43 +257,6 @@ internal class TimerEvents
     }
     #endregion
 
-    #region 生命条件
-    private static bool LifeCondition(int life, ConditionData? cycle)
-    {
-        var flag = true;
-        if (cycle == null) return false;
-        var result = CheckLife(cycle.NpcLift);
-        if (result.success && result.min != -1 && result.max != -1)
-        {
-            if (life < result.min || life > result.max)
-            {
-                flag = false;
-            }
-        }
-        if (result.min == -1 || result.max == -1)
-        {
-            flag = false;
-        }
-
-        return flag;
-    }
-    #endregion
-
-    #region 解析生命条件的方法
-    private static (bool success, int min, int max) CheckLife(string condition)
-    {
-        var parts = condition.Split(',');
-        if (parts.Length != 2 || !int.TryParse(parts[0].Trim(), out int min) || !int.TryParse(parts[1].Trim(), out int max))
-        {
-            // 解析失败，返回错误标志
-            return (false, -1, -1);
-        }
-
-        // 确保min <= max
-        return (true, Math.Min(min, max), Math.Max(min, max));
-    }
-    #endregion
-
     #region 时间事件冷却倒计时方法（悬浮文本）
     private static Dictionary<string, DateTime> TextTime = new Dictionary<string, DateTime>();// 跟踪每个NPC上次冷却记录时间
     private static void TextExtended(NPC npc, NpcData? data, DateTime CD_Timer)
@@ -387,6 +271,7 @@ internal class TimerEvents
         if ((DateTime.UtcNow - TextTime[npc.FullName]).TotalMilliseconds >= data.TextInterval)
         {
             var CoolTimer = TimeSpan.FromSeconds(data.CoolTimer) - (DateTime.UtcNow - CD_Timer);
+
             TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, $"Time {CoolTimer.TotalSeconds:F2}",
                                  (int)Color.LightGoldenrodYellow.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
 
@@ -395,36 +280,4 @@ internal class TimerEvents
     }
     #endregion
 
-    #region 获取玩家当前武器类型的逻辑
-    public static string GetPlayerWeapon(Player plr)
-    {
-        var Held = plr.HeldItem;
-        if (Held == null || Held.type == 0) return "无";
-
-        // 检查近战武器
-        if (Held.melee && Held.maxStack == 1 && Held.damage > 0 && Held.ammo == 0 &&
-            Held.pick < 1 && Held.hammer < 1 && Held.axe < 1) return "近战";
-
-        // 检查远程武器
-        if (Held.ranged && Held.maxStack == 1 &&
-            Held.damage > 0 && Held.ammo == 0 && !Held.consumable) return "远程";
-
-        // 检查魔法武器
-        if (Held.magic && Held.maxStack == 1 &&
-            Held.damage > 0 && Held.ammo == 0) return "魔法";
-
-        // 检查召唤鞭子
-        if (ItemID.Sets.SummonerWeaponThatScalesWithAttackSpeed[Held.type]) return "召唤";
-
-        // 检查悠悠球
-        if (ItemID.Sets.Yoyo[Held.type]) return "悠悠球";
-
-        // 检查投掷物
-        if (Held.maxStack == 9999 && Held.damage > 0 &&
-            Held.ammo == 0 && Held.ranged && Held.consumable ||
-            ItemID.Sets.ItemsThatCountAsBombsForDemolitionistToSpawn[Held.type]) return "投掷物";
-
-        return "未知"; // 默认未知
-    }
-    #endregion
 }

@@ -53,7 +53,7 @@ internal class Configuration
                 new TimerData
                 {
                     AutoHealInterval = 5,
-                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } },
+                    Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } },
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
@@ -102,15 +102,14 @@ internal class Configuration
 
                 new TimerData
                 {
-                    Timer = 10,
+                    Timer = 0,
                     Defense = 50,
-                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } },
-                    SpawnNPC = new List<SpawnNpcData>()
-                    {
-                        new SpawnNpcData()
-                        {
-                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 133 }
-                        }
+                    Condition = new List < Conditions >() 
+                    { 
+                        new Conditions() 
+                        { 
+                            NpcLift = "0,50",
+                        } 
                     },
 
                     SendProj = new List<ProjData>()
@@ -147,8 +146,37 @@ internal class Configuration
                         },
                     }
                 },
-            }
 
+                new TimerData
+                {
+                    Timer = 10,
+                    Defense = 50,
+                    Condition = new List < Conditions >()
+                    {
+                        new Conditions()
+                        {
+                            NpcLift = "0,25",
+                            AIPairs = new Dictionary<int, string[]>()
+                            {
+                                { 0,new string[]{ "!=5", ">=3", "<20" }},
+                                { 1,new string[]{ ">2", "<100" }},
+                                { 2,new string[]{ ">=0" }},
+                                { 3,new string[]{ "<=3" }},
+                            }
+                        }
+                    },
+                    
+                    ShootItemList = new HashSet<int>(){ 71,75 },
+
+                    SpawnNPC = new List<SpawnNpcData>()
+                    {
+                        new SpawnNpcData()
+                        {
+                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 133 }
+                        }
+                    },
+                },
+            }
         };
 
         Dict!["史莱姆王"] = new NpcData(0, 62f, 25, 35, 5)
@@ -159,7 +187,7 @@ internal class Configuration
             {
                 new TimerData
                 {
-                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "50,100" } },
+                    Condition = new List < Conditions >() { new Conditions() { NpcLift = "50,100" } },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -200,7 +228,7 @@ internal class Configuration
                 {
                     Defense = 50,
                     AutoHealInterval = 5,
-                    Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,50" } },
+                    Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,50" } },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -236,7 +264,7 @@ internal class Configuration
             Teleport = 20,
             TimerEvent = new List<TimerData>()
             {
-                new TimerData() { Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } } }
+                new TimerData() { Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } } }
             }
         };
         Dict!["毁灭者"] = new NpcData(0, 62 * 2f, 25f, 35, 5)
@@ -244,7 +272,7 @@ internal class Configuration
             Teleport = 20,
             TimerEvent = new List<TimerData>()
             {
-                new TimerData() { Condition = new List < ConditionData >() { new ConditionData() { NpcLift = "0,100" } } }
+                new TimerData() { Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } } }
             }
         };
     }

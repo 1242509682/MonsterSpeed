@@ -16,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 2, 4);
+    public override Version Version => new Version(1, 2, 5);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、血量、防御等功能";
     #endregion
 
@@ -99,9 +99,9 @@ public class MonsterSpeed : TerrariaPlugin
                 {
                     new TimerData()
                     {
-                        Condition = new List<ConditionData>()
+                        Condition = new List<Conditions>()
                         {
-                            new ConditionData()
+                            new Conditions()
                             {
                                 NpcLift = "0,100"
                             }

@@ -19,6 +19,7 @@ internal class Command
         if (args.Parameters.Count == 1 && Config.Dict != null && 
             args.Parameters[0].ToLower() == "reset")
         {
+            Commands.HandleCommand(args.Player, "/butcher");
             Config.Dict.Clear();
 
             var NewNpc = !Config.Dict!.ContainsKey(Lang.GetNPCNameValue(Terraria.ID.NPCID.EyeofCthulhu));
@@ -37,9 +38,9 @@ internal class Command
                     {
                         new TimerData()
                         {
-                            Condition = new List<ConditionData>()
+                            Condition = new List<Conditions>()
                             {
-                                new ConditionData()
+                                new Conditions()
                                 {
                                     NpcLift = "0,100"
                                 }
@@ -64,7 +65,7 @@ internal class Command
             }
 
             Config.Write();
-            args.Player.SendSuccessMessage($"已清理《怪物加速》的怪物数据");
+            args.Player.SendSuccessMessage($"已清理《怪物加速》的怪物数据(自动击杀当前存在敌对怪物)");
             return;
         }
     }
