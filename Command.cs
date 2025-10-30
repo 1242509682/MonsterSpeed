@@ -32,7 +32,7 @@ internal class Command
                     TrackSpeed = 35,
                     TrackRange = 62,
                     TrackStopRange = 25,
-                    CoolTimer = 5f,
+                    ActiveTime = 5f,
                     TextInterval = 1000f,
                     TimerEvent = new List<TimerData>()
                     {

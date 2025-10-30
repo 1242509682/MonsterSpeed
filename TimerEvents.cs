@@ -12,34 +12,32 @@ public class TimerData
 {
     [JsonProperty("下组事件延长秒数", Order = -100)]
     public int Timer { get; set; } = 0;
-
-    [JsonProperty("触发条件", Order = -51)]
+    [JsonProperty("暂停间隔", Order = -99)]
+    public double PauseTime { get; set; }
+    [JsonProperty("触发条件", Order = -50)]
     public List<Conditions> Condition { get; set; }
-
-    [JsonProperty("修改防御", Order = -10)]
+    [JsonProperty("修改防御", Order = -8)]
     public int Defense { get; set; } = 0;
-    [JsonProperty("回血间隔", Order = -9)]
-    public int AutoHealInterval { get; set; } = 10;
-    [JsonProperty("百分比回血", Order = -8)]
-    public int AutoHeal { get; set; } = 1;
-    [JsonProperty("白光AI", Order = -7)]
-    public bool HallowBoss { get; set; } = false;
-    [JsonProperty("猪鲨AI", Order = -6)]
-    public bool DukeFishron { get; set; } = false;
-    [JsonProperty("鹿角怪AI", Order = -5)]
-    public bool Deerclops { get; set; } = false;
-    [JsonProperty("鹦鹉螺AI", Order = -4)]
-    public bool BloodNautilus { get; set; } = false;
-    [JsonProperty("保持头顶", Order = -3)]
-    public bool AlwaysTop { get; set; } = false;
-    [JsonProperty("发射物品", Order = -2)]
-    public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
-    [JsonProperty("怪物AI", Order = 1)]
-    public Dictionary<int, float> AIPairs { get; set; } = new Dictionary<int, float>();
-    [JsonProperty("生成怪物", Order = 2)]
+
+    [JsonProperty("原版AI", Order = 0)]
+    public List<BossAI> BossAI { get; set; } = new List<BossAI>();
+
+    [JsonProperty("AI赋值", Order = 2)]
+    public AIModes AIMode { get; set; } = new AIModes();
+
+    [JsonProperty("生成怪物", Order = 3)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
-    [JsonProperty("生成弹幕", Order = 3)]
+    [JsonProperty("生成弹幕", Order = 4)]
     public List<ProjData> SendProj { get; set; } = new List<ProjData>();
+    [JsonProperty("发射物品", Order = 5)]
+    public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
+}
+
+// 暂停状态类
+public class PauseState
+{
+    public bool InPause { get; set; } = false;
+    public DateTime PauseTime { get; set; } = DateTime.UtcNow;
 }
 
 internal class TimerEvents
@@ -53,12 +51,27 @@ internal class TimerEvents
 
         var life = (int)(npc.life / (float)npc.lifeMax * 100);
 
+        //更新计数器和时间 跳转下一个事件
+        var Event = data.TimerEvent[CD_Count];
+
+        // 检查暂停模式
+        if (ShouldPause(npc.FullName, Event))
+        {
+            // 直接计算剩余暂停时间
+            var state = PauseStates[npc.FullName];
+            var elapsed = (DateTime.UtcNow - state.PauseTime).TotalMilliseconds;
+            var remaining = Event.PauseTime - elapsed;
+
+            // 在暂停期间，只显示冷却文本，不执行事件逻辑
+            TextExtended(npc, data, CD_Timer);
+            mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] [暂停剩余:{remaining:F0}ms]\n");
+            return;
+        }
+
         //时间事件冷却倒计时（悬浮文本）
         TextExtended(npc, data, CD_Timer);
 
-        //更新计数器和时间 跳转下一个事件
-        var Event = data.TimerEvent[CD_Count];
-        if ((DateTime.UtcNow - CD_Timer).TotalSeconds >= data.CoolTimer)
+        if ((DateTime.UtcNow - CD_Timer).TotalSeconds >= data.ActiveTime)
         {
             NextEvent(ref CD_Count, ref CD_Timer, data, Event.Timer, npc.FullName);
         }
@@ -81,8 +94,19 @@ internal class TimerEvents
             // 满足所有条件
             if (all)
             {
-                // AI赋值
-                AIPairs(Event.AIPairs, npc);
+                // 修改AI模式
+                if (Event.AIMode != null)
+                {
+                    // AI赋值（修改为支持模式控制）
+                    AISystem.AIPairs(npc, Event.AIMode, npc.FullName);
+
+                    // AI赋值监控
+                    if (Event.AIMode.Enabled)
+                    {
+                        var AiInfo = AISystem.GetAiInfo(Event.AIMode, npc.FullName);
+                        mess.Append($" ai赋值:[c/A2E4DB:{AiInfo}]\n");
+                    }
+                }
 
                 // 召唤怪物
                 if (Event.SpawnNPC != null && Event.SpawnNPC.Count > 0)
@@ -94,6 +118,27 @@ internal class TimerEvents
                 if (Event.SendProj != null && Event.SendProj.Count > 0)
                 {
                     MyProjectile.SpawnProjectile(Event.SendProj, npc);
+                }
+
+                //持续发射物品(指定物品ID)
+                if (Event.ShootItemList != null)
+                {
+                    foreach (var item in Event.ShootItemList)
+                    {
+                        npc.AI_87_BigMimic_ShootItem(item);
+                    }
+                }
+
+                // BossAi
+                if (Event.BossAI != null)
+                {
+                    foreach (var bossAI in Event.BossAI)
+                    {
+                        if (bossAI != null)
+                        {
+                            TR_AI(bossAI, npc);
+                        }
+                    }
                 }
 
                 // 修改防御
@@ -109,88 +154,11 @@ internal class TimerEvents
                     npc.defense = npc.defDefense;
                 }
 
-                // 自动回血
-                if (Event.AutoHeal > 0)
-                {
-                    AutoHeal(npc, Event);
-                }
-
-                // 监控
-                if (Event.AIPairs.Count > 0)
-                {
-                    var AiInfo = AIPairsInfo(Event.AIPairs);
-                    mess.Append($" ai赋值:[c/A2E4DB:{AiInfo}]\n");
-                }
-
-                TR_AI(Event, npc);
             }
         }
 
         mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%]" +
         $" 召怪:[c/A2E4DB:{MyMonster.SNCount}] 弹发:[c/A2E4DB:{MyProjectile.SPCount}]\n");
-    }
-
-    private static void TR_AI(TimerData Event, NPC npc)
-    {
-        Player plr = Main.player[npc.target];
-
-        //猪鲨AI
-        if (Event.DukeFishron)
-        {
-            npc.AI_069_DukeFishron();
-        }
-
-        //鹦鹉螺AI
-        if (Event.BloodNautilus)
-        {
-            npc.AI_117_BloodNautilus();
-        }
-
-        //白光AI
-        if (Event.HallowBoss)
-        {
-            npc.AI_120_HallowBoss();
-        }
-
-        //始终保持保持玩家头顶
-        if (Event.AlwaysTop)
-        {
-            npc.AI_120_HallowBoss_DashTo(plr.position);
-        }
-
-        //鹿角怪AI
-        if (Event.Deerclops)
-        {
-            npc.AI_123_Deerclops();
-        }
-
-        //持续发射物品(指定物品ID)
-        if (Event.ShootItemList != null)
-        {
-            foreach (var item in Event.ShootItemList)
-            {
-                npc.AI_87_BigMimic_ShootItem(item);
-            }
-        }
-    }
-    #endregion
-
-    #region 自动回血
-    public static Dictionary<string, DateTime> HealTimes = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
-    public static void AutoHeal(NPC npc, TimerData Event)
-    {
-        if (!HealTimes.ContainsKey(npc.FullName))
-        {
-            HealTimes[npc.FullName] = DateTime.UtcNow.AddSeconds(-1); // 初始化为1秒前，确保第一次调用时立即回血
-        }
-
-        if ((DateTime.UtcNow - HealTimes[npc.FullName]).TotalMilliseconds >= Event.AutoHealInterval * 1000) // 回血间隔
-        {
-            // 将AutoHeal视为百分比并计算相应的生命值恢复量
-            var num = (int)(npc.lifeMax * (Event.AutoHeal / 100.0f));
-            npc.life = (int)Math.Min(npc.lifeMax, npc.life + num);
-            HealTimes[npc.FullName] = DateTime.UtcNow;
-        }
     }
     #endregion
 
@@ -211,6 +179,12 @@ internal class TimerEvents
     {
         if (data.TimerEvent != null && data.TimerEvent.Count > 0)
         {
+            // 重置暂停状态
+            if (PauseStates.ContainsKey(npcName))
+            {
+                PauseStates[npcName] = new PauseState();
+            }
+
             // 更新计数器以指向下一个事件
             CD_Count = (CD_Count + 1) % data.TimerEvent.Count;
 
@@ -223,37 +197,6 @@ internal class TimerEvents
             // 更新时间
             UpdateTrack(npcName, CD_Count, CD_Timer);
         }
-    }
-    #endregion
-
-    #region 怪物AI赋值
-    public static void AIPairs(Dictionary<int, float> Pairs, NPC npc)
-    {
-        if (Pairs == null || Pairs.Count == 0) return;
-
-        foreach (var Pair in Pairs)
-        {
-            var i = Pair.Key;
-
-            if (i >= 0 && i < npc.ai.Length)
-            {
-                npc.ai[i] = Pair.Value;
-            }
-        }
-    }
-    #endregion
-
-    #region 输出正在赋值的AI信息
-    public static string AIPairsInfo(Dictionary<int, float> Pairs)
-    {
-        if (Pairs == null || Pairs.Count == 0) return "无";
-        var info = new StringBuilder();
-        foreach (var Pair in Pairs)
-        {
-            info.Append($"ai{Pair.Key}_{Pair.Value:F0} ");
-        }
-
-        return info.ToString();
     }
     #endregion
 
@@ -270,13 +213,87 @@ internal class TimerEvents
 
         if ((DateTime.UtcNow - TextTime[npc.FullName]).TotalMilliseconds >= data.TextInterval)
         {
-            var CoolTimer = TimeSpan.FromSeconds(data.CoolTimer) - (DateTime.UtcNow - CD_Timer);
+            var ActionTimer = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - CD_Timer);
 
-            TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, $"Time {CoolTimer.TotalSeconds:F2}",
-                                 (int)Color.LightGoldenrodYellow.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
+            // 检查是否处于暂停状态
+            bool pass = PauseStates.ContainsKey(npc.FullName) && PauseStates[npc.FullName].InPause;
+            var color = pass ? Color.Red : Color.LightGoldenrodYellow;
+            var Status = pass ? "[pass] " : "";
+
+            TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, $"{Status}Time {ActionTimer.TotalSeconds:F2}",
+                                 (int)color.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
 
             TextTime[npc.FullName] = DateTime.UtcNow;
         }
+    }
+    #endregion
+
+    #region 泰拉瑞亚 Boss AI
+    private static void TR_AI(BossAI bossAI, NPC npc)
+    {
+        Player plr = Main.player[npc.target];
+
+        //始终保持保持玩家头顶
+        if (bossAI.AlwaysTop && !plr.dead && plr.active)
+        {
+            npc.AI_120_HallowBoss_DashTo(plr.position);
+        }
+
+        //猪鲨AI
+        if (bossAI.DukeFishron)
+        {
+            npc.AI_069_DukeFishron();
+        }
+
+        //鹦鹉螺AI
+        if (bossAI.BloodNautilus)
+        {
+            npc.AI_117_BloodNautilus();
+        }
+
+        //白光AI
+        if (bossAI.HallowBoss)
+        {
+            npc.AI_120_HallowBoss();
+        }
+
+        //鹿角怪AI
+        if (bossAI.Deerclops)
+        {
+            npc.AI_123_Deerclops();
+        }
+    }
+    #endregion
+
+    #region 简化暂停控制
+    private static Dictionary<string, PauseState> PauseStates = new Dictionary<string, PauseState>();
+    private static bool ShouldPause(string npcName, TimerData Event)
+    {
+        // 如果暂停时间为0，不进行暂停
+        if (Event.PauseTime <= 0) return false;
+
+        // 初始化或检查事件是否切换
+        if (!PauseStates.ContainsKey(npcName))
+        {
+            PauseStates[npcName] = new PauseState
+            {
+                InPause = true, // 默认从暂停状态开始
+                PauseTime = DateTime.UtcNow
+            };
+        }
+
+        var state = PauseStates[npcName];
+        var PauseTimer = (DateTime.UtcNow - state.PauseTime).TotalMilliseconds;
+
+        // 检查是否应该切换状态
+        if (PauseTimer >= Event.PauseTime)
+        {
+            // 切换状态
+            state.InPause = !state.InPause;
+            state.PauseTime = DateTime.UtcNow;
+        }
+
+        return state.InPause;
     }
     #endregion
 

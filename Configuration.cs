@@ -21,6 +21,9 @@ internal class Configuration
         "45 ftw种子 | 46 颠倒种子 | 47 蜂蜜种子 | 48 饥荒种子 | 49 天顶种子 | 50 陷阱种子",
         "51 满月 | 52 亏凸月 | 53 下弦月 | 54 残月 | 55 新月 | 56 娥眉月 | 57 上弦月 | 58 盈凸月",
     };
+    [JsonProperty("步进AI模式说明", Order = -9)]
+    public string AIMess { get; set; } = "0递增 | 1递减 | 2往复 | 3随机";
+
 
     [JsonProperty("插件开关", Order = -1)]
     public bool Enabled { get; set; } = true;
@@ -33,7 +36,7 @@ internal class Configuration
     #endregion
 
     #region 预设参数方法
-    public void Ints()
+    public void SetDefault()
     {
         NpcList = new List<int>()
         {
@@ -48,11 +51,11 @@ internal class Configuration
 
         Dict!["克苏鲁之眼"] = new NpcData(0, 62, 25f, 35, 5)
         {
+            AutoHealInterval = 5,
             TimerEvent = new List<TimerData>()
             {
                 new TimerData
                 {
-                    AutoHealInterval = 5,
                     Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } },
                     SendProj = new List<ProjData>()
                     {
@@ -183,6 +186,7 @@ internal class Configuration
         {
             Loop = true,
             Teleport = 10,
+            AutoHealInterval = 5,
             TimerEvent = new List<TimerData>()
             {
                 new TimerData
@@ -227,7 +231,6 @@ internal class Configuration
                 new TimerData
                 {
                     Defense = 50,
-                    AutoHealInterval = 5,
                     Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,50" } },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
@@ -267,6 +270,7 @@ internal class Configuration
                 new TimerData() { Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } } }
             }
         };
+
         Dict!["毁灭者"] = new NpcData(0, 62 * 2f, 25f, 35, 5)
         {
             Teleport = 20,
@@ -294,24 +298,28 @@ internal class Configuration
         [JsonProperty("传送冷却", Order = 1)]
         public int Teleport { get; set; } = -1;
 
-        [JsonProperty("倒计时文字间隔", Order = 20)]
-        public double TextInterval { get; set; } = 1000f;
-        [JsonProperty("循环执行", Order = 21)]
+        [JsonProperty("回血间隔", Order = 18)]
+        public int AutoHealInterval { get; set; } = 10;
+        [JsonProperty("百分比回血", Order = 19)]
+        public int AutoHeal { get; set; } = 1;
+
+        [JsonProperty("冷却时间", Order = 21)]
+        public double ActiveTime { get; set; }
+        [JsonProperty("循环执行", Order = 22)]
         public bool Loop { get; set; }
-        [JsonProperty("冷却时间", Order = 22)]
-        public double CoolTimer { get; set; }
-        [JsonProperty("时间事件", Order = 23)]
+        [JsonProperty("倒时间隔", Order = 23)]
+        public double TextInterval { get; set; } = 1000f;
+        [JsonProperty("时间事件", Order = 24)]
         public List<TimerData> TimerEvent { get; set; } = new();
 
-
         public NpcData() { }
-        public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double coolTimer)
+        public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double activeTimer)
         {
             this.DeadCount = deadCount;
             this.TrackRange = trackRange;
             this.TrackStopRange = trackstopRange;
             this.TrackSpeed = trackSpeed;
-            this.CoolTimer = coolTimer;
+            this.ActiveTime = activeTimer;
         }
     }
     #endregion
@@ -329,7 +337,7 @@ internal class Configuration
         if (!File.Exists(FilePath))
         {
             var NewConfig = new Configuration();
-            NewConfig.Ints();
+            NewConfig.SetDefault();
             new Configuration().Write();
             return NewConfig;
         }

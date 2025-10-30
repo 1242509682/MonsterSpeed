@@ -16,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 2, 5);
+    public override Version Version => new Version(1, 2, 6);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、血量、防御等功能";
     #endregion
 
@@ -93,7 +93,7 @@ public class MonsterSpeed : TerrariaPlugin
                 TrackSpeed = 35,
                 TrackRange = 62,
                 TrackStopRange = 25,
-                CoolTimer = 5f,
+                ActiveTime = 5f,
                 TextInterval = 1000f,
                 TimerEvent = new List<TimerData>()
                 {
@@ -177,6 +177,12 @@ public class MonsterSpeed : TerrariaPlugin
         var range = Vector2.Distance(tar.Center, npc.Center);
         var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
 
+        // 自动回血
+        if (data.AutoHeal > 0)
+        {
+            AutoHeal(npc, data);
+        }
+
         TimerEvents.TimerEvent(npc, mess, data, dict, range); //时间事件 
 
         TrackMode(npc, data, tar, range, dict); //超距离追击
@@ -250,5 +256,24 @@ public class MonsterSpeed : TerrariaPlugin
         }
     }
     #endregion.
+
+    #region 自动回血
+    public static Dictionary<string, DateTime> HealTimes = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
+    internal static void AutoHeal(NPC npc, NpcData data)
+    {
+        if (!HealTimes.ContainsKey(npc.FullName))
+        {
+            HealTimes[npc.FullName] = DateTime.UtcNow.AddSeconds(-1); // 初始化为1秒前，确保第一次调用时立即回血
+        }
+
+        if ((DateTime.UtcNow - HealTimes[npc.FullName]).TotalMilliseconds >= data.AutoHealInterval * 1000) // 回血间隔
+        {
+            // 将AutoHeal视为百分比并计算相应的生命值恢复量
+            var num = (int)(npc.lifeMax * (data.AutoHeal / 100.0f));
+            npc.life = (int)Math.Min(npc.lifeMax, npc.life + num);
+            HealTimes[npc.FullName] = DateTime.UtcNow;
+        }
+    }
+    #endregion
 
 }

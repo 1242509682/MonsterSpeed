@@ -52,7 +52,8 @@ public class Conditions
                 }
 
                 // 武器条件
-                var plr = TShock.Players.FirstOrDefault(p => p != null && p.Active && p.IsLoggedIn)!.TPlayer;
+                Player plr = Main.player[npc.target];
+                if (plr is null || !plr.active || plr.dead) continue;
                 var WC = Condition.WeaponName == GetPlayerWeapon(plr);
                 if (Condition.WeaponName != "无" && !WC)
                 {
