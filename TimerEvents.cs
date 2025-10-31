@@ -19,10 +19,7 @@ public class TimerData
     [JsonProperty("修改防御", Order = -8)]
     public int Defense { get; set; } = 0;
 
-    [JsonProperty("原版AI", Order = 0)]
-    public List<BossAI> BossAI { get; set; } = new List<BossAI>();
-
-    [JsonProperty("AI赋值", Order = 2)]
+    [JsonProperty("AI赋值", Order = 0)]
     public AIModes AIMode { get; set; } = new AIModes();
 
     [JsonProperty("生成怪物", Order = 3)]
@@ -99,13 +96,6 @@ internal class TimerEvents
                 {
                     // AI赋值（修改为支持模式控制）
                     AISystem.AIPairs(npc, Event.AIMode, npc.FullName);
-
-                    // AI赋值监控
-                    if (Event.AIMode.Enabled)
-                    {
-                        var AiInfo = AISystem.GetAiInfo(Event.AIMode, npc.FullName);
-                        mess.Append($" ai赋值:[c/A2E4DB:{AiInfo}]\n");
-                    }
                 }
 
                 // 召唤怪物
@@ -130,9 +120,9 @@ internal class TimerEvents
                 }
 
                 // BossAi
-                if (Event.BossAI != null)
+                if (Event.AIMode != null && Event.AIMode.BossAI != null)
                 {
-                    foreach (var bossAI in Event.BossAI)
+                    foreach (var bossAI in Event.AIMode.BossAI)
                     {
                         if (bossAI != null)
                         {
@@ -215,13 +205,44 @@ internal class TimerEvents
         {
             var ActionTimer = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - CD_Timer);
 
+            // 获取当前事件序号
+            var (CD_Count, _) = GetOrAdd(npc.FullName);
+            int EventIndex = CD_Count + 1;
+            int TotalEvents = data.TimerEvent?.Count ?? 1;
+
             // 检查是否处于暂停状态
             bool pass = PauseStates.ContainsKey(npc.FullName) && PauseStates[npc.FullName].InPause;
-            var color = pass ? Color.Red : Color.LightGoldenrodYellow;
             var Status = pass ? "[pass] " : "";
 
-            TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, $"{Status}Time {ActionTimer.TotalSeconds:F2}",
-                                 (int)color.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
+            // 构建包含事件序号的文本
+            string Text = $"{Status}Time {ActionTimer.TotalSeconds:F2} [{EventIndex}/{TotalEvents}]";
+
+            var color = new Color();
+
+            // 是否启用倒计时渐变色
+            if (!data.TextGradient)
+            {
+                color = pass ? Color.Red : Color.LightGoldenrodYellow;
+                TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, Text,
+                    (int)color.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
+            }
+            else
+            {
+                // 将文本拆分成多个部分，每个部分使用不同的颜色
+                for (int i = 0; i < Text.Length; i++)
+                {
+                    var start = new Color(166, 213, 234);
+                    var end = new Color(245, 247, 175);
+                    float ratio = (float)i / (Text.Length - 1);
+                    color = Color.Lerp(start, end, ratio);
+
+                    // 发送单个字符（会产生多个悬浮文本）
+                    TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, Text[i].ToString(),
+                                         (int)color.PackedValue,
+                                         npc.position.X + (i * 16), // 水平偏移
+                                         npc.position.Y - 3, 0f, 0);
+                }
+            }
 
             TextTime[npc.FullName] = DateTime.UtcNow;
         }
@@ -294,6 +315,13 @@ internal class TimerEvents
         }
 
         return state.InPause;
+    }
+    #endregion
+
+    #region 获取当前事件索引
+    public static int GetIndex(string npcName)
+    {
+        return CoolTrack.TryGetValue(npcName, out var value) ? value.CDCount : 0;
     }
     #endregion
 

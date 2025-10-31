@@ -1,12 +1,18 @@
-﻿using Newtonsoft.Json;
+﻿using System.Reflection;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using TShockAPI;
-
 
 namespace MonsterSpeed;
 
 internal class Configuration
 {
     #region 实例变量
+    [JsonProperty(PropertyName = "隐藏默认配置项", Order = -13)]
+    public bool HideConfig { get; set; } = false;
+    [JsonProperty(PropertyName = "强制隐藏配置项", Order = -12)]
+    public List<string> CustomHideList { get; set; } = new List<string>();
+
     [JsonProperty("武器条件说明", Order = -11)]
     public string WeaponType { get; set; } = "无 | 未知 | 近战 | 远程 | 魔法 | 召唤 | 悠悠球 | 投掷物";
     [JsonProperty("进度条件说明", Order = -10)]
@@ -24,7 +30,6 @@ internal class Configuration
     [JsonProperty("步进AI模式说明", Order = -9)]
     public string AIMess { get; set; } = "0递增 | 1递减 | 2往复 | 3随机";
 
-
     [JsonProperty("插件开关", Order = -1)]
     public bool Enabled { get; set; } = true;
     [JsonProperty("监控间隔", Order = 0)]
@@ -35,9 +40,150 @@ internal class Configuration
     public Dictionary<string, NpcData>? Dict { get; set; } = new Dictionary<string, NpcData>();
     #endregion
 
+    #region 怪物数据结构
+    public class NpcData
+    {
+        [JsonProperty("死亡次数", Order = -3)]
+        public int DeadCount { get; set; }
+        [JsonProperty("自动仇恨", Order = -2)]
+        public bool AutoTarget { get; set; } = true;
+        [JsonProperty("追击距离", Order = -1)]
+        public float TrackRange { get; set; } = 62f;
+        [JsonProperty("停追距离", Order = 0)]
+        public float TrackStopRange { get; set; } = 25f;
+        [JsonProperty("追击速度", Order = 1)]
+        public int TrackSpeed { get; set; }
+        [JsonProperty("传送冷却", Order = 1)]
+        public int Teleport { get; set; } = -1;
+
+        [JsonProperty("回血间隔", Order = 18)]
+        public int AutoHealInterval { get; set; } = 10;
+        [JsonProperty("百分比回血", Order = 19)]
+        public int AutoHeal { get; set; } = 1;
+
+        [JsonProperty("循环执行", Order = 22)]
+        public bool Loop { get; set; }
+        [JsonProperty("倒时间隔", Order = 23)]
+        public double TextInterval { get; set; } = 1000f;
+        [JsonProperty("倒时渐变", Order = 23)]
+        public bool TextGradient { get; set; } = true;
+        [JsonProperty("冷却时间", Order = 25)]
+        public double ActiveTime { get; set; }
+        [JsonProperty("时间事件", Order = 26)]
+        public List<TimerData> TimerEvent { get; set; } = new();
+
+        public NpcData() { }
+        public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double activeTimer)
+        {
+            this.DeadCount = deadCount;
+            this.TrackRange = trackRange;
+            this.TrackStopRange = trackstopRange;
+            this.TrackSpeed = trackSpeed;
+            this.ActiveTime = activeTimer;
+        }
+    }
+    #endregion
+
+    #region 隐藏默认值的ContractResolver
+    public class ContractResolver : DefaultContractResolver
+    {
+        private readonly bool hide;
+        public ContractResolver(bool hide) => this.hide = hide;
+
+        protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
+        {
+            JsonProperty py = base.CreateProperty(member, memberSerialization);
+
+            // 获取属性的JsonProperty特性中定义的名称
+            var Attr = member.GetCustomAttribute<JsonPropertyAttribute>();
+            string NameInJson = Attr?.PropertyName ?? member.Name;
+
+            // 处理自定义强制隐藏 - 使用JSON中的属性名进行比较
+            var custom = MonsterSpeed.Config.CustomHideList;
+            if (hide && custom.Contains(NameInJson))
+            {
+                py.ShouldSerialize = instance => false;
+                return py; // 直接返回，不执行后续逻辑
+            }
+
+            // 处理属性默认值隐藏
+            if (member is PropertyInfo Info)
+            {
+                py.ShouldSerialize = instance =>
+                {
+                    // 如果不启用隐藏默认值，总是序列化
+                    if (!MonsterSpeed.Config.HideConfig)
+                        return true;
+
+                    var value = Info.GetValue(instance);
+
+                    // 安全地获取默认值
+                    object deValue = GetDefaultValue(Info.PropertyType);
+
+                    // 只有当值不等于默认值时才序列化
+                    return !Equals(value, deValue);
+                };
+            }
+
+            return py;
+        }
+
+        // 安全地获取各种类型的默认值
+        private object GetDefaultValue(Type type)
+        {
+            if (type == typeof(string))
+                return null; // 字符串的默认值是 null
+            else if (type == typeof(string[]))
+                return null; // 字符串数组的默认值是 null
+            else if (type.IsValueType)
+                return Activator.CreateInstance(type); // 值类型使用无参构造函数
+            else
+                return null; // 其他引用类型的默认值是 null
+        }
+    }
+    #endregion
+
+    #region 读取与创建配置文件方法
+    public static readonly string FilePath = Path.Combine(TShock.SavePath, "怪物加速.json");
+    public void Write()
+    {
+        var settings = new JsonSerializerSettings
+        {
+            Formatting = Formatting.Indented,
+            NullValueHandling = HideConfig ? NullValueHandling.Ignore : NullValueHandling.Include,
+            DefaultValueHandling = HideConfig ? DefaultValueHandling.Ignore : DefaultValueHandling.Include,
+            ContractResolver = new ContractResolver(HideConfig),
+        };
+
+        var json = JsonConvert.SerializeObject(this, settings);
+        File.WriteAllText(FilePath, json, new System.Text.UTF8Encoding(false));
+    }
+
+    public static Configuration Read()
+    {
+        if (!File.Exists(FilePath))
+        {
+            var NewConfig = new Configuration();
+            NewConfig.SetDefault();
+            NewConfig.Write();
+            return NewConfig;
+        }
+        else
+        {
+            var jsonContent = File.ReadAllText(FilePath);
+            return JsonConvert.DeserializeObject<Configuration>(jsonContent)!;
+        }
+    }
+    #endregion
+
     #region 预设参数方法
     public void SetDefault()
     {
+        CustomHideList = new List<string>()
+        {
+            "武器条件说明","进度条件说明","步进AI模式说明"
+        };
+
         NpcList = new List<int>()
         {
             4, 13, 35, 50, 113, 115,
@@ -107,12 +253,12 @@ internal class Configuration
                 {
                     Timer = 0,
                     Defense = 50,
-                    Condition = new List < Conditions >() 
-                    { 
-                        new Conditions() 
-                        { 
+                    Condition = new List < Conditions >()
+                    {
+                        new Conditions()
+                        {
                             NpcLift = "0,50",
-                        } 
+                        }
                     },
 
                     SendProj = new List<ProjData>()
@@ -168,7 +314,7 @@ internal class Configuration
                             }
                         }
                     },
-                    
+
                     ShootItemList = new HashSet<int>(){ 71,75 },
 
                     SpawnNPC = new List<SpawnNpcData>()
@@ -261,7 +407,7 @@ internal class Configuration
             },
 
         };
-        
+
         Dict!["世界吞噬怪"] = new NpcData(0, 62 * 2.5f, 25f, 35, 5)
         {
             Teleport = 20,
@@ -279,73 +425,6 @@ internal class Configuration
                 new TimerData() { Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } } }
             }
         };
-    }
-    #endregion
-
-    #region 怪物数据结构
-    public class NpcData
-    {
-        [JsonProperty("死亡次数", Order = -3)]
-        public int DeadCount { get; set; }
-        [JsonProperty("自动仇恨", Order = -2)]
-        public bool AutoTarget { get; set; } = true;
-        [JsonProperty("追击距离", Order = -1)]
-        public float TrackRange { get; set; } = 62f;
-        [JsonProperty("停追距离", Order = 0)]
-        public float TrackStopRange { get; set; } = 25f;
-        [JsonProperty("追击速度", Order = 1)]
-        public int TrackSpeed { get; set; }
-        [JsonProperty("传送冷却", Order = 1)]
-        public int Teleport { get; set; } = -1;
-
-        [JsonProperty("回血间隔", Order = 18)]
-        public int AutoHealInterval { get; set; } = 10;
-        [JsonProperty("百分比回血", Order = 19)]
-        public int AutoHeal { get; set; } = 1;
-
-        [JsonProperty("冷却时间", Order = 21)]
-        public double ActiveTime { get; set; }
-        [JsonProperty("循环执行", Order = 22)]
-        public bool Loop { get; set; }
-        [JsonProperty("倒时间隔", Order = 23)]
-        public double TextInterval { get; set; } = 1000f;
-        [JsonProperty("时间事件", Order = 24)]
-        public List<TimerData> TimerEvent { get; set; } = new();
-
-        public NpcData() { }
-        public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double activeTimer)
-        {
-            this.DeadCount = deadCount;
-            this.TrackRange = trackRange;
-            this.TrackStopRange = trackstopRange;
-            this.TrackSpeed = trackSpeed;
-            this.ActiveTime = activeTimer;
-        }
-    }
-    #endregion
-
-    #region 读取与创建配置文件方法
-    public static readonly string FilePath = Path.Combine(TShock.SavePath, "怪物加速.json");
-    public void Write()
-    {
-        var json = JsonConvert.SerializeObject(this, Formatting.Indented);
-        File.WriteAllText(FilePath, json);
-    }
-
-    public static Configuration Read()
-    {
-        if (!File.Exists(FilePath))
-        {
-            var NewConfig = new Configuration();
-            NewConfig.SetDefault();
-            new Configuration().Write();
-            return NewConfig;
-        }
-        else
-        {
-            var jsonContent = File.ReadAllText(FilePath);
-            return JsonConvert.DeserializeObject<Configuration>(jsonContent)!;
-        }
     }
     #endregion
 }

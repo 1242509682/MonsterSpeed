@@ -12,9 +12,14 @@ public class AIModes
 
     [JsonProperty("固定AI", Order = -1)]
     public Dictionary<int, float> FixedAI { get; set; } = new Dictionary<int, float>();
-
     [JsonProperty("步进AI", Order = 0)]
     public Dictionary<int, AISetting> StepAI { get; set; } = new Dictionary<int, AISetting>();
+    [JsonProperty("固定LocalAI", Order = 0)]
+    public Dictionary<int, float> FixedLocalAI { get; set; } = new Dictionary<int, float>();
+    [JsonProperty("步进LocalAI", Order = 2)]
+    public Dictionary<int, AISetting> StepLocalAI { get; set; } = new Dictionary<int, AISetting>();
+    [JsonProperty("原版AI", Order = 2)]
+    public List<BossAI> BossAI { get; set; } = new List<BossAI>();
 }
 
 // 步进AI的配置
@@ -37,6 +42,8 @@ public class AIState
 {
     public Dictionary<int, int> Directions { get; set; } = new Dictionary<int, int>();
     public Dictionary<int, float> Values { get; set; } = new Dictionary<int, float>();
+    public Dictionary<int, int> LocalDirections { get; set; } = new Dictionary<int, int>();
+    public Dictionary<int, float> LocalValues { get; set; } = new Dictionary<int, float>();
 }
 
 // 原版 BOSS AI
@@ -62,14 +69,15 @@ internal class AISystem
     public static void AIPairs(NPC npc, AIModes aiMode, string npcName)
     {
         if (!aiMode.Enabled) return;
-
         // 初始化或获取模式状态
         if (!AIPattern.TryGetValue(npcName, out var state))
         {
             state = new AIState
             {
                 Values = new Dictionary<int, float>(),
-                Directions = new Dictionary<int, int>()
+                Directions = new Dictionary<int, int>(),
+                LocalValues = new Dictionary<int, float>(),
+                LocalDirections = new Dictionary<int, int>()
             };
             AIPattern[npcName] = state;
         }
@@ -80,10 +88,22 @@ internal class AISystem
             FixedAI(npc, aiMode.FixedAI, state);
         }
 
+        // 处理固定localAI
+        if (aiMode.FixedLocalAI != null && aiMode.FixedLocalAI.Count > 0)
+        {
+            FixedLocalAI(npc, aiMode.FixedLocalAI, state);
+        }
+
         // 处理步进AI
         if (aiMode.StepAI != null && aiMode.StepAI.Count > 0)
         {
-            StepAI(npc, aiMode.StepAI, state, npcName);
+            StepAI(npc, aiMode.StepAI, state, npcName, false);
+        }
+
+        // 处理步进localAI
+        if (aiMode.StepLocalAI != null && aiMode.StepLocalAI.Count > 0)
+        {
+            StepAI(npc, aiMode.StepLocalAI, state, npcName, true);
         }
     }
     #endregion
@@ -93,12 +113,28 @@ internal class AISystem
     {
         foreach (var kvp in fixedAI)
         {
-            int Index = kvp.Key;
-            float fixedValue = kvp.Value;
-            if (Index >= 0 && Index < npc.ai.Length)
+            int key = kvp.Key;
+            float val = kvp.Value;
+            if (key >= 0 && key < npc.ai.Length)
             {
-                npc.ai[Index] = fixedValue;
-                state.Values[Index] = fixedValue;
+                npc.ai[key] = val;
+                state.Values[key] = val;
+            }
+        }
+    }
+    #endregion
+
+    #region 固定localAI
+    private static void FixedLocalAI(NPC npc, Dictionary<int, float> fixedLocalAI, AIState state)
+    {
+        foreach (var kvp in fixedLocalAI)
+        {
+            int key = kvp.Key;
+            float val = kvp.Value;
+            if (key >= 0 && key < npc.localAI.Length)
+            {
+                npc.localAI[key] = val;
+                state.LocalValues[key] = val;
             }
         }
     }
@@ -106,25 +142,29 @@ internal class AISystem
 
     #region 步进AI
     private static Random random = new Random(); // 静态Random实例
-    private static void StepAI(NPC npc, Dictionary<int, AISetting> stepAI, AIState state, string npcName)
+    private static void StepAI(NPC npc, Dictionary<int, AISetting> stepAI, AIState state, string npcName, bool isLocalAI)
     {
         foreach (var kvp in stepAI)
         {
             int Index = kvp.Key; // 键就是AI索引
             AISetting setting = kvp.Value;
 
-            if (Index < 0 || Index >= npc.ai.Length) continue;
+            // 检查索引范围
+            var target = isLocalAI ? npc.localAI : npc.ai;
+            if (Index < 0 || Index >= target.Length) continue;
 
             // 初始化当前值
-            if (!state.Values.ContainsKey(Index))
+            var val = isLocalAI ? state.LocalValues : state.Values;
+            var Dict = isLocalAI ? state.LocalDirections : state.Directions;
+            if (!val.ContainsKey(Index))
             {
-                state.Values[Index] = npc.ai[Index];
+                val[Index] = target[Index];
             }
 
             // 初始化方向（用于往复模式）
-            if (!state.Directions.ContainsKey(Index) && setting.Type == 2)
+            if (!Dict.ContainsKey(Index) && setting.Type == 2)
             {
-                state.Directions[Index] = 1;
+                Dict[Index] = 1;
             }
 
             float Value = state.Values[Index];
@@ -150,29 +190,19 @@ internal class AISystem
                     break;
 
                 case 2: // 往复模式
-                    newVal = Value + (setting.Step * state.Directions[Index]);
-                    if (newVal >= setting.MaxValue)
+                    newVal = Value + (setting.Step * Dict[Index]);
+                    if (newVal >= setting.MaxValue || newVal <= setting.MinValue)
                     {
-                        newVal = setting.MaxValue;
-                        state.Directions[Index] = -1;
-                    }
-                    else if (newVal <= setting.MinValue)
-                    {
-                        newVal = setting.MinValue;
-                        state.Directions[Index] = 1;
+                        // 使用 Math.Clamp 确保值在范围内
+                        newVal = Math.Clamp(newVal, setting.MinValue, setting.MaxValue);
+                        // 反转方向
+                        Dict[Index] *= -1;
                     }
                     break;
 
                 case 3: //  随机模式
-                    if (setting.Loop && random.NextDouble() < 0.1)
-                    {
-                        newVal = setting.MinValue;
-                    }
-                    else
-                    {
-                        // 禁用循环模式：完全随机，无特殊逻辑
-                        newVal = (float)(random.NextDouble() * (setting.MaxValue - setting.MinValue) + setting.MinValue);
-                    }
+                    newVal = setting.Loop && random.NextDouble() < 0.1 ? 
+                             setting.MinValue : (float)(random.NextDouble() * (setting.MaxValue - setting.MinValue) + setting.MinValue);
                     break;
             }
 
@@ -183,8 +213,8 @@ internal class AISystem
             }
 
             // 更新AI值
-            npc.ai[Index] = newVal;
-            state.Values[Index] = newVal;
+            target[Index] = newVal;
+            val[Index] = newVal;
         }
     }
     #endregion
@@ -210,17 +240,27 @@ internal class AISystem
             // 显示固定AI
             if (aiMode.FixedAI != null && aiMode.FixedAI.Count > 0)
             {
-                info.Append("固定:");
+                info.Append("\n [固定] ");
                 foreach (var kvp in aiMode.FixedAI)
                 {
-                    info.Append($"ai{kvp.Key}:{kvp.Value:F1} ");
+                    info.Append($" [ai{kvp.Key}] {kvp.Value:F1} ");
+                }
+            }
+
+            // 显示固定localAI
+            if (aiMode.FixedLocalAI != null && aiMode.FixedLocalAI.Count > 0)
+            {
+                info.Append("\n [固定] ");
+                foreach (var kvp in aiMode.FixedLocalAI)
+                {
+                    info.Append($" [Lai{kvp.Key}] {kvp.Value:F1} ");
                 }
             }
 
             // 显示步进AI
             if (aiMode.StepAI != null && aiMode.StepAI.Count > 0)
             {
-                info.Append("步进:");
+                info.Append("\n [步进] ");
                 foreach (var kvp in aiMode.StepAI)
                 {
                     var aiIndex = kvp.Key;
@@ -228,13 +268,36 @@ internal class AISystem
                     if (state.Values.ContainsKey(aiIndex))
                     {
                         string modeName = GetModeName(setting.Type);
-                        info.Append($"ai{aiIndex}:{state.Values[aiIndex]:F1}({modeName}) ");
+                        info.Append($" [ai{aiIndex}] {state.Values[aiIndex]:F1}({modeName}) ");
+                    }
+                }
+            }
+
+            // 显示步进localAI
+            if (aiMode.StepLocalAI != null && aiMode.StepLocalAI.Count > 0)
+            {
+                info.Append("\n [步进] ");
+                foreach (var kvp in aiMode.StepLocalAI)
+                {
+                    var aiIndex = kvp.Key;
+                    var setting = kvp.Value;
+                    if (state.LocalValues.ContainsKey(aiIndex))
+                    {
+                        string modeName = GetModeName(setting.Type);
+                        info.Append($" [Lai{aiIndex}] {state.LocalValues[aiIndex]:F1}({modeName}) ");
                     }
                 }
             }
         }
 
-        return info.ToString().Trim();
+        // 对结果应用渐变色效果
+        string result = info.ToString().Trim();
+        if (!string.IsNullOrEmpty(result))
+        {
+            return Tool.TextGradient(result);
+        }
+
+        return result;
     }
     #endregion
 }

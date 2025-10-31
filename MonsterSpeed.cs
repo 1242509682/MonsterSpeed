@@ -16,8 +16,8 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 2, 6);
-    public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、血量、防御等功能";
+    public override Version Version => new Version(1, 2, 7);
+    public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
     #region 注册与释放
@@ -192,11 +192,38 @@ public class MonsterSpeed : TerrariaPlugin
         //监控广播
         if (Config.Monitorinterval > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
         {
-            mess.Append($" [c/3A89D0:{npc.FullName}] 【x】[c/38E06D:{npc.velocity.X:F0}] " +
+            // 获取AI模式信息 - 添加更严格的检查
+            string aiInfo = "";
+            if (data.TimerEvent != null && data.TimerEvent.Count > 0)
+            {
+                int Index = TimerEvents.GetIndex(npc.FullName);
+                // 确保索引在有效范围内
+                if (Index >= 0 && Index < data.TimerEvent.Count)
+                {
+                    var Event = data.TimerEvent[Index];
+                    // 添加空值检查
+                    if (Event?.AIMode != null && Event.AIMode.Enabled)
+                    {
+                        aiInfo = AISystem.GetAiInfo(Event.AIMode, npc.FullName);
+                    }
+                }
+            }
+
+            // 构建基础信息
+            mess.Append($" [c/3A89D0:{npc.FullName}] [防] [c/3A89D0:{npc.defense}]【x】[c/38E06D:{npc.velocity.X:F0}] " +
             $"【y】[c/A5CEBB:{npc.velocity.Y:F0}] 【style】[c/3A89D0:{npc.aiStyle}]\n" +
             $" [ai0] [c/F3A144:{npc.ai[0]:F0}] [ai1] [c/D2A5DF:{npc.ai[1]:F0}]" +
-            $" [ai2] [c/EBEB91:{npc.ai[2]:F0}] [ai3] [c/35E635:{npc.ai[3]:F0}]\n" +
-            $" [de] [c/3A89D0:{npc.defense}]\n");
+            $" [ai2] [c/EBEB91:{npc.ai[2]:F0}] [ai3] [c/35E635:{npc.ai[3]:F0}]\n");
+
+            // 添加localAI信息
+            mess.Append($" [lai0] [c/F3A144:{npc.localAI[0]:F0}] [lai1] [c/D2A5DF:{npc.localAI[1]:F0}]" +
+            $" [lai2] [c/EBEB91:{npc.localAI[2]:F0}] [lai3] [c/35E635:{npc.localAI[3]:F0}]\n");
+
+            // 添加AI模式信息
+            if (!string.IsNullOrEmpty(aiInfo))
+            {
+                mess.Append($" {Tool.TextGradient(" ——————— ai赋值 ——————— ")} \n {aiInfo} \n {Tool.TextGradient(" ——————————————————— ")}");
+            }
 
             TSPlayer.All.SendMessage($"{mess}", 170, 170, 170);
             BroadcastTime = DateTime.UtcNow;

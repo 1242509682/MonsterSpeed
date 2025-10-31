@@ -12,4 +12,7 @@
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p" />
 		<PackageReference Include="TShock" Version="5.2.4" />
 	</ItemGroup>
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+	  <Exec Command="copy bin\Release\net6.0\MonsterSpeed.dll C:\Users\羽学\Desktop\TShock5\ServerPlugins&#xD;&#xA;del C:\Users\羽学\Desktop\TShock5\tshock\怪物加速.json&#xD;&#xA;taskkill /F /IM TShock.Server.exe" />
+	</Target>
 </Project>
