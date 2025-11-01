@@ -16,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 2, 7);
+    public override Version Version => new Version(1, 2, 8);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -128,7 +128,7 @@ public class MonsterSpeed : TerrariaPlugin
             Config.Write();
         }
 
-        var (CD_Count, CD_Timer) = TimerEvents.GetOrAdd(npc.FullName);
+        var (CD_Count, CD_Timer) = TimerEvents.GetIndex_SetTime(npc.FullName);
         TimerEvents.UpdateTrack(npc.FullName, CD_Count, CD_Timer);
     }
     #endregion
@@ -142,7 +142,7 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
-        var (CD_Count, CD_Timer) = TimerEvents.GetOrAdd(args.npc.FullName);
+        var (CD_Count, CD_Timer) = TimerEvents.GetIndex_SetTime(args.npc.FullName);
         Config.Dict!.TryGetValue(args.npc.FullName, out var data);
         if (data != null)
         {
@@ -196,7 +196,7 @@ public class MonsterSpeed : TerrariaPlugin
             string aiInfo = "";
             if (data.TimerEvent != null && data.TimerEvent.Count > 0)
             {
-                int Index = TimerEvents.GetIndex(npc.FullName);
+                var (Index, _) = TimerEvents.GetIndex_SetTime(npc.FullName);
                 // 确保索引在有效范围内
                 if (Index >= 0 && Index < data.TimerEvent.Count)
                 {

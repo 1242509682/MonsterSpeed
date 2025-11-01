@@ -300,4 +300,41 @@ internal class AISystem
         return result;
     }
     #endregion
+
+    #region 泰拉瑞亚 Boss AI
+    public static void TR_AI(BossAI bossAI, NPC npc)
+    {
+        Player plr = Main.player[npc.target];
+
+        //始终保持保持玩家头顶
+        if (bossAI.AlwaysTop && !plr.dead && plr.active)
+        {
+            npc.AI_120_HallowBoss_DashTo(plr.position);
+        }
+
+        //猪鲨AI
+        if (bossAI.DukeFishron)
+        {
+            npc.AI_069_DukeFishron();
+        }
+
+        //鹦鹉螺AI
+        if (bossAI.BloodNautilus)
+        {
+            npc.AI_117_BloodNautilus();
+        }
+
+        //白光AI
+        if (bossAI.HallowBoss)
+        {
+            npc.AI_120_HallowBoss();
+        }
+
+        //鹿角怪AI
+        if (bossAI.Deerclops)
+        {
+            npc.AI_123_Deerclops();
+        }
+    }
+    #endregion
 }
