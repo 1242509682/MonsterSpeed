@@ -231,7 +231,8 @@ internal class Command
         args.Player.SendInfoMessage($"文件命名格式: 序号.boss名称_事件索引.json");
         if (!overwrite)
         {
-            args.Player.SendInfoMessage($"模式: 追加导出 (从序号{startNum}开始),使用/mos all -f 可覆盖导出");
+            args.Player.SendInfoMessage($"模式: 追加导出 (从序号{startNum}开始)\n" +
+                                        $"使用/mos all -f 可清空后导出");
         }
     }
     #endregion

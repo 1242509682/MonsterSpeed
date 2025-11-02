@@ -8,11 +8,21 @@ namespace MonsterSpeed;
 internal class Configuration
 {
     #region 实例变量
-    [JsonProperty(PropertyName = "隐藏默认配置项", Order = -13)]
-    public bool HideConfig { get; set; } = false;
-    [JsonProperty(PropertyName = "强制隐藏配置项", Order = -12)]
-    public List<string> CustomHideList { get; set; } = new List<string>();
+    [JsonProperty("插件开关", Order = -100)]
+    public bool Enabled { get; set; } = true;
 
+    [JsonProperty("播放文件模式说明", Order = -12)]
+    public string[] FileMess { get; set; } = new string[]
+{
+        "使用 /mos all 导出时间事件 再用/mos list 列出文件,在[文件播放器]填写文件【序号】",
+        "导出的时间事件文件生成路径在: tshock/怪物加速_时间事件集 ",
+        "播放次数 0不播放，>1正序播放一次,<1倒序播放一次",
+        "播放时间 默认以怪物数据表本身的【冷却时间】(默认5秒) + 文件里的【冷却延长】构成",
+        "强制播放 可忽略【触发条件】与【暂停间隔】进行无约束播放,【循环执行】无法跳过",
+        "按次播放 每播放1个文件则算1次播放 3次规律为:1->2->1-> 回到主事件",
+        "暂停间隔 无法干涉文件的【强制播放】,单位毫秒,0为不暂停,超过0则触发,会循环暂停释放直到本次时间事件结束",
+        "释放间隔 【暂停间隔】为2000毫秒时,1:1默认释放2000毫秒,用于自定义暂停结束后释放时间"
+};
     [JsonProperty("武器条件说明", Order = -11)]
     public string WeaponType { get; set; } = "无 | 未知 | 近战 | 远程 | 魔法 | 召唤 | 悠悠球 | 投掷物";
     [JsonProperty("进度条件说明", Order = -10)]
@@ -30,8 +40,10 @@ internal class Configuration
     [JsonProperty("步进AI模式说明", Order = -9)]
     public string AIMess { get; set; } = "0递增 | 1递减 | 2往复 | 3随机";
 
-    [JsonProperty("插件开关", Order = -1)]
-    public bool Enabled { get; set; } = true;
+    [JsonProperty(PropertyName = "隐藏默认配置项", Order = -2)]
+    public bool HideConfig { get; set; } = false;
+    [JsonProperty(PropertyName = "强制隐藏配置项", Order = -1)]
+    public List<string> CustomHideList { get; set; } = new List<string>();
     [JsonProperty("监控间隔", Order = 0)]
     public double Monitorinterval { get; set; } = 0;
     [JsonProperty("怪物ID表", Order = 1)]
@@ -183,7 +195,7 @@ internal class Configuration
     {
         CustomHideList = new List<string>()
         {
-            "武器条件说明","进度条件说明","步进AI模式说明"
+            "武器条件说明","进度条件说明","步进AI模式说明","播放文件模式说明"
         };
 
         NpcList = new List<int>()

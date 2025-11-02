@@ -1,5 +1,4 @@
-﻿using System.IO;
-using System.Text;
+﻿using System.Text;
 using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
@@ -12,19 +11,21 @@ namespace MonsterSpeed;
 //时间事件数据结构
 public class TimerData
 {
+    [JsonProperty("文件播放器", Order = -103)]
+    public List<int> FilePlayList { get; set; } = new List<int>();
     [JsonProperty("播放次数", Order = -102)]
     public int PlayCount { get; set; } = 0;
-
-    [JsonProperty("文件播放器", Order = -101)]
-    public List<int> FilePlayList { get; set; } = new List<int>();
-
-    [JsonProperty("下组事件延长秒数", Order = -100)]
-    public int NextAddTimer { get; set; } = 0;
-
+    [JsonProperty("强制播放", Order = -101)]
+    public bool NoCond { get; set; } = false;
+    [JsonProperty("限次播放", Order = -100)]
+    public bool ByFile { get; set; } = false;
     [JsonProperty("暂停间隔", Order = -99)]
     public double PauseTime { get; set; }
     [JsonProperty("释放间隔", Order = -98)]
     public double ReleaseTime { get; set; }
+
+    [JsonProperty("下组事件延长秒数", Order = -97)]
+    public int NextAddTimer { get; set; } = 0;
 
     [JsonProperty("触发条件", Order = -50)]
     public List<Conditions> Condition { get; set; }
@@ -41,7 +42,6 @@ public class TimerData
     [JsonProperty("发射物品", Order = 5)]
     public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
 }
-
 
 // 状态管理类
 public class TimerState
@@ -72,16 +72,17 @@ internal class TimerEvents
         var life = (int)(npc.life / (float)npc.lifeMax * 100);
         var Event = data.TimerEvent[state!.Index];
 
-        // 暂停检查
-        if (Event.PauseTime > 0)
-        {
-            PauseMode(npc, mess, data, state, life, Event);
-        }
-
         // 文件播放器处理
         if (state.FileState.Playing)
         {
             HandleFilePlay(npc, mess, data, life, state);
+            return;
+        }
+
+        // 暂停检查 - 如果是强制播放，跳过暂停
+        if (Event.PauseTime > 0 && !Event.NoCond)
+        {
+            PauseMode(npc, mess, data, state, life, Event);
             return;
         }
 
@@ -97,12 +98,15 @@ internal class TimerEvents
                 // 检查条件是否满足
                 bool all = true;
                 bool loop = false;
-                Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
-
-                // 只有条件满足时才启动文件播放器
-                if (all)
+                if (!Event.NoCond) // 只有非强制播放时才检查条件
                 {
-                    StartFilePlay(npc.FullName, Event.FilePlayList, Event.PlayCount, state);
+                    Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+                }
+
+                // 强制播放 或 条件满足时启动文件播放器
+                if (Event.NoCond || all)
+                {
+                    StartFilePlay(npc.FullName, Event.FilePlayList, Event.PlayCount, Event.NoCond, Event.ByFile, state);
                     return;
                 }
                 else
@@ -125,7 +129,17 @@ internal class TimerEvents
 
             if (data.Loop && loop)
             {
-                NextEvent(data, Event.NextAddTimer, npc.FullName, state);
+                // 检查是否有文件播放器，如果有则根据强制播放决定是否跳过
+                if (Event.FilePlayList != null && Event.FilePlayList.Count > 0 && Event.PlayCount != 0 && Event.NoCond)
+                {
+                    StartFilePlay(npc.FullName, Event.FilePlayList, Event.PlayCount, Event.NoCond, Event.ByFile, state);
+                }
+                else
+                {
+                    // 没有文件播放器，正常跳过
+                    NextEvent(data, Event.NextAddTimer, npc.FullName, state);
+                    return;
+                }
             }
 
             if (all)

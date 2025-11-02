@@ -16,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 2, 9);
+    public override Version Version => new Version(1, 3, 0);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -140,6 +140,9 @@ public class MonsterSpeed : TerrariaPlugin
         MyMonster.ClearState(args.npc);
         // 清理TimerEvents中的状态
         TimerEvents.ClearStates(args.npc);
+        // 清理传送和回血记录
+        Teleport.Remove(args.npc.FullName);
+        HealTimes.Remove(args.npc.FullName);
 
         // 更新配置数据
         Config.Dict!.TryGetValue(args.npc.FullName, out var data);

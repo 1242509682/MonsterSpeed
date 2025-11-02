@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
+using Microsoft.Xna.Framework;
 using Terraria;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
@@ -30,7 +31,9 @@ public class FilePlayState
     public int PlayCount { get; set; } = 0; // 当前播放次数
     public bool Reverse { get; set; } = false; // 是否反向播放
     public List<TimerData> Events { get; set; } = new List<TimerData>(); // 当前文件的事件列表
-    public double MoreActiveTime { get; set; } = 0; // 新增：冷却延长
+    public double MoreActiveTime { get; set; } = 0; // 冷却延长
+    public bool NoCond { get; set; } = false; // 无条件播放
+    public bool ByFile { get; set; } = false; // 限次播放
 }
 
 internal class FilePlay
@@ -57,8 +60,8 @@ internal class FilePlay
         double remaining = ActiveTime - (DateTime.UtcNow - fs.EventTimer).TotalSeconds;
         remaining = Math.Max(0, remaining); // 确保不为负数
 
-        // 检查暂停时间
-        if (Event.PauseTime > 0)
+        // 检查暂停时间 - 如果是强制播放，跳过暂停
+        if (Event.PauseTime > 0 && fs.NoCond)
         {
             PauseMode(npc, mess, data, state, life, Event);
             return;
@@ -69,28 +72,34 @@ internal class FilePlay
         Player plr = Main.player[npc.target];
         if (plr != null && plr.active && !plr.dead)
         {
-            var dict = plr.position - npc.position;
-            range = dict.Length();
+            range = Vector2.Distance(plr.Center, npc.Center);
         }
 
-        // 检查当前文件事件的条件
+        // 检查当前文件事件的条件，如果开启强制播放则跳过条件检查
         bool all = true;
         bool loop = false;
-        Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+        if (!fs.NoCond) // 只有非强制播放时才检查条件
+        {
+            Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+        }
 
         // 显示冷却文本
         ShowCoolText(npc, data, state);
 
-        // 满足条件
-        if (all)
+        // 显示状态（包含剩余时间）- 调整显示顺序
+        string playMode = "";
+        if (fs.NoCond)
+            playMode += "[强制]";
+        if (fs.ByFile)
+            playMode += "[限次]";
+
+        // 强制播放或条件满足
+        if (fs.NoCond || all)
         {
             // 检查事件冷却
             if ((DateTime.UtcNow - fs.EventTimer).TotalSeconds >= ActiveTime)
             {
-                // 先执行事件再更新进度
-                StartEvent(npc, Event);
                 UpdateFilePlay(npc, state); // 更新文件播放进度
-
                 if (!state.FileState.Playing) // 如果文件播放已完成，返回
                 {
                     var curEvt = data.TimerEvent[state.Index];
@@ -104,8 +113,10 @@ internal class FilePlay
                 StartEvent(npc, Event);
             }
 
+
+
             // 显示状态（包含剩余时间）
-            mess.Append($" 文件:[c/A2E4DB:{fs.FileIndex + 1}/{fs.FileSeq.Count}] " +
+            mess.Append($" {playMode}文件:[c/A2E4DB:{fs.FileIndex + 1}/{fs.FileSeq.Count}] " +
                         $"事件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
                         $"次数:[c/A2E4DB:{fs.PlayCount + 1}/{fs.TotalCount}] " +
                         $"剩余:[c/A2E4DB:{remaining:F1}秒]\n");
@@ -122,7 +133,7 @@ internal class FilePlay
         else
         {
             // 显示状态（包含剩余时间）
-            mess.Append($" 文件:[c/A2E4DB:{fs.FileIndex + 1}/{fs.FileSeq.Count}] " +
+            mess.Append($" {playMode}文件:[c/A2E4DB:{fs.FileIndex + 1}/{fs.FileSeq.Count}] " +
                         $"事件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
                         $"次数:[c/A2E4DB:{fs.PlayCount + 1}/{fs.TotalCount}] " +
                         $"剩余:[c/A2E4DB:{remaining:F1}秒]\n");
@@ -166,10 +177,20 @@ internal class FilePlay
             fs.EventIndex = 0;
             fs.FileIndex++;
 
+            // 如果开启限次播放，每次文件播放完毕就增加播放计数
+            if (fs.ByFile)
+            {
+                fs.PlayCount++;
+            }
+
             // 检查是否所有文件都已执行完毕
             if (fs.FileIndex >= fs.FileSeq.Count)
             {
-                fs.PlayCount++;
+                // 如果没有开启限次播放，则在所有文件播放完毕后增加播放计数
+                if (!fs.ByFile)
+                {
+                    fs.PlayCount++;
+                }
 
                 //  当前播放次数超过总次数
                 if (fs.PlayCount >= fs.TotalCount)
@@ -198,12 +219,19 @@ internal class FilePlay
                     return;
                 }
             }
+
+            // 如果开启限次播放，检查是否达到播放次数
+            if (fs.ByFile && fs.PlayCount >= fs.TotalCount)
+            {
+                state.FileState = new FilePlayState();
+                return;
+            }
         }
     }
     #endregion
 
     #region 开始文件播放
-    public static void StartFilePlay(string npcName, List<int> fileList, int playCount, TimerState state)
+    public static void StartFilePlay(string npcName, List<int> fileList, int playCount, bool noCond, bool byFile, TimerState state)
     {
         try
         {
@@ -219,6 +247,8 @@ internal class FilePlay
             fs.PlayCount = 0;
             fs.Reverse = playCount < 0;
             fs.MoreActiveTime = 0;
+            fs.NoCond = noCond;
+            fs.ByFile = byFile;
 
             if (fs.Reverse)
             {
