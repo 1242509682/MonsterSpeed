@@ -73,21 +73,23 @@ public class Conditions
                 }
 
                 // 召怪条件
-                var MC = MyMonster.SNCount >= Condition.MonsterCount;
+                int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
+                var MC = snCount >= Condition.MonsterCount;
                 if (Condition.MonsterCount != -1 && !MC)
                 {
                     all = false;
                     loop = true;
-                    mess.Append($" 召怪条件未满足: 当前召怪次数 {MyMonster.SNCount} < {Condition.MonsterCount}\n");
+                    mess.Append($" 召怪条件未满足: 当前召怪次数 {snCount} < {Condition.MonsterCount}\n");
                 }
 
                 // 弹发条件
-                var PrC = MyProjectile.SPCount >= Condition.ProjectileCount;
-                if (Condition.ProjectileCount != -1 && !MC)
+                int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
+                var PrC = spCount >= Condition.ProjectileCount;
+                if (Condition.ProjectileCount != -1 && !PrC)
                 {
                     all = false;
                     loop = true;
-                    mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {MyProjectile.SPCount} < {Condition.ProjectileCount}\n");
+                    mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {spCount} < {Condition.ProjectileCount}\n");
                 }
 
                 // 死亡次数条件

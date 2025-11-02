@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.IO;
+using System.Text;
 using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
@@ -11,7 +12,6 @@ namespace MonsterSpeed;
 //时间事件数据结构
 public class TimerData
 {
-
     [JsonProperty("播放次数", Order = -102)]
     public int PlayCount { get; set; } = 0;
 
@@ -19,7 +19,7 @@ public class TimerData
     public List<int> FilePlayList { get; set; } = new List<int>();
 
     [JsonProperty("下组事件延长秒数", Order = -100)]
-    public int Timer { get; set; } = 0;
+    public int NextAddTimer { get; set; } = 0;
 
     [JsonProperty("暂停间隔", Order = -99)]
     public double PauseTime { get; set; }
@@ -42,298 +42,272 @@ public class TimerData
     public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
 }
 
+
+// 状态管理类
+public class TimerState
+{
+    public FilePlayState FileState { get; set; } = new FilePlayState(); // 文件播放状态管理
+    public PauseState PauseState { get; set; } = new PauseState(); // 暂停状态管理
+    public int Index { get; set; } = 0; // 当前执行的事件索引
+    public DateTime UpdateTimer { get; set; } = DateTime.UtcNow; // 事件更新时间戳
+    public DateTime LastTextTime { get; set; } = DateTime.UtcNow; // 上次显示文本时间
+}
+
 // 暂停状态类
 public class PauseState
 {
-    public bool InPause { get; set; } = false;
-    public DateTime PauseTime { get; set; } = DateTime.UtcNow;
-    public double StateDuration { get; set; } = 0;
+    public bool Paused { get; set; } = false; // 是否处于暂停状态
+    public DateTime StateTime { get; set; } = DateTime.UtcNow; // 状态开始时间
+    public double Duration { get; set; } = 0; // 状态持续时间
 }
 
 internal class TimerEvents
 {
     #region 时间事件
-    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData? data, Vector2 dict, float range)
+    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, Vector2 dict, float range)
     {
-        if (data == null || data.TimerEvent == null || data.TimerEvent.Count <= 0) return;
+        if (data?.TimerEvent == null || data.TimerEvent.Count <= 0) return;
 
-        var (CD_Count, CD_Timer) = GetIndex_SetTime(npc.FullName);
-
+        var state = GetState(npc);
         var life = (int)(npc.life / (float)npc.lifeMax * 100);
+        var Event = data.TimerEvent[state!.Index];
 
-        // 检查文件播放器状态
-        if (FilePlayStates.ContainsKey(npc.FullName) && FilePlayStates[npc.FullName].IsPlaying)
+        // 暂停检查
+        if (Event.PauseTime > 0)
         {
-            HandleFilePlay(npc, mess, data, life);
+            PauseMode(npc, mess, data, state, life, Event);
+        }
+
+        // 文件播放器处理
+        if (state.FileState.Playing)
+        {
+            HandleFilePlay(npc, mess, data, life, state);
             return;
         }
 
-        //更新计数器和时间 跳转下一个事件
-        var Event = data.TimerEvent[CD_Count];
+        // 显示冷却文本
+        ShowCoolText(npc, data, state);
 
-        // 检查暂停模式
-        if (ShouldPause(npc.FullName, Event))
+        // 事件冷却检查
+        if ((DateTime.UtcNow - state.UpdateTimer).TotalSeconds >= data.ActiveTime)
         {
-            // 在暂停期间，只显示冷却文本，不执行事件逻辑
-            TextExtended(npc, data, CD_Timer);
-            var remaining = GetReTime(npc.FullName, Event);
-            mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] [暂停剩余:{remaining:F0}ms]\n");
-            return;
-        }
-
-        //时间事件冷却倒计时（悬浮文本）
-        TextExtended(npc, data, CD_Timer);
-
-        if ((DateTime.UtcNow - CD_Timer).TotalSeconds >= data.ActiveTime)
-        {
-            // 检查是否需要启动文件播放器
+            // 启动文件播放器
             if (Event.FilePlayList != null && Event.FilePlayList.Count > 0 && Event.PlayCount != 0)
             {
-                StartFilePlay(npc.FullName, Event.FilePlayList, Event.PlayCount);
-                return;
+                // 检查条件是否满足
+                bool all = true;
+                bool loop = false;
+                Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+
+                // 只有条件满足时才启动文件播放器
+                if (all)
+                {
+                    StartFilePlay(npc.FullName, Event.FilePlayList, Event.PlayCount, state);
+                    return;
+                }
+                else
+                {
+                    NextEvent(data, Event.NextAddTimer, npc.FullName, state);
+                }
             }
             else
             {
-                NextEvent(ref CD_Count, ref CD_Timer, data, Event.Timer, npc.FullName);
+                NextEvent(data, Event.NextAddTimer, npc.FullName, state);
             }
         }
 
-        // 时间事件
+        // 事件条件检查
         if (Event != null)
         {
-            var all = true; //达成所有条件标识
+            var all = true;
             var loop = false;
-
-            //触发条件
             Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
 
-            //循环执行
             if (data.Loop && loop)
             {
-                NextEvent(ref CD_Count, ref CD_Timer, data, Event.Timer, npc.FullName);
+                NextEvent(data, Event.NextAddTimer, npc.FullName, state);
             }
 
-            // 满足所有条件
             if (all)
             {
-                ExecuteEvent(npc, Event);
+                StartEvent(npc, Event);
             }
         }
 
-        mess.Append($" 顺序:[c/A2E4DB:{CD_Count + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%]" +
-        $" 召怪:[c/A2E4DB:{MyMonster.SNCount}] 弹发:[c/A2E4DB:{MyProjectile.SPCount}]\n");
-    }
-    #endregion
-
-    #region 执行事件逻辑（提取为独立方法）
-    public static void ExecuteEvent(NPC npc, TimerData Event)
-    {
-        // 修改AI模式
-        if (Event.AIMode != null)
+        if (!state.PauseState.Paused)
         {
-            AISystem.AIPairs(npc, Event.AIMode, npc.FullName);
-        }
-
-        // 召唤怪物
-        if (Event.SpawnNPC != null && Event.SpawnNPC.Count > 0)
-        {
-            MyMonster.SpawnMonsters(Event.SpawnNPC, npc);
-        }
-
-        // 生成弹幕
-        if (Event.SendProj != null && Event.SendProj.Count > 0)
-        {
-            MyProjectile.SpawnProjectile(Event.SendProj, npc);
-        }
-
-        //持续发射物品(指定物品ID)
-        if (Event.ShootItemList != null)
-        {
-            foreach (var item in Event.ShootItemList)
-            {
-                npc.AI_87_BigMimic_ShootItem(item);
-            }
-        }
-
-        // BossAi
-        if (Event.AIMode != null && Event.AIMode.BossAI != null)
-        {
-            foreach (var bossAI in Event.AIMode.BossAI)
-            {
-                if (bossAI != null)
-                {
-                    AISystem.TR_AI(bossAI, npc);
-                }
-            }
-        }
-
-        // 修改防御
-        if (Event.Defense > 0)
-        {
-            if (npc.defense != Event.Defense)
-            {
-                npc.defense = Event.Defense;
-            }
-        }
-        else //否则恢复默认
-        {
-            npc.defense = npc.defDefense;
+            int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
+            int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
+            mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
         }
     }
     #endregion
 
-    #region 冷却计数与更新冷却时间方法
-    public static readonly Dictionary<string, (int CDCount, DateTime UpdateTimer)> CoolTrack = new();
-    public static (int CDCount, DateTime UpdateTimer) GetIndex_SetTime(string key)
+    #region 暂停模式
+    public static void PauseMode(NPC npc, StringBuilder mess, NpcData data, TimerState state, int life, TimerData Event)
     {
-        return CoolTrack.TryGetValue(key, out var value) ? value : (CoolTrack[key] = (0, DateTime.UtcNow));
-    }
-    public static void UpdateTrack(string key, int cdCount, DateTime updateTimer)
-    {
-        CoolTrack[key] = (cdCount, updateTimer);
+        PauseState pause = state.PauseState;
+        if (!pause.Paused)
+        {
+            pause.Paused = true;
+            pause.StateTime = DateTime.UtcNow;
+            pause.Duration = Event.PauseTime;
+        }
+
+        double elapsed = (DateTime.UtcNow - pause.StateTime).TotalMilliseconds;
+        double reTime = Event.ReleaseTime > 0 ? Event.ReleaseTime : Event.PauseTime;
+
+        if (elapsed >= (pause.Paused ? Event.PauseTime : reTime))
+        {
+            pause.Paused = !pause.Paused;
+            pause.StateTime = DateTime.UtcNow;
+            pause.Duration = pause.Paused ? Event.PauseTime : reTime;
+        }
+
+        if (pause.Paused)
+        {
+            ShowCoolText(npc, data, state);
+            var remain = pause.Duration - (DateTime.UtcNow - pause.StateTime).TotalMilliseconds;
+            mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 暂停剩余:[c/A2E4DB:{remain:F0}毫秒]\n");
+            return;
+        }
     }
     #endregion
 
     #region 让计数器自动前进到下一个事件
-    public static void NextEvent(ref int CD_Count, ref DateTime CD_Timer, NpcData data, int Timer, string npcName)
+    public static void NextEvent(NpcData data, int timer, string npcName, TimerState state)
     {
-        if (data.TimerEvent != null && data.TimerEvent.Count > 0)
+        state.PauseState = new PauseState();
+        state.Index = (state.Index + 1) % data.TimerEvent.Count;
+        var addTime = timer >= 0 ? timer : 0;
+
+        state.UpdateTimer = DateTime.UtcNow.AddSeconds(addTime);
+    }
+    #endregion
+
+    #region 执行事件逻辑
+    public static void StartEvent(NPC npc, TimerData evt)
+    {
+        if (evt.AIMode != null)
+            AISystem.AIPairs(npc, evt.AIMode, npc.FullName);
+
+        if (evt.SpawnNPC != null && evt.SpawnNPC.Count > 0)
+            MyMonster.SpawnMonsters(evt.SpawnNPC, npc);
+
+        if (evt.SendProj != null && evt.SendProj.Count > 0)
+            MyProjectile.SpawnProjectile(evt.SendProj, npc);
+
+        if (evt.ShootItemList != null)
         {
-            // 重置暂停状态
-            if (PauseStates.ContainsKey(npcName))
-            {
-                PauseStates[npcName] = new PauseState();
-            }
-
-            // 更新计数器以指向下一个事件
-            CD_Count = (CD_Count + 1) % data.TimerEvent.Count;
-
-            // 如果当前周期有指定的延长秒数，则使用它来更新冷却时间；否则使用默认值0
-            var Add = Timer >= 0 ? Timer : 0;
-
-            // 获取当前UTC时间并加上指定的秒数作为新的冷却结束时间
-            CD_Timer = DateTime.UtcNow.AddSeconds(Add);
-
-            // 更新时间
-            UpdateTrack(npcName, CD_Count, CD_Timer);
+            foreach (var item in evt.ShootItemList)
+                npc.AI_87_BigMimic_ShootItem(item);
         }
+
+        if (evt.AIMode?.BossAI != null)
+        {
+            foreach (var bossAI in evt.AIMode.BossAI)
+                AISystem.TR_AI(bossAI, npc);
+        }
+
+        npc.defense = evt.Defense > 0 ? evt.Defense : npc.defDefense;
     }
     #endregion
 
     #region 时间事件冷却倒计时方法（悬浮文本）
-    private static Dictionary<string, DateTime> TextTime = new Dictionary<string, DateTime>();// 跟踪每个NPC上次冷却记录时间
-    private static void TextExtended(NPC npc, NpcData? data, DateTime CD_Timer)
+    public static void ShowCoolText(NPC npc, NpcData data, TimerState state)
     {
-        if (data == null) return;
+        if ((DateTime.UtcNow - state.LastTextTime).TotalMilliseconds < data.TextInterval)
+            return;
 
-        if (!TextTime.ContainsKey(npc.FullName))
+        TimeSpan ActionTime;
+        string text;
+        Color color;
+
+        if (state.PauseState.Paused)
         {
-            TextTime[npc.FullName] = DateTime.UtcNow;
+            // 暂停状态下使用主事件计时器
+            ActionTime = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - state.UpdateTimer);
+            text = $"Pass {ActionTime.TotalSeconds:F2}";
+            color = Color.Red;
+        }
+        else if (state.FileState.Playing)
+        {
+            // 文件播放模式
+            var fs = state.FileState;
+            var time = data.ActiveTime + fs.MoreActiveTime;
+            ActionTime = TimeSpan.FromSeconds(time) - (DateTime.UtcNow - fs.EventTimer);
+            text = $"File {ActionTime.TotalSeconds:F2} [{fs.FileIndex + 1}/{fs.FileSeq.Count}]";
+            color = Color.Blue;
+        }
+        else
+        {
+            // 正常主事件模式
+            ActionTime = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - state.UpdateTimer);
+            text = $"Time {ActionTime.TotalSeconds:F2} [{state.Index + 1}/{data.TimerEvent?.Count ?? 1}]";
+            color = Color.LightGoldenrodYellow;
         }
 
-        if ((DateTime.UtcNow - TextTime[npc.FullName]).TotalMilliseconds >= data.TextInterval)
+        if (!data.TextGradient)
         {
-            var ActionTimer = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - CD_Timer);
-
-            // 获取当前事件序号
-            var (CD_Count, _) = GetIndex_SetTime(npc.FullName);
-            int EventIndex = CD_Count + 1;
-            int TotalEvents = data.TimerEvent?.Count ?? 1;
-
-            // 检查是否处于暂停状态
-            bool pass = PauseStates.ContainsKey(npc.FullName) && PauseStates[npc.FullName].InPause;
-            var Status = pass ? "[pass] " : "";
-
-            // 检查是否处于文件播放状态
-            bool filePlaying = FilePlayStates.ContainsKey(npc.FullName) && FilePlayStates[npc.FullName].IsPlaying;
-            if (filePlaying)
-            {
-                var fileState = FilePlayStates[npc.FullName];
-                Status = $"[文件播放] 文件:{fileState.CurrentFileIndex + 1}/{fileState.FileSequence.Count} ";
-            }
-
-            // 构建包含事件序号的文本
-            string Text = $"{Status}Time {ActionTimer.TotalSeconds:F2} [{EventIndex}/{TotalEvents}]";
-
-            var color = new Color();
-
-            // 是否启用倒计时渐变色
-            if (!data.TextGradient)
-            {
-                color = pass ? Color.Red : Color.LightGoldenrodYellow;
-                TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, Text,
-                    (int)color.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
-            }
-            else
-            {
-                // 将文本拆分成多个部分，每个部分使用不同的颜色
-                for (int i = 0; i < Text.Length; i++)
-                {
-                    var start = new Color(166, 213, 234);
-                    var end = new Color(245, 247, 175);
-                    float ratio = (float)i / (Text.Length - 1);
-                    color = Color.Lerp(start, end, ratio);
-
-                    // 发送单个字符（会产生多个悬浮文本）
-                    TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, Text[i].ToString(),
-                                         (int)color.PackedValue,
-                                         npc.position.X + (i * 16), // 水平偏移
-                                         npc.position.Y - 3, 0f, 0);
-                }
-            }
-
-            TextTime[npc.FullName] = DateTime.UtcNow;
+            TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, text,
+                (int)color.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
         }
+        else
+        {
+            for (int i = 0; i < text.Length; i++)
+            {
+                var start = new Color(166, 213, 234);
+                var end = new Color(245, 247, 175);
+                float ratio = (float)i / (text.Length - 1);
+                var gradColor = Color.Lerp(start, end, ratio);
+
+                TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, text[i].ToString(),
+                                     (int)gradColor.PackedValue,
+                                     npc.position.X + (i * data.TextRange),
+                                     npc.position.Y - 3, 0f, 0);
+            }
+        }
+
+        state.LastTextTime = DateTime.UtcNow;
     }
     #endregion
 
-    #region 改进暂停控制（支持自定义释放时间）
-    private static Dictionary<string, PauseState> PauseStates = new Dictionary<string, PauseState>();
-    private static bool ShouldPause(string npcName, TimerData Event)
+    #region 状态管理
+    public static readonly Dictionary<int, TimerState> TimerStates = new();
+
+    /// <summary>
+    /// 获取或创建NPC的状态
+    /// </summary>
+    /// <param name="npc">NPC实例</param>
+    /// <returns>状态对象</returns>
+    public static TimerState? GetState(NPC npc)
     {
-        // 如果暂停时间为0，不进行暂停
-        if (Event.PauseTime <= 0) return false;
+        if (npc == null || !npc.active)
+            return new TimerState();
 
-        // 计算释放时间，如果未设置则使用暂停时间（1:1）
-        double ReTime = Event.ReleaseTime > 0 ? Event.ReleaseTime : Event.PauseTime;
+        if (!TimerStates.ContainsKey(npc.whoAmI))
+            TimerStates[npc.whoAmI] = new TimerState();
+        return TimerStates[npc.whoAmI];
+    }
 
-        // 初始化或获取状态
-        if (!PauseStates.ContainsKey(npcName))
+    /// <summary>
+    /// 清理NPC的状态
+    /// </summary>
+    /// <param name="npc">NPC实例</param>
+    public static void ClearStates(NPC npc)
+    {
+        if (npc != null && TimerStates.ContainsKey(npc.whoAmI))
         {
-            PauseStates[npcName] = new PauseState
-            {
-                InPause = true, // 默认从暂停状态开始
-                PauseTime = DateTime.UtcNow,
-                StateDuration = Event.PauseTime
-            };
+            TimerStates.Remove(npc.whoAmI);
         }
+    }
 
-        var state = PauseStates[npcName];
-        var elapsed = (DateTime.UtcNow - state.PauseTime).TotalMilliseconds;
-        var Duration = state.InPause ? Event.PauseTime : ReTime;
-
-        // 检查是否应该切换状态
-        if (elapsed >= Duration)
-        {
-            // 切换状态并重置计时器
-            state.InPause = !state.InPause;
-            state.PauseTime = DateTime.UtcNow;
-            state.StateDuration = state.InPause ? Event.PauseTime : ReTime;
-        }
-
-        return state.InPause;
+    /// <summary>
+    /// 清理所有状态（用于重置）
+    /// </summary>
+    public static void ClearAllStates()
+    {
+        TimerStates.Clear();
     }
     #endregion
-
-    #region 获取剩余暂停时间
-    private static double GetReTime(string npcName, TimerData Event)
-    {
-        if (!PauseStates.ContainsKey(npcName)) return 0;
-
-        var state = PauseStates[npcName];
-        var elapsed = (DateTime.UtcNow - state.PauseTime).TotalMilliseconds;
-        return state.StateDuration - elapsed;
-    }
-    #endregion
-
 }

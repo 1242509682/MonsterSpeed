@@ -21,13 +21,24 @@ public class SpawnNpcData
     public bool TarCenter = false;
 }
 
+// 怪物生成状态类
+public class MonsterSpawnState
+{
+    public int SNCount = 0; //用于追踪该NPC的怪物生成次数
+    public Dictionary<int, float> SpawnTimer = new Dictionary<int, float>(); //用于追踪该NPC生成随从NPC冷却时间
+}
+
 internal class MyMonster
 {
     #region 召唤怪物方法
-    public static int SNCount = new int(); //用于追踪所有NPC生成次数
-    private static Dictionary<int, float> SpawnTimer = new Dictionary<int, float>(); //用于追踪生成随从NPC冷却时间
     public static void SpawnMonsters(List<SpawnNpcData> SpawnNpc, NPC npc)
     {
+        if (SpawnNpc == null || SpawnNpc.Count == 0) return;
+
+        // 获取NPC的状态
+        var state = GetState(npc);
+        if (state == null) return;
+
         var flag = false;
         foreach (var mos in SpawnNpc)
         {
@@ -40,20 +51,20 @@ internal class MyMonster
                 if (Stack >= mos.NpcStack) continue;
 
                 // 检查是否已经有冷却时间设置，如果没有则初始化为0（即没有冷却）
-                if (!SpawnTimer.ContainsKey(id))
+                if (!state.SpawnTimer.ContainsKey(id))
                 {
-                    SpawnTimer[id] = 0f;
+                    state.SpawnTimer[id] = 0f;
                 }
 
                 // 如果冷却时间为0或小于等于0，则允许生成怪物
-                if (SpawnTimer[id] <= 0f)
+                if (state.SpawnTimer[id] <= 0f)
                 {
                     var npc2 = TShock.Utils.GetNPCById(id);
                     if (npc2 == null) return;
 
                     if (npc2.type != 113 && npc2.type != 0 && npc2.type < Terraria.ID.NPCID.Count)
                     {
-                        //以“玩家为中心”为true 以玩家为中心,否则以被击中的npc为中心
+                        //以"玩家为中心"为true 以玩家为中心,否则以被击中的npc为中心
                         var plr = Main.player[npc.target];
                         var pos = mos.TarCenter
                                 ? new Vector2(plr.Center.X, plr.Center.Y)
@@ -67,7 +78,7 @@ internal class MyMonster
                                                  NewPos.X, NewPos.Y, mos.Range, mos.Range);
 
                         // 设置冷却时间
-                        SpawnTimer[id] = mos.Interval;
+                        state.SpawnTimer[id] = mos.Interval;
                         Stack++;
                         flag = true;
                     }
@@ -75,15 +86,56 @@ internal class MyMonster
                 else
                 {
                     // 减少冷却时间
-                    SpawnTimer[id] -= 1f;
+                    state.SpawnTimer[id] -= 1f;
                 }
             }
         }
 
         if (flag)
         {
-            SNCount++; //增加怪物生成次数
+            state.SNCount++; //增加该NPC的怪物生成次数
         }
-    } 
+    }
+    #endregion
+
+    #region 状态管理
+    private static Dictionary<int, MonsterSpawnState> NPCStates = new Dictionary<int, MonsterSpawnState>(); // 存储每个NPC的状态
+
+    /// <summary>
+    /// 获取或创建NPC的状态
+    /// </summary>
+    /// <param name="npc">NPC实例</param>
+    /// <returns>状态对象</returns>
+    public static MonsterSpawnState? GetState(NPC npc)
+    {
+        if (npc == null || !npc.active)
+            return new MonsterSpawnState();
+
+        if (!NPCStates.ContainsKey(npc.whoAmI))
+        {
+            NPCStates[npc.whoAmI] = new MonsterSpawnState();
+        }
+        return NPCStates[npc.whoAmI];
+    }
+
+    /// <summary>
+    /// 清理NPC的状态
+    /// </summary>
+    /// <param name="npc">NPC实例</param>
+    public static void ClearState(NPC npc)
+    {
+        if (npc != null && NPCStates.ContainsKey(npc.whoAmI))
+        {
+            NPCStates.Remove(npc.whoAmI);
+        }
+    }
+
+    /// <summary>
+    /// 清理所有状态（用于重置）
+    /// </summary>
+    public static void ClearAllStates()
+    {
+        NPCStates.Clear();
+    }
     #endregion
 }

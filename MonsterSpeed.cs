@@ -16,20 +16,19 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 2, 8);
+    public override Version Version => new Version(1, 2, 9);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
     #region 注册与释放
-    public MonsterSpeed(Main game) : base(game) 
+    public MonsterSpeed(Main game) : base(game)
     {
-        MyProjectile.SpawnPorj = new SpawnProj[1001];
+        MyProjectile.UpdateState = new UpdateProj[1001];
     }
 
     public override void Initialize()
     {
         LoadConfig();
-        //ServerApi.Hooks.GameUpdate.Register(this, OnGameUpdate);
         GeneralHooks.ReloadEvent += ReloadConfig;
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
         ServerApi.Hooks.NpcStrike.Register(this, this.OnNpcStrike);
@@ -42,7 +41,6 @@ public class MonsterSpeed : TerrariaPlugin
         if (disposing)
         {
             GeneralHooks.ReloadEvent -= ReloadConfig;
-            //ServerApi.Hooks.GameUpdate.Deregister(this, OnGameUpdate);
             ServerApi.Hooks.NpcKilled.Deregister(this, this.OnNPCKilled);
             ServerApi.Hooks.NpcStrike.Deregister(this, this.OnNpcStrike);
             ServerApi.Hooks.NpcAIUpdate.Deregister(this, this.OnNpcAiUpdate);
@@ -66,13 +64,6 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
-    #region 世界更新事件
-    private void OnGameUpdate(EventArgs args)
-    {
-        GameTimer.Update();
-    }
-    #endregion
-
     #region 伤怪建表法
     private void OnNpcStrike(NpcStrikeEventArgs args)
     {
@@ -83,53 +74,53 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
-        var NewNpc = !Config.Dict!.ContainsKey(npc.FullName);
-        if (NewNpc)
+        var newNpc = !Config.Dict!.ContainsKey(npc.FullName);
+        if (newNpc)
         {
-            var newData = new Configuration.NpcData()
-            {
-                DeadCount = 0,
-                AutoTarget = true,
-                TrackSpeed = 35,
-                TrackRange = 62,
-                TrackStopRange = 25,
-                ActiveTime = 5f,
-                TextInterval = 1000f,
-                TimerEvent = new List<TimerData>()
-                {
-                    new TimerData()
-                    {
-                        Condition = new List<Conditions>()
-                        {
-                            new Conditions()
-                            {
-                                NpcLift = "0,100"
-                            }
-                        },
-
-                        SendProj = new List<ProjData>()
-                        {
-                            new ProjData()
-                            {
-                                Type = 115,
-                                Damage = 30,
-                                stack = 15,
-                                interval = 60f,
-                                KnockBack = 5,
-                                Velocity = 10f,
-                            }
-                        },
-                    }
-                },
-            };
-
-            Config.Dict[npc.FullName] = newData;
-            TimerEvents.CoolTrack[npc.FullName] = (0, DateTime.UtcNow);
+            NpcData nd = NewData();
+            Config.Dict[npc.FullName] = nd;
             Config.Write();
-        }
 
-        var (CD_Count, CD_Timer) = TimerEvents.GetIndex_SetTime(npc.FullName);
-        TimerEvents.UpdateTrack(npc.FullName, CD_Count, CD_Timer);
+            var state = TimerEvents.GetState(npc);
+            if (state != null)
+            {
+                state.Index = 0;
+                state.UpdateTimer = DateTime.UtcNow;
+                state.FileState = new FilePlayState();
+                state.PauseState = new PauseState();
+            }
+        }
+    }
+    #endregion
+
+    #region 创建新数据
+    internal static NpcData NewData()
+    {
+        var newData = new Configuration.NpcData()
+        {
+            DeadCount = 0,
+            AutoTarget = true,
+            TrackSpeed = 25,
+            TrackRange = 62,
+            TrackStopRange = 25,
+            ActiveTime = 5f,
+            TextInterval = 1000f,
+            TimerEvent = new List<TimerData>()
+            {
+                new TimerData()
+                {
+                    Condition = new List<Conditions>()
+                    {
+                        new Conditions()
+                        {
+                            NpcLift = "0,100"
+                        }
+                    }
+                }
+            },
+        };
+
+        return newData;
     }
     #endregion
 
@@ -142,17 +133,20 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
-        var (CD_Count, CD_Timer) = TimerEvents.GetIndex_SetTime(args.npc.FullName);
+        // 清理MyProjectile中的状态
+        MyProjectile.ClearState(args.npc);
+        MyProjectile.ClearUpState(args.npc);
+        // 清理MyMonster中的状态
+        MyMonster.ClearState(args.npc);
+        // 清理TimerEvents中的状态
+        TimerEvents.ClearStates(args.npc);
+
+        // 更新配置数据
         Config.Dict!.TryGetValue(args.npc.FullName, out var data);
         if (data != null)
         {
-            CD_Count = 0;
             data.DeadCount += 1;
-            MyMonster.SNCount = 0;
-            MyProjectile.SPCount = 0;
-
             Config.Write();
-            TimerEvents.UpdateTrack(args.npc.FullName, CD_Count, CD_Timer);
         }
     }
     #endregion
@@ -172,7 +166,7 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
-        var tar = npc.GetTargetData(true);  // 获取玩家与怪物的距离和相对位置向量
+        var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
         if (tar.Invalid) return; //目标无效返回
         var range = Vector2.Distance(tar.Center, npc.Center);
         var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
@@ -183,7 +177,7 @@ public class MonsterSpeed : TerrariaPlugin
             AutoHeal(npc, data);
         }
 
-        TimerEvents.TimerEvent(npc, mess, data, dict, range); //时间事件 
+        TimerEvents.TimerEvent(npc, mess, data, dict, range); //时间事件
 
         TrackMode(npc, data, tar, range, dict); //超距离追击
 
@@ -192,24 +186,24 @@ public class MonsterSpeed : TerrariaPlugin
         //监控广播
         if (Config.Monitorinterval > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
         {
-            // 获取AI模式信息 - 添加更严格的检查
+            // 使用新的状态管理方法获取当前事件索引
+            var state = TimerEvents.GetState(npc);
             string aiInfo = "";
             if (data.TimerEvent != null && data.TimerEvent.Count > 0)
             {
-                var (Index, _) = TimerEvents.GetIndex_SetTime(npc.FullName);
-                // 确保索引在有效范围内
-                if (Index >= 0 && Index < data.TimerEvent.Count)
+                var idx = state!.Index;
+                if (idx >= 0 && idx < data.TimerEvent.Count)
                 {
-                    var Event = data.TimerEvent[Index];
-                    // 添加空值检查
-                    if (Event?.AIMode != null && Event.AIMode.Enabled)
+                    var evt = data.TimerEvent[idx];
+                    if (evt?.AIMode != null && evt.AIMode.Enabled)
                     {
-                        aiInfo = AISystem.GetAiInfo(Event.AIMode, npc.FullName);
+                        aiInfo = AISystem.GetAiInfo(evt.AIMode, npc.FullName);
                     }
                 }
             }
 
             // 构建基础信息
+            mess.Append($" {Tool.TextGradient(" ——————————————————")}\n");
             mess.Append($" [c/3A89D0:{npc.FullName}] [防] [c/3A89D0:{npc.defense}]【x】[c/38E06D:{npc.velocity.X:F0}] " +
             $"【y】[c/A5CEBB:{npc.velocity.Y:F0}] 【style】[c/3A89D0:{npc.aiStyle}]\n" +
             $" [ai0] [c/F3A144:{npc.ai[0]:F0}] [ai1] [c/D2A5DF:{npc.ai[1]:F0}]" +
@@ -219,21 +213,24 @@ public class MonsterSpeed : TerrariaPlugin
             mess.Append($" [lai0] [c/F3A144:{npc.localAI[0]:F0}] [lai1] [c/D2A5DF:{npc.localAI[1]:F0}]" +
             $" [lai2] [c/EBEB91:{npc.localAI[2]:F0}] [lai3] [c/35E635:{npc.localAI[3]:F0}]\n");
 
+            mess.Append($" {Tool.TextGradient(" ——————————————————")}\n");
+
             // 添加AI模式信息
             if (!string.IsNullOrEmpty(aiInfo))
             {
-                mess.Append($" {Tool.TextGradient(" ——————— ai赋值 ——————— ")} \n {aiInfo} \n {Tool.TextGradient(" ——————————————————— ")}");
+                mess.Append($" {Tool.TextGradient(" ——————— ai赋值 ——————— ")} \n" +
+                            $" {aiInfo} \n" +
+                            $" {Tool.TextGradient(" ——————————————————— ")}");
             }
 
             TSPlayer.All.SendMessage($"{mess}", 170, 170, 170);
             BroadcastTime = DateTime.UtcNow;
         }
-
     }
     #endregion
 
     #region 超距离追击模式
-    private Dictionary<string, DateTime> Teleport = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
+    private Dictionary<string, DateTime> Teleport = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次传送的时间
     private void TrackMode(NPC npc, NpcData data, NPCAimedTarget tar, float range, Vector2 dict)
     {
         if (data == null) return;
@@ -263,7 +260,7 @@ public class MonsterSpeed : TerrariaPlugin
                 npc.netUpdate = true;
                 return;
             }
-            else if (range < data.TrackStopRange) // 在最小距离内停止
+            else if (range < data.TrackStopRange)  // 在最小距离内停止
             {
                 npc.netUpdate = false;
                 return;
@@ -282,7 +279,7 @@ public class MonsterSpeed : TerrariaPlugin
             npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
         }
     }
-    #endregion.
+    #endregion
 
     #region 自动回血
     public static Dictionary<string, DateTime> HealTimes = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
@@ -290,10 +287,11 @@ public class MonsterSpeed : TerrariaPlugin
     {
         if (!HealTimes.ContainsKey(npc.FullName))
         {
-            HealTimes[npc.FullName] = DateTime.UtcNow.AddSeconds(-1); // 初始化为1秒前，确保第一次调用时立即回血
+            HealTimes[npc.FullName] = DateTime.UtcNow.AddSeconds(-data.AutoHealInterval); // 初始化为1秒前，确保第一次调用时立即回血
         }
 
-        if ((DateTime.UtcNow - HealTimes[npc.FullName]).TotalMilliseconds >= data.AutoHealInterval * 1000) // 回血间隔
+        // 回血间隔
+        if ((DateTime.UtcNow - HealTimes[npc.FullName]).TotalMilliseconds >= data.AutoHealInterval * 1000)
         {
             // 将AutoHeal视为百分比并计算相应的生命值恢复量
             var num = (int)(npc.lifeMax * (data.AutoHeal / 100.0f));
@@ -302,5 +300,4 @@ public class MonsterSpeed : TerrariaPlugin
         }
     }
     #endregion
-
 }

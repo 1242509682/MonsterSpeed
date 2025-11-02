@@ -67,6 +67,8 @@ internal class Configuration
         public double TextInterval { get; set; } = 1000f;
         [JsonProperty("倒时渐变", Order = 23)]
         public bool TextGradient { get; set; } = true;
+        [JsonProperty("渐变字距", Order = 24)]
+        public int TextRange { get; set; } = 16;
         [JsonProperty("冷却时间", Order = 25)]
         public double ActiveTime { get; set; }
         [JsonProperty("时间事件", Order = 26)]
@@ -251,7 +253,7 @@ internal class Configuration
 
                 new TimerData
                 {
-                    Timer = 0,
+                    NextAddTimer = 0,
                     Defense = 50,
                     Condition = new List < Conditions >()
                     {
@@ -298,7 +300,7 @@ internal class Configuration
 
                 new TimerData
                 {
-                    Timer = 10,
+                    NextAddTimer = 0,
                     Defense = 50,
                     Condition = new List < Conditions >()
                     {

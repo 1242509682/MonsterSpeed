@@ -15,7 +15,7 @@ internal class Command
         {
             args.Player.SendMessage("《怪物加速》\n" +
                 "/mos hide —— 显示与隐藏多余配置项\n" +
-                "/mos all —— 导出所有BOSS时间事件\n" +
+                "/mos all [-f] —— 导出所有BOSS时间事件(-f覆盖)\n" +
                 "/mos now —— 导出当前BOSS当前事件\n" +
                 "/mos list —— 列出时间事件文件夹中的文件\n" +
                 "/mos clear —— 清空时间事件文件夹\n" +
@@ -24,11 +24,10 @@ internal class Command
             return;
         }
 
-        if (args.Parameters.Count == 1 && Config.Dict != null)
+        if (args.Parameters.Count >= 1 && Config.Dict != null)
         {
             if (args.Parameters[0].ToLower() == "hide")
             {
-                // 切换当前配置的隐藏设置
                 Config.HideConfig = !Config.HideConfig;
                 Config.Write();
                 args.Player.SendSuccessMessage($"已切换多余配置项显示状态为: {(Config.HideConfig ? "隐藏" : "显示")}。");
@@ -37,28 +36,25 @@ internal class Command
 
             if (args.Parameters[0].ToLower() == "all")
             {
-                // 导出所有BOSS时间事件
-                ExportTimerEvents(args);
+                bool overwrite = args.Parameters.Contains("-f");
+                ExportTimerEvents(args, overwrite);
                 return;
             }
 
             if (args.Parameters[0].ToLower() == "now")
             {
-                // 导出当前BOSS当前事件
                 ExportCurrentBossEvent(args);
                 return;
             }
 
             if (args.Parameters[0].ToLower() == "list")
             {
-                // 列出时间事件文件夹中的文件
                 ListTimerEvents(args);
                 return;
             }
 
             if (args.Parameters[0].ToLower() == "clear")
             {
-                // 清空时间事件文件夹
                 ClearTimerEvents(args);
                 return;
             }
@@ -66,48 +62,18 @@ internal class Command
             if (args.Parameters[0].ToLower() == "reset")
             {
                 Commands.HandleCommand(args.Player, "/butcher");
+
+                MyProjectile.ClearAllStates();
+                MyProjectile.ClearAllStates();
+                TimerEvents.ClearAllStates();
+
                 Config.Dict.Clear();
 
-                var NewNpc = !Config.Dict!.ContainsKey(Lang.GetNPCNameValue(Terraria.ID.NPCID.EyeofCthulhu));
-                if (NewNpc)
+                var newNpc = !Config.Dict!.ContainsKey(Lang.GetNPCNameValue(Terraria.ID.NPCID.EyeofCthulhu));
+                if (newNpc)
                 {
-                    var newData = new Configuration.NpcData()
-                    {
-                        DeadCount = 0,
-                        AutoTarget = true,
-                        TrackSpeed = 35,
-                        TrackRange = 62,
-                        TrackStopRange = 25,
-                        ActiveTime = 5f,
-                        TextInterval = 1000f,
-                        TimerEvent = new List<TimerData>()
-                    {
-                        new TimerData()
-                        {
-                            Condition = new List<Conditions>()
-                            {
-                                new Conditions()
-                                {
-                                    NpcLift = "0,100"
-                                }
-                            },
-
-                            SendProj = new List<ProjData>()
-                            {
-                                new ProjData()
-                                {
-                                    Type = 115,
-                                    Damage = 30,
-                                    stack = 15,
-                                    interval = 60f,
-                                    KnockBack = 5,
-                                    Velocity = 10f,
-                                }
-                            },
-                        }
-                    },
-                    };
-                    Config.Dict[Lang.GetNPCNameValue(4)] = newData;
+                    var nd = NewData();
+                    Config.Dict[Lang.GetNPCNameValue(4)] = nd;
                 }
 
                 Config.Write();
@@ -120,18 +86,17 @@ internal class Command
     #region 列出时间事件文件夹文件指令
     public static void ListTimerEvents(CommandArgs args)
     {
-        var directory = Path.Combine("tshock", "怪物加速_时间事件集");
+        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
 
-        if (!Directory.Exists(directory))
+        if (!Directory.Exists(dir))
         {
-            args.Player.SendErrorMessage($"时间事件文件夹不存在: {directory}");
+            args.Player.SendErrorMessage($"时间事件文件夹不存在: {dir}");
             return;
         }
 
         try
         {
-            // 获取所有json文件
-            var files = Directory.GetFiles(directory, "*.json")
+            var files = Directory.GetFiles(dir, "*.json")
                 .Select(Path.GetFileName)
                 .OrderBy(f => f)
                 .ToList();
@@ -144,29 +109,26 @@ internal class Command
 
             args.Player.SendSuccessMessage($"时间事件文件夹中的文件 ({files.Count} 个):");
 
-            // 分页显示，每页10个文件
             int pageSize = 10;
             int totalPages = (int)Math.Ceiling(files.Count / (double)pageSize);
-            int currentPage = 1;
+            int curPage = 1;
 
-            // 检查是否有页码参数
             if (args.Parameters.Count > 1 && int.TryParse(args.Parameters[1], out int page) && page > 0 && page <= totalPages)
             {
-                currentPage = page;
+                curPage = page;
             }
 
-            int startIndex = (currentPage - 1) * pageSize;
-            int endIndex = Math.Min(startIndex + pageSize, files.Count);
+            int start = (curPage - 1) * pageSize;
+            int end = Math.Min(start + pageSize, files.Count);
 
-            // 直接显示文件名，不添加额外序号
-            for (int i = startIndex; i < endIndex; i++)
+            for (int i = start; i < end; i++)
             {
                 args.Player.SendInfoMessage(files[i]);
             }
 
             if (totalPages > 1)
             {
-                args.Player.SendInfoMessage($"第 {currentPage} 页，共 {totalPages} 页。使用 /mos list [页码] 查看其他页。");
+                args.Player.SendInfoMessage($"第 {curPage} 页，共 {totalPages} 页。使用 /mos list [页码] 查看其他页。");
             }
         }
         catch (Exception ex)
@@ -178,69 +140,99 @@ internal class Command
     #endregion
 
     #region 导出时间事件指令
-    public static void ExportTimerEvents(CommandArgs args)
+    public static void ExportTimerEvents(CommandArgs args, bool overwrite = false)
     {
-        var directory = Path.Combine("tshock", "怪物加速_时间事件集");
-        if (!Directory.Exists(directory))
+        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
+        if (!Directory.Exists(dir))
         {
-            Directory.CreateDirectory(directory);
+            Directory.CreateDirectory(dir);
         }
 
-        int Count = 0;
-        // 获取所有事件并排序
-        var allEvents = new List<(string npcName, int eventIndex, TimerData data)>();
+        if (overwrite)
+        {
+            try
+            {
+                var jsonFiles = Directory.GetFiles(dir, "*.json");
+                foreach (var file in jsonFiles)
+                {
+                    File.Delete(file);
+                }
+                args.Player.SendInfoMessage("已清空原有事件文件。");
+            }
+            catch (Exception ex)
+            {
+                args.Player.SendErrorMessage($"清空原有文件失败: {ex.Message}");
+                return;
+            }
+        }
+
+        int cnt = 0;
+        var allEvents = new List<(string name, int idx, TimerData data)>();
 
         foreach (var kvp in Config.Dict!)
         {
-            var npcName = kvp.Key;
-            var npcData = kvp.Value;
+            var name = kvp.Key;
+            var data = kvp.Value;
 
-            if (npcData.TimerEvent != null && npcData.TimerEvent.Count > 0)
+            if (data.TimerEvent != null && data.TimerEvent.Count > 0)
             {
-                for (int i = 0; i < npcData.TimerEvent.Count; i++)
+                for (int i = 0; i < data.TimerEvent.Count; i++)
                 {
-                    allEvents.Add((npcName, i + 1, npcData.TimerEvent[i]));
+                    allEvents.Add((name, i + 1, data.TimerEvent[i]));
                 }
             }
         }
 
-        // 按BOSS名称和事件索引排序
-        allEvents = allEvents.OrderBy(e => e.npcName).ThenBy(e => e.eventIndex).ToList();
+        allEvents = allEvents.OrderBy(e => e.name).ThenBy(e => e.idx).ToList();
 
-        // 重新编号并导出
+        // 如果不覆盖，找到最大序号
+        int startNum = 1;
+        if (!overwrite)
+        {
+            var existing = Directory.GetFiles(dir, "*.json");
+            foreach (var file in existing)
+            {
+                var fileName = Path.GetFileNameWithoutExtension(file);
+                if (int.TryParse(fileName.Split('.')[0], out var num) && num >= startNum)
+                {
+                    startNum = num + 1;
+                }
+            }
+        }
+
         for (int i = 0; i < allEvents.Count; i++)
         {
             try
             {
-                var (npcName, eventIndex, data) = allEvents[i];
-                var sequenceNumber = i + 1;
+                var (name, idx, data) = allEvents[i];
+                var num = startNum + i;
 
-                // 创建事件文件数据
-                var FileData = new EventFileData
+                var fd = new EventFileData
                 {
-                    EventName = $"{npcName}的事件{eventIndex}",
+                    EventName = $"{name}的事件{idx}",
+                    MoreActiveTime = 0,
                     TimerEvents = new List<TimerData> { data }
                 };
 
-                // 序列化为JSON
-                var json = JsonConvert.SerializeObject(FileData, Formatting.Indented);
+                var json = JsonConvert.SerializeObject(fd, Formatting.Indented);
+                var fileName = $"{num}.{name}_事件{idx}.json";
+                var path = Path.Combine(dir, fileName);
 
-                // 生成新格式的文件名：序号.boss名称_事件索引.json
-                var fileName = $"{sequenceNumber}.{npcName}_事件{eventIndex}.json";
-                var filePath = Path.Combine(directory, fileName);
-
-                // 写入文件
-                File.WriteAllText(filePath, json, Encoding.UTF8);
-                Count++;
+                File.WriteAllText(path, json, Encoding.UTF8);
+                cnt++;
             }
             catch (Exception ex)
             {
-                TShock.Log.ConsoleError($"导出事件失败 序号:{i + 1}, 错误: {ex.Message}");
+                TShock.Log.ConsoleError($"导出事件失败 序号:{startNum + i}, 错误: {ex.Message}");
             }
         }
 
-        args.Player.SendSuccessMessage($"成功导出 {Count} 个时间事件到: {directory}");
+        args.Player.SendSuccessMessage($"成功导出 {cnt} 个时间事件到: {dir}");
         args.Player.SendInfoMessage($"文件命名格式: 序号.boss名称_事件索引.json");
+        if (!overwrite)
+        {
+            args.Player.SendInfoMessage($"模式: 追加导出 (从序号{startNum}开始),使用/mos all -f 可覆盖导出");
+        }
     }
     #endregion
 
@@ -248,18 +240,17 @@ internal class Command
     public static void ExportCurrentBossEvent(CommandArgs args)
     {
         var plr = args.Player;
-        var directory = Path.Combine("tshock", "怪物加速_时间事件集");
-        if (!Directory.Exists(directory))
+        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
+        if (!Directory.Exists(dir))
         {
-            Directory.CreateDirectory(directory);
+            Directory.CreateDirectory(dir);
         }
 
         try
         {
-            // 获取玩家周围的BOSS
             var near = Main.npc
                 .Where(npc => npc != null && npc.active && !npc.friendly && npc.boss)
-                .Where(npc => Vector2.Distance(plr.TPlayer.position, npc.position) < 85 * 16f) // 50格范围内
+                .Where(npc => Vector2.Distance(plr.TPlayer.position, npc.position) < 85 * 16f)
                 .ToList();
 
             if (near.Count == 0)
@@ -268,74 +259,66 @@ internal class Command
                 return;
             }
 
-            // 找到最近的BOSS
-            var npc = near.OrderBy(npc => Vector2.Distance(plr.TPlayer.position, npc.position)).First();
+            var npc = near.OrderBy(n => Vector2.Distance(plr.TPlayer.position, n.position)).First();
 
-            // 查找配置中对应的BOSS数据
-            var Entry = Config.Dict!.FirstOrDefault(kvp =>
+            var entry = Config.Dict!.FirstOrDefault(kvp =>
                 kvp.Key.Contains(npc.FullName, StringComparison.OrdinalIgnoreCase) ||
                 npc.FullName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase));
 
-            if (Entry.Equals(default(KeyValuePair<string, Configuration.NpcData>)))
+            if (entry.Equals(default(KeyValuePair<string, Configuration.NpcData>)))
             {
                 plr.SendErrorMessage($"未找到BOSS '{npc.FullName}' 的配置数据！");
                 return;
             }
 
-            var npcName = Entry.Key;
-            var npcData = Entry.Value;
+            var name = entry.Key;
+            var data = entry.Value;
 
-            if (npcData.TimerEvent == null || npcData.TimerEvent.Count == 0)
+            if (data.TimerEvent == null || data.TimerEvent.Count == 0)
             {
-                plr.SendErrorMessage($"BOSS '{npcName}' 没有时间事件配置！");
+                plr.SendErrorMessage($"BOSS '{name}' 没有时间事件配置！");
                 return;
             }
 
-            // 获取当前事件索引
-            var (Index, _) = TimerEvents.GetIndex_SetTime(npc.FullName);
-            if (Index < 0 || Index >= npcData.TimerEvent.Count)
+            var idx = TimerEvents.GetState(npc)!.Index;
+            if (idx < 0 || idx >= data.TimerEvent.Count)
             {
-                plr.SendErrorMessage($"BOSS '{npcName}' 的当前事件索引无效！");
+                plr.SendErrorMessage($"BOSS '{name}' 的当前事件索引无效！");
                 return;
             }
 
-            var Event = npcData.TimerEvent[Index];
-            var eventIndex = Index + 1;
+            var evt = data.TimerEvent[idx];
+            var evtIdx = idx + 1;
 
-            // 查找下一个可用的序号
-            var existingFiles = Directory.GetFiles(directory, "*.json");
-            var maxSequence = 0;
+            var existing = Directory.GetFiles(dir, "*.json");
+            var maxNum = 0;
 
-            foreach (var file in existingFiles)
+            foreach (var file in existing)
             {
                 var fileName2 = Path.GetFileNameWithoutExtension(file);
-                if (int.TryParse(fileName2.Split('.')[0], out var seq) && seq > maxSequence)
+                if (int.TryParse(fileName2.Split('.')[0], out var num2) && num2 > maxNum)
                 {
-                    maxSequence = seq;
+                    maxNum = num2;
                 }
             }
 
-            var Number = maxSequence + 1;
+            var num = maxNum + 1;
 
-            // 创建事件文件数据
-            var FileData = new EventFileData
+            var fd = new EventFileData
             {
-                EventName = $"{npcName}的当前事件",
-                TimerEvents = new List<TimerData> { Event }
+                EventName = $"{name}的当前事件",
+                MoreActiveTime = 0,
+                TimerEvents = new List<TimerData> { evt }
             };
 
-            // 序列化为JSON
-            var json = JsonConvert.SerializeObject(FileData, Formatting.Indented);
+            var json = JsonConvert.SerializeObject(fd, Formatting.Indented);
+            var fileName = $"{num}.{name}_事件{evtIdx}.json";
+            var path = Path.Combine(dir, fileName);
 
-            // 生成新格式的文件名：序号.boss名称_事件索引.json
-            var fileName = $"{Number}.{npcName}_事件{eventIndex}.json";
-            var filePath = Path.Combine(directory, fileName);
+            File.WriteAllText(path, json, Encoding.UTF8);
 
-            // 写入文件
-            System.IO.File.WriteAllText(filePath, json, Encoding.UTF8);
-
-            plr.SendSuccessMessage($"成功导出BOSS '{npcName}' 的当前事件到: {fileName}");
-            plr.SendInfoMessage($"事件索引: {eventIndex}/{npcData.TimerEvent.Count}，文件序号: {Number}");
+            plr.SendSuccessMessage($"成功导出BOSS '{name}' 的当前事件到: {fileName}");
+            plr.SendInfoMessage($"事件索引: {evtIdx}/{data.TimerEvent.Count}，文件序号: {num}");
         }
         catch (Exception ex)
         {
@@ -348,26 +331,25 @@ internal class Command
     #region 清空时间事件文件夹指令
     public static void ClearTimerEvents(CommandArgs args)
     {
-        var directory = Path.Combine("tshock", "怪物加速_时间事件集");
+        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
 
-        if (!Directory.Exists(directory))
+        if (!Directory.Exists(dir))
         {
-            args.Player.SendErrorMessage($"时间事件文件夹不存在: {directory}");
+            args.Player.SendErrorMessage($"时间事件文件夹不存在: {dir}");
             return;
         }
 
         try
         {
-            // 获取所有json文件
-            var jsonFiles = Directory.GetFiles(directory, "*.json");
-            int deletedCount = 0;
+            var jsonFiles = Directory.GetFiles(dir, "*.json");
+            int delCnt = 0;
 
             foreach (var file in jsonFiles)
             {
                 try
                 {
                     File.Delete(file);
-                    deletedCount++;
+                    delCnt++;
                 }
                 catch (Exception ex)
                 {
@@ -375,9 +357,9 @@ internal class Command
                 }
             }
 
-            if (deletedCount > 0)
+            if (delCnt > 0)
             {
-                args.Player.SendSuccessMessage($"已清空时间事件文件夹，删除了 {deletedCount} 个文件。");
+                args.Player.SendSuccessMessage($"已清空时间事件文件夹，删除了 {delCnt} 个文件。");
             }
             else
             {

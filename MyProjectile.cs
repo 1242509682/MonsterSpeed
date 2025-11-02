@@ -42,7 +42,16 @@ public class ProjData
     public List<UpdateProjData> UpdateProj { get; set; } = new List<UpdateProjData>();
 }
 
-//更新弹幕数据
+// 生成弹幕状态管理类
+public class SpawnProjState
+{
+    public int Index = 0; //存储弹幕组索引
+    public int SPCount = 0; //用于追踪所有弹幕生成次数
+    public Dictionary<int, int> SendStack = new Dictionary<int, int>(); //追踪每发弹幕的数量
+    public Dictionary<int, float> EachCooldowns = new Dictionary<int, float>(); //追踪每发弹幕之间的发射间隔
+}
+
+// 更新弹幕数据
 public class UpdateProjData
 {
     [JsonProperty("死亡回弹", Order = -1)]
@@ -65,8 +74,8 @@ public class UpdateProjData
     public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
 }
 
-//已发射出去的弹幕数据
-public class SpawnProj
+// 用于存储更新弹幕的信息
+public class UpdateProj
 {
     //弹幕索引
     public int Index { get; set; }
@@ -75,7 +84,7 @@ public class SpawnProj
     //弹幕ID
     public int Type { get; set; }
 
-    public SpawnProj(int index, int useIndex, int type)
+    public UpdateProj(int index, int useIndex, int type)
     {
         Index = index;
         whoAmI = useIndex;
@@ -86,38 +95,40 @@ public class SpawnProj
 internal class MyProjectile
 {
     #region 弹幕生成方法
-    private static int Index = 0; //存储弹幕组索引
-    public static int SPCount = new int(); //用于追踪所有弹幕生成次数
-    private static Dictionary<int, int> SendStack = new Dictionary<int, int>(); //追踪每发弹幕的数量
-    private static Dictionary<int, float> EachCooldowns = new Dictionary<int, float>(); //追踪每发弹幕之间的发射间隔
     public static Dictionary<int, DateTime> UpdateTimer = new(); //用于追踪更新弹幕的时间
     public static void SpawnProjectile(List<ProjData> SpawnProj, NPC npc)
     {
-        if (SpawnProj == null || SpawnProj.Count == 0 || Index >= SpawnProj.Count) return;
+        if (SpawnProj == null || SpawnProj.Count == 0) return;
 
-        ProjData proj = SpawnProj[Index];
+        // 获取NPC的状态
+        var state = GetState(npc);
+        if (state == null) return;
+
+        if (state.Index >= SpawnProj.Count) return;
+
+        ProjData proj = SpawnProj[state.Index];
 
         // 初始化当前弹幕组的发射数量
-        if (!SendStack.ContainsKey(Index)) SendStack[Index] = 0;
+        if (!state.SendStack.ContainsKey(state.Index)) state.SendStack[state.Index] = 0;
 
         // 初始化每个弹幕的发射间隔
-        if (!EachCooldowns.ContainsKey(Index)) EachCooldowns[Index] = 0;
+        if (!state.EachCooldowns.ContainsKey(state.Index)) state.EachCooldowns[state.Index] = 0;
 
         // 获取距离和方向向量 新增目标筛选逻辑
         Player plr = Main.player[npc.target];
         Vector2 dict = plr.Center - npc.Center;
 
         // 数量超标 目标无效 或 不在进度则跳过
-        if (SendStack[Index] >= proj.stack || proj.Type <= 0 || plr == null)
+        if (state.SendStack[state.Index] >= proj.stack || proj.Type <= 0 || plr == null)
         {
-            Next(SpawnProj);
+            Next(SpawnProj, state);
             return;
         }
 
         // 检查冷却时间
-        if (EachCooldowns[Index] > 0f)
+        if (state.EachCooldowns[state.Index] > 0f)
         {
-            EachCooldowns[Index] -= 1f;
+            state.EachCooldowns[state.Index] -= 1f;
         }
         else
         {
@@ -137,7 +148,7 @@ internal class MyProjectile
             //随着弹幕数量的增加而减慢
             if (proj.decayForStack)
             {
-                decay = 1.0f - SendStack[Index] / (float)proj.stack * proj.decay;
+                decay = 1.0f - state.SendStack[state.Index] / (float)proj.stack * proj.decay;
             }
             else if (proj.decay != 0)
             {
@@ -150,16 +161,15 @@ internal class MyProjectile
             Vector2 vel = dict.SafeNormalize(Vector2.Zero) * speed;
 
             // 应用角度偏移
-            double Angle = (SendStack[Index] - (proj.stack - 1) / 2.0f) * addRadian;
+            double Angle = (state.SendStack[state.Index] - (proj.stack - 1) / 2.0f) * addRadian;
 
-            //vel = vel.RotatedBy(Angle);
             // 如果旋转角度不为0，则设置旋转角度
             if (proj.Rotate != 0)
             {
-                vel = vel.RotatedBy(Angle + proj.Rotate * SendStack[Index]);
+                vel = vel.RotatedBy(Angle + proj.Rotate * state.SendStack[state.Index]);
             }
 
-            //以“玩家为中心”为true 以玩家为中心,否则以被击中的npc为中心
+            //以"玩家为中心"为true 以玩家为中心,否则以被击中的npc为中心
             Vector2 pos = proj.TarCenter
                     ? new Vector2(plr.Center.X, plr.Center.Y)
                     : new Vector2(npc.Center.X, npc.Center.Y);
@@ -169,7 +179,7 @@ internal class MyProjectile
             if (proj.Radius != 0)
             {
                 // 计算相对于中心点的偏移量，直接使用 偏移半径 作为偏移距离
-                double ExAngle = SendStack[Index] / (float)(proj.stack - 1) * MathHelper.TwoPi; // 均匀分布的角度
+                double ExAngle = state.SendStack[state.Index] / (float)(proj.stack - 1) * MathHelper.TwoPi; // 均匀分布的角度
                 Vector2 offset = new Vector2((float)Math.Cos(ExAngle), (float)Math.Sin(ExAngle)) * (proj.Radius * 16);
                 // 如果 偏移半径 是负数，则反向偏移量
                 if (proj.Radius < 0)
@@ -196,7 +206,7 @@ internal class MyProjectile
                     // 更新弹幕
                     if (proj.UpdateProj != null && proj.UpdateProj.Count > 0)
                     {
-                        SpawnPorj[newProj] = new SpawnProj(newProj, npc.whoAmI, proj.Type);
+                        UpdateState[newProj] = new UpdateProj(newProj, npc.whoAmI, proj.Type);
 
                         // 如果没有记录过这个弹幕的更新计时器，则初始化
                         if (!UpdateTimer.ContainsKey(newProj))
@@ -206,7 +216,7 @@ internal class MyProjectile
 
                         if ((DateTime.UtcNow - UpdateTimer[newProj]).TotalMilliseconds >= proj.UpdateTime)
                         {
-                            UpdateProjectile(proj, proj.UpdateProj, npc, plr, proj.Type, proj.stack);
+                            UpdateProjectile(proj, proj.UpdateProj, npc, plr, proj.Type, proj.stack, state);
                             UpdateTimer[newProj] = DateTime.UtcNow; // 更新最后一次更新的时间
                         }
                     }
@@ -218,15 +228,15 @@ internal class MyProjectile
                 }
             }
 
-            SendStack[Index]++; //更新发射数计数器
-            EachCooldowns[Index] = proj.interval;  //设置间隔
+            state.SendStack[state.Index]++; //更新发射数计数器
+            state.EachCooldowns[state.Index] = proj.interval;  //设置间隔
         }
     }
     #endregion
 
     #region 更新弹幕方法
-    public static SpawnProj[] SpawnPorj { get; set; } = new SpawnProj[Main.maxProjectiles];  //用于存储已经发射出去的弹幕
-    private static void UpdateProjectile(ProjData proj, List<UpdateProjData> Update, NPC npc, Player plr, int type, int stack)
+    public static UpdateProj[] UpdateState { get; set; } = new UpdateProj[Main.maxProjectiles];  //用于存储已经发射出去的弹幕
+    private static void UpdateProjectile(ProjData proj, List<UpdateProjData> Update, NPC npc, Player plr, int type, int stack, SpawnProjState state)
     {
         if (Update == null || Update.Count <= 0) return;
 
@@ -237,12 +247,12 @@ internal class MyProjectile
         {
             if (up == null) continue;
 
-            for (var i = 0; i < SpawnPorj.Length; i++)
+            for (var i = 0; i < UpdateState.Length; i++)
             {
-                if (SpawnPorj[i] == null) continue;
-                if (type <= 0 || SpawnPorj[i].Index < 0 || SpawnPorj[i].Type != type || SpawnPorj[i].whoAmI != npc.whoAmI) continue;
+                if (UpdateState[i] == null) continue;
+                if (type <= 0 || UpdateState[i].Index < 0 || UpdateState[i].Type != type || UpdateState[i].whoAmI != npc.whoAmI) continue;
 
-                int index = SpawnPorj[i].Index;
+                int index = UpdateState[i].Index;
 
                 Projectile NewProj = Main.projectile[index];
 
@@ -256,7 +266,7 @@ internal class MyProjectile
                 //随着弹幕数量的增加而减慢
                 if (up.decayForStack)
                 {
-                    decay = 1.0f - SendStack[Index] / (float)stack * up.decay;
+                    decay = 1.0f - state.SendStack[state.Index] / (float)stack * up.decay;
                 }
                 else if (up.decay != 0)
                 {
@@ -296,10 +306,10 @@ internal class MyProjectile
 
                 // 计算每次发射的弧度增量
                 double addRadian = radian * 2.0f / (stack - 1);
-                double Angle = (SendStack[Index] - (stack - 1) / 2.0f) * addRadian;
+                double Angle = (state.SendStack[state.Index] - (stack - 1) / 2.0f) * addRadian;
                 if (up.Rotate != 0)
                 {
-                    vel = vel.RotatedBy(Angle + ((float)(up.Rotate * SendStack[Index])));
+                    vel = vel.RotatedBy(Angle + ((float)(up.Rotate * state.SendStack[state.Index])));
                     add(UpList, index);
                 }
                 else
@@ -313,7 +323,7 @@ internal class MyProjectile
                 // 如果半径不为0，则计算偏移位置
                 if (up.Radius != 0)
                 {
-                    double ExAngle = SendStack[Index] / (float)(stack - 1) * MathHelper.TwoPi;
+                    double ExAngle = state.SendStack[state.Index] / (float)(stack - 1) * MathHelper.TwoPi;
                     Vector2 offset = new Vector2((float)Math.Cos(ExAngle), (float)Math.Sin(ExAngle)) * (Math.Abs(up.Radius) * 16) * Math.Sign(up.Radius);
 
                     if (up.Radius < 0)
@@ -400,19 +410,79 @@ internal class MyProjectile
     #endregion
 
     #region 移动到下一个要发射的弹幕方法
-    private static void Next(List<ProjData> data)
+    private static void Next(List<ProjData> data, SpawnProjState state)
     {
         //只有当前组的所有弹幕都发射完毕时才更新索引
-        if (SendStack.ContainsKey(Index) && SendStack[Index] >= data[Index].stack)
+        if (state.SendStack.ContainsKey(state.Index) && state.SendStack[state.Index] >= data[state.Index].stack)
         {
-            Index++;
-            if (Index >= data.Count)
+            state.Index++;
+            if (state.Index >= data.Count)
             {
-                Index = 0;
+                state.Index = 0;
             }
-            SendStack[Index] = 0;
-            EachCooldowns[Index] = 0f; // 重置冷却时间
-            SPCount++; //增加弹幕生成次数
+            state.SendStack[state.Index] = 0; // 重置发射数量 
+            state.EachCooldowns[state.Index] = 0f; // 重置冷却时间
+            state.SPCount++; //增加弹幕生成次数
+        }
+    }
+    #endregion
+
+    #region 状态管理
+    public static Dictionary<int, SpawnProjState> ProjStates = new Dictionary<int, SpawnProjState>(); // 存储每个NPC的状态
+
+    /// <summary>
+    /// 获取或创建NPC的状态
+    /// </summary>
+    /// <param name="npc">NPC实例</param>
+    /// <returns>状态对象</returns>
+    public static SpawnProjState? GetState(NPC npc)
+    {
+        if (npc == null || !npc.active)
+            return new SpawnProjState();
+
+        if (!ProjStates.ContainsKey(npc.whoAmI))
+        {
+            ProjStates[npc.whoAmI] = new SpawnProjState();
+        }
+        return ProjStates[npc.whoAmI];
+    }
+
+    /// <summary>
+    /// 清理NPC的状态
+    /// </summary>
+    /// <param name="npc">NPC实例</param>
+    public static void ClearState(NPC npc)
+    {
+        if (npc != null && ProjStates.ContainsKey(npc.whoAmI))
+        {
+            ProjStates.Remove(npc.whoAmI);
+        }
+    }
+
+    /// <summary>
+    /// 清理所有状态（用于重置）
+    /// </summary>
+    public static void ClearAllStates()
+    {
+        ProjStates.Clear();
+    }
+
+    // 清理UpdateTimer中与该NPC相关的条目
+    public static void ClearUpState(NPC npc)
+    {
+        // 清理UpdateTimer中与该NPC相关的条目
+        var Remove = UpdateTimer.Keys
+            .Where(key =>
+            {
+                var updateProj = UpdateState[key];
+                return updateProj != null && updateProj.whoAmI == npc.whoAmI;
+            })
+            .ToList();
+
+        foreach (var key in Remove)
+        {
+            UpdateTimer.Remove(key);
+            UpdateState[key] = null;
         }
     }
     #endregion
