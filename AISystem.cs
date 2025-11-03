@@ -66,7 +66,7 @@ internal class AISystem
     #region 应用步进AI模式控制
     // 新增：存储每个NPC的AI模式状态
     private static Dictionary<string, AIState> AIPattern = new Dictionary<string, AIState>();
-    public static void AIPairs(NPC npc, AIModes aiMode, string npcName)
+    public static void AIPairs(NPC npc, AIModes aiMode, string npcName, ref bool handled)
     {
         if (!aiMode.Enabled) return;
         // 初始化或获取模式状态
@@ -82,29 +82,37 @@ internal class AISystem
             AIPattern[npcName] = state;
         }
 
+        bool flag = false;
+
         // 处理固定AI
         if (aiMode.FixedAI != null && aiMode.FixedAI.Count > 0)
         {
             FixedAI(npc, aiMode.FixedAI, state);
+            flag = true;
         }
 
         // 处理固定localAI
         if (aiMode.FixedLocalAI != null && aiMode.FixedLocalAI.Count > 0)
         {
             FixedLocalAI(npc, aiMode.FixedLocalAI, state);
+            flag = true;
         }
 
         // 处理步进AI
         if (aiMode.StepAI != null && aiMode.StepAI.Count > 0)
         {
             StepAI(npc, aiMode.StepAI, state, npcName, false);
+            flag = true;
         }
 
         // 处理步进localAI
         if (aiMode.StepLocalAI != null && aiMode.StepLocalAI.Count > 0)
         {
             StepAI(npc, aiMode.StepLocalAI, state, npcName, true);
+            flag = true;
         }
+
+        handled = !flag;
     }
     #endregion
 
@@ -201,7 +209,7 @@ internal class AISystem
                     break;
 
                 case 3: //  随机模式
-                    newVal = setting.Loop && random.NextDouble() < 0.1 ? 
+                    newVal = setting.Loop && random.NextDouble() < 0.1 ?
                              setting.MinValue : (float)(random.NextDouble() * (setting.MaxValue - setting.MinValue) + setting.MinValue);
                     break;
             }
@@ -302,39 +310,48 @@ internal class AISystem
     #endregion
 
     #region 泰拉瑞亚 Boss AI
-    public static void TR_AI(BossAI bossAI, NPC npc)
+    public static void TR_AI(BossAI bossAI, NPC npc, ref bool handled)
     {
         Player plr = Main.player[npc.target];
+
+        var flag = false;
 
         //始终保持保持玩家头顶
         if (bossAI.AlwaysTop && !plr.dead && plr.active)
         {
             npc.AI_120_HallowBoss_DashTo(plr.position);
+            flag = true;
         }
 
         //猪鲨AI
         if (bossAI.DukeFishron)
         {
             npc.AI_069_DukeFishron();
+            flag = true;
         }
 
         //鹦鹉螺AI
         if (bossAI.BloodNautilus)
         {
             npc.AI_117_BloodNautilus();
+            flag = true;
         }
 
         //白光AI
         if (bossAI.HallowBoss)
         {
             npc.AI_120_HallowBoss();
+            flag = true;
         }
 
         //鹿角怪AI
         if (bossAI.Deerclops)
         {
             npc.AI_123_Deerclops();
+            flag = true;
         }
+
+        handled = !flag;
     }
     #endregion
 }

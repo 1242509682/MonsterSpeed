@@ -109,12 +109,9 @@ public class MonsterSpeed : TerrariaPlugin
             {
                 new TimerData()
                 {
-                    Condition = new List<Conditions>()
+                    Condition = new Conditions()
                     {
-                        new Conditions()
-                        {
-                            NpcLift = "0,100"
-                        }
+                        NpcLift = "0,100"
                     }
                 }
             },
@@ -180,55 +177,17 @@ public class MonsterSpeed : TerrariaPlugin
             AutoHeal(npc, data);
         }
 
-        TimerEvents.TimerEvent(npc, mess, data, dict, range); //时间事件
+        var handled = false;
+        TimerEvents.TimerEvent(npc, mess, data, dict, range, ref handled); //时间事件
 
         TrackMode(npc, data, tar, range, dict); //超距离追击
 
         npc.netUpdate = true;
 
         //监控广播
-        if (Config.Monitorinterval > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
-        {
-            // 使用新的状态管理方法获取当前事件索引
-            var state = TimerEvents.GetState(npc);
-            string aiInfo = "";
-            if (data.TimerEvent != null && data.TimerEvent.Count > 0)
-            {
-                var idx = state!.Index;
-                if (idx >= 0 && idx < data.TimerEvent.Count)
-                {
-                    var evt = data.TimerEvent[idx];
-                    if (evt?.AIMode != null && evt.AIMode.Enabled)
-                    {
-                        aiInfo = AISystem.GetAiInfo(evt.AIMode, npc.FullName);
-                    }
-                }
-            }
+        Broadcast(mess, npc, data);
 
-            // 构建基础信息
-            mess.Append($" {Tool.TextGradient(" ——————————————————")}\n");
-            mess.Append($" [c/3A89D0:{npc.FullName}] [防] [c/3A89D0:{npc.defense}]【x】[c/38E06D:{npc.velocity.X:F0}] " +
-            $"【y】[c/A5CEBB:{npc.velocity.Y:F0}] 【style】[c/3A89D0:{npc.aiStyle}]\n" +
-            $" [ai0] [c/F3A144:{npc.ai[0]:F0}] [ai1] [c/D2A5DF:{npc.ai[1]:F0}]" +
-            $" [ai2] [c/EBEB91:{npc.ai[2]:F0}] [ai3] [c/35E635:{npc.ai[3]:F0}]\n");
-
-            // 添加localAI信息
-            mess.Append($" [lai0] [c/F3A144:{npc.localAI[0]:F0}] [lai1] [c/D2A5DF:{npc.localAI[1]:F0}]" +
-            $" [lai2] [c/EBEB91:{npc.localAI[2]:F0}] [lai3] [c/35E635:{npc.localAI[3]:F0}]\n");
-
-            mess.Append($" {Tool.TextGradient(" ——————————————————")}\n");
-
-            // 添加AI模式信息
-            if (!string.IsNullOrEmpty(aiInfo))
-            {
-                mess.Append($" {Tool.TextGradient(" ——————— ai赋值 ——————— ")} \n" +
-                            $" {aiInfo} \n" +
-                            $" {Tool.TextGradient(" ——————————————————— ")}");
-            }
-
-            TSPlayer.All.SendMessage($"{mess}", 170, 170, 170);
-            BroadcastTime = DateTime.UtcNow;
-        }
+        args.Handled = handled;
     }
     #endregion
 
@@ -302,5 +261,53 @@ public class MonsterSpeed : TerrariaPlugin
             HealTimes[npc.FullName] = DateTime.UtcNow;
         }
     }
+    #endregion
+
+    #region 监控广播方法
+    private static void Broadcast(StringBuilder mess, NPC npc, NpcData data)
+    {
+        if (Config.Monitorinterval > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
+        {
+            // 使用新的状态管理方法获取当前事件索引
+            var state = TimerEvents.GetState(npc);
+            string aiInfo = "";
+            if (data.TimerEvent != null && data.TimerEvent.Count > 0)
+            {
+                var idx = state!.Index;
+                if (idx >= 0 && idx < data.TimerEvent.Count)
+                {
+                    var evt = data.TimerEvent[idx];
+                    if (evt?.AIMode != null && evt.AIMode.Enabled)
+                    {
+                        aiInfo = AISystem.GetAiInfo(evt.AIMode, npc.FullName);
+                    }
+                }
+            }
+
+            // 构建基础信息
+            mess.Append($" {Tool.TextGradient(" ——————————————————")}\n");
+            mess.Append($" [c/3A89D0:{npc.FullName}] [防] [c/3A89D0:{npc.defense}]【x】[c/38E06D:{npc.velocity.X:F0}] " +
+            $"【y】[c/A5CEBB:{npc.velocity.Y:F0}] 【style】[c/3A89D0:{npc.aiStyle}]\n" +
+            $" [ai0] [c/F3A144:{npc.ai[0]:F0}] [ai1] [c/D2A5DF:{npc.ai[1]:F0}]" +
+            $" [ai2] [c/EBEB91:{npc.ai[2]:F0}] [ai3] [c/35E635:{npc.ai[3]:F0}]\n");
+
+            // 添加localAI信息
+            mess.Append($" [lai0] [c/F3A144:{npc.localAI[0]:F0}] [lai1] [c/D2A5DF:{npc.localAI[1]:F0}]" +
+            $" [lai2] [c/EBEB91:{npc.localAI[2]:F0}] [lai3] [c/35E635:{npc.localAI[3]:F0}]\n");
+
+            mess.Append($" {Tool.TextGradient(" ——————————————————")}\n");
+
+            // 添加AI模式信息
+            if (!string.IsNullOrEmpty(aiInfo))
+            {
+                mess.Append($" {Tool.TextGradient(" ——————— ai赋值 ——————— ")} \n" +
+                            $" {aiInfo} \n" +
+                            $" {Tool.TextGradient(" ——————————————————— ")}");
+            }
+
+            TSPlayer.All.SendMessage($"{mess}", 170, 170, 170);
+            BroadcastTime = DateTime.UtcNow;
+        }
+    } 
     #endregion
 }

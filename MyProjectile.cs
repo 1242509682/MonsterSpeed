@@ -281,7 +281,7 @@ internal class MyProjectile
                 if (velocity != 0)
                 {
                     speed2 = (float)velocity;
-                    add(UpList, index);
+                    Add(UpList, index);
                 }
                 else
                 {
@@ -297,7 +297,7 @@ internal class MyProjectile
                 if (angle != 0)
                 {
                     radian = (double)angle;
-                    add(UpList, index);
+                    Add(UpList, index);
                 }
                 else
                 {
@@ -310,7 +310,7 @@ internal class MyProjectile
                 if (up.Rotate != 0)
                 {
                     vel = vel.RotatedBy(Angle + ((float)(up.Rotate * state.SendStack[state.Index])));
-                    add(UpList, index);
+                    Add(UpList, index);
                 }
                 else
                 {
@@ -331,21 +331,21 @@ internal class MyProjectile
                         offset *= -1;
                     }
                     newPos += offset;
-                    add(UpList, index);
+                    Add(UpList, index);
                 }
 
                 // 检查并更新弹幕位置、速度和AI
                 if (NewProj.position != newPos)
                 {
                     NewProj.position = newPos;
-                    add(UpList, index);
+                    Add(UpList, index);
                 }
 
                 // 更新弹幕速度
                 if (NewProj.velocity != vel)
                 {
                     NewProj.velocity = vel;
-                    add(UpList, index);
+                    Add(UpList, index);
                 }
 
                 // 更新弹幕AI
@@ -356,7 +356,7 @@ internal class MyProjectile
                         if (up.ai.ContainsKey(j) && up.ai.TryGetValue(j, out var value))
                         {
                             Main.projectile[index].ai[j] = value;
-                            add(UpList, index);
+                            Add(UpList, index);
                         }
                     }
                 }
@@ -386,7 +386,7 @@ internal class MyProjectile
                     Vector2 desiredVel = (npc.Center - NewProj.Center).SafeNormalize(Vector2.Zero);
                     NewProj.velocity = Vector2.Lerp(NewProj.velocity, desiredVel * up.Velocity, 0.1f);
 
-                    add(UpList, index); // 添加到更新列表
+                    Add(UpList, index); // 添加到更新列表
                 }
             }
         }
@@ -400,7 +400,7 @@ internal class MyProjectile
     }
 
     //添加需要更新的弹幕索引到列表
-    private static void add(List<int> UpList, int index)
+    private static void Add(List<int> UpList, int index)
     {
         if (!UpList.Contains(index))
         {

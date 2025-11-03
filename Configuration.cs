@@ -84,7 +84,7 @@ internal class Configuration
         [JsonProperty("冷却时间", Order = 25)]
         public double ActiveTime { get; set; }
         [JsonProperty("时间事件", Order = 26)]
-        public List<TimerData> TimerEvent { get; set; } = new();
+        public List<TimerData> TimerEvent { get; set; }
 
         public NpcData() { }
         public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double activeTimer)
@@ -216,7 +216,7 @@ internal class Configuration
             {
                 new TimerData
                 {
-                    Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } },
+                    Condition = new Conditions () { NpcLift = "0,100" },
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
@@ -267,12 +267,9 @@ internal class Configuration
                 {
                     NextAddTimer = 0,
                     Defense = 50,
-                    Condition = new List < Conditions >()
+                    Condition = new Conditions()
                     {
-                        new Conditions()
-                        {
                             NpcLift = "0,50",
-                        }
                     },
 
                     SendProj = new List<ProjData>()
@@ -314,18 +311,15 @@ internal class Configuration
                 {
                     NextAddTimer = 0,
                     Defense = 50,
-                    Condition = new List < Conditions >()
+                    Condition = new Conditions()
                     {
-                        new Conditions()
+                        NpcLift = "0,25",
+                        AIPairs = new Dictionary<int, string[]>()
                         {
-                            NpcLift = "0,25",
-                            AIPairs = new Dictionary<int, string[]>()
-                            {
-                                { 0,new string[]{ "!=5", ">=3", "<20" }},
-                                { 1,new string[]{ ">2", "<100" }},
-                                { 2,new string[]{ ">=0" }},
-                                { 3,new string[]{ "<=3" }},
-                            }
+                            { 0,new string[]{ "!=5", ">=3", "<20" }},
+                            { 1,new string[]{ ">2", "<100" }},
+                            { 2,new string[]{ ">=0" }},
+                            { 3,new string[]{ "<=3" }},
                         }
                     },
 
@@ -351,7 +345,7 @@ internal class Configuration
             {
                 new TimerData
                 {
-                    Condition = new List < Conditions >() { new Conditions() { NpcLift = "50,100" } },
+                    Condition = new Conditions() { NpcLift = "50,100" },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -391,7 +385,7 @@ internal class Configuration
                 new TimerData
                 {
                     Defense = 50,
-                    Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,50" } },
+                    Condition = new Conditions () { NpcLift = "0,50" },
                     SpawnNPC = new List<SpawnNpcData>()
                     {
                         new SpawnNpcData()
@@ -425,19 +419,11 @@ internal class Configuration
         Dict!["世界吞噬怪"] = new NpcData(0, 62 * 2.5f, 25f, 35, 5)
         {
             Teleport = 20,
-            TimerEvent = new List<TimerData>()
-            {
-                new TimerData() { Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } } }
-            }
         };
 
         Dict!["毁灭者"] = new NpcData(0, 62 * 2f, 25f, 35, 5)
         {
             Teleport = 20,
-            TimerEvent = new List<TimerData>()
-            {
-                new TimerData() { Condition = new List < Conditions >() { new Conditions() { NpcLift = "0,100" } } }
-            }
         };
     }
     #endregion

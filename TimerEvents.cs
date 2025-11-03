@@ -28,12 +28,13 @@ public class TimerData
     public int NextAddTimer { get; set; } = 0;
 
     [JsonProperty("触发条件", Order = -50)]
-    public List<Conditions> Condition { get; set; }
+    public Conditions Condition { get; set; } = new Conditions(){ NpcLift = "0,100" };
+
     [JsonProperty("修改防御", Order = -8)]
     public int Defense { get; set; } = 0;
 
     [JsonProperty("AI赋值", Order = 0)]
-    public AIModes AIMode { get; set; } = new AIModes();
+    public AIModes AIMode { get; set; }
 
     [JsonProperty("生成怪物", Order = 3)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
@@ -64,7 +65,7 @@ public class PauseState
 internal class TimerEvents
 {
     #region 时间事件
-    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, Vector2 dict, float range)
+    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, Vector2 dict, float range, ref bool handled)
     {
         if (data?.TimerEvent == null || data.TimerEvent.Count <= 0) return;
 
@@ -75,7 +76,7 @@ internal class TimerEvents
         // 文件播放器处理
         if (state.FileState.Playing)
         {
-            HandleFilePlay(npc, mess, data, life, state);
+            HandleFilePlay(npc, mess, data, life, state, ref handled);
             return;
         }
 
@@ -111,12 +112,12 @@ internal class TimerEvents
                 }
                 else
                 {
-                    NextEvent(data, Event.NextAddTimer, npc.FullName, state);
+                    NextEvent(data, Event.NextAddTimer, npc, state);
                 }
             }
             else
             {
-                NextEvent(data, Event.NextAddTimer, npc.FullName, state);
+                NextEvent(data, Event.NextAddTimer, npc, state);
             }
         }
 
@@ -137,14 +138,14 @@ internal class TimerEvents
                 else
                 {
                     // 没有文件播放器，正常跳过
-                    NextEvent(data, Event.NextAddTimer, npc.FullName, state);
+                    NextEvent(data, Event.NextAddTimer, npc, state);
                     return;
                 }
             }
 
             if (all)
             {
-                StartEvent(npc, Event);
+                StartEvent(npc, Event, ref handled);
             }
         }
 
@@ -156,7 +157,7 @@ internal class TimerEvents
         }
     }
     #endregion
-
+    
     #region 暂停模式
     public static void PauseMode(NPC npc, StringBuilder mess, NpcData data, TimerState state, int life, TimerData Event)
     {
@@ -189,7 +190,7 @@ internal class TimerEvents
     #endregion
 
     #region 让计数器自动前进到下一个事件
-    public static void NextEvent(NpcData data, int timer, string npcName, TimerState state)
+    public static void NextEvent(NpcData data, int timer, NPC npc, TimerState state)
     {
         state.PauseState = new PauseState();
         state.Index = (state.Index + 1) % data.TimerEvent.Count;
@@ -200,10 +201,10 @@ internal class TimerEvents
     #endregion
 
     #region 执行事件逻辑
-    public static void StartEvent(NPC npc, TimerData evt)
+    public static void StartEvent(NPC npc, TimerData evt, ref bool handled)
     {
         if (evt.AIMode != null)
-            AISystem.AIPairs(npc, evt.AIMode, npc.FullName);
+            AISystem.AIPairs(npc, evt.AIMode, npc.FullName, ref handled);
 
         if (evt.SpawnNPC != null && evt.SpawnNPC.Count > 0)
             MyMonster.SpawnMonsters(evt.SpawnNPC, npc);
@@ -220,7 +221,7 @@ internal class TimerEvents
         if (evt.AIMode?.BossAI != null)
         {
             foreach (var bossAI in evt.AIMode.BossAI)
-                AISystem.TR_AI(bossAI, npc);
+                AISystem.TR_AI(bossAI, npc, ref handled);
         }
 
         npc.defense = evt.Defense > 0 ? evt.Defense : npc.defDefense;

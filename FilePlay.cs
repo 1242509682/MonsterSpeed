@@ -39,10 +39,9 @@ public class FilePlayState
 internal class FilePlay
 {
     #region 处理文件播放
-    public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, int life, TimerState state)
+    public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, int life, TimerState state, ref bool handled)
     {
         var fs = state.FileState;
-        var npcName = npc.FullName;
         var Event = fs.Events[fs.EventIndex];
 
         // 状态验证
@@ -103,17 +102,15 @@ internal class FilePlay
                 if (!state.FileState.Playing) // 如果文件播放已完成，返回
                 {
                     var curEvt = data.TimerEvent[state.Index];
-                    NextEvent(data, curEvt.NextAddTimer, npcName, state);
+                    NextEvent(data, curEvt.NextAddTimer, npc, state);
                     return;
                 }
             }
             else
             {
                 // 冷却时间未到，但如果条件满足仍然执行事件
-                StartEvent(npc, Event);
+                StartEvent(npc, Event, ref handled);
             }
-
-
 
             // 显示状态（包含剩余时间）
             mess.Append($" {playMode}文件:[c/A2E4DB:{fs.FileIndex + 1}/{fs.FileSeq.Count}] " +
@@ -155,7 +152,7 @@ internal class FilePlay
             // 如果文件播放已完成，前进到下一个主事件
             if (!state.FileState.Playing)
             {
-                NextEvent(data, data.TimerEvent[state.Index].NextAddTimer, npcName, state);
+                NextEvent(data, data.TimerEvent[state.Index].NextAddTimer, npc, state);
             }
         }
     }

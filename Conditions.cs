@@ -38,117 +38,115 @@ public class Conditions
     internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, float range, int life, TimerData Event, ref bool all, ref bool loop)
     {
         if (data is null) return;
-        if (Event.Condition != null && Event.Condition.Count > 0)
+        var Condition = Event.Condition;
+        if (Condition != null)
         {
-            foreach (var Condition in Event.Condition)
+            // 生命条件
+            var LC = LifeCondition(life, Condition);
+            if (!LC && Condition.NpcLift != "0,100")
             {
-                // 生命条件
-                var LC = LifeCondition(life, Condition);
-                if (!LC && Condition.NpcLift != "0,100")
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 血量条件未满足: 血量 {life}% < {Condition.NpcLift} \n");
-                }
-
-                // 武器条件
-                Player plr = Main.player[npc.target];
-                if (plr is null || !plr.active || plr.dead) continue;
-                var WC = Condition.WeaponName == GetPlayerWeapon(plr);
-                if (Condition.WeaponName != "无" && !WC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {Condition.WeaponName}\n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-
-                // 进度条件
-                var PC = ProgressChecker.IsProgress(Condition.Progress);
-                if (Condition.Progress != (ProgressType)(-1) && !PC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 进度条件未满足: 当前进度不符合 {Condition.Progress.ToString()}\n");
-                }
-
-                // 召怪条件
-                int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
-                var MC = snCount >= Condition.MonsterCount;
-                if (Condition.MonsterCount != -1 && !MC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 召怪条件未满足: 当前召怪次数 {snCount} < {Condition.MonsterCount}\n");
-                }
-
-                // 弹发条件
-                int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
-                var PrC = spCount >= Condition.ProjectileCount;
-                if (Condition.ProjectileCount != -1 && !PrC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {spCount} < {Condition.ProjectileCount}\n");
-                }
-
-                // 死亡次数条件
-                var DC = data.DeadCount >= Condition.DeadCount;
-                if (Condition.DeadCount != -1 && !DC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {Condition.DeadCount}\n");
-                }
-
-                // 距离条件
-                var RC = range >= Condition.Range * 16;
-                if (Condition.Range != -1 && !RC)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 距离条件未满足: 玩家距离 {range} < {Condition.Range} 格\n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-
-                //速度条件
-                var absX = Math.Abs(npc.velocity.X);
-                var absY = Math.Abs(npc.velocity.Y);
-                var SP = absX >= Condition.Speed || absY >= Condition.Speed;
-                if (Condition.Speed != -1 && !SP)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {Condition.Speed}\n");
-                }
-
-                // 玩家生命条件
-                var PL = plr.statLife <= Condition.PlayerLife;
-                if (Condition.PlayerLife != -1 && !PL)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {Condition.PlayerLife} \n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-
-                // 玩家防御条件
-                var DE = plr.statDefense <= Condition.PlrDefense;
-                if (Condition.PlrDefense != -1 && !DE)
-                {
-                    all = false;
-                    loop = true;
-                    mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {Condition.PlrDefense} \n");
-                    MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-                }
-
-                // AI条件
-                if (Condition.AIPairs != null && Condition.AIPairs.Count > 0)
-                {
-                    AICondition(npc, mess, ref all, ref loop, Condition);
-                }
-
+                all = false;
+                loop = true;
+                mess.Append($" 血量条件未满足: 血量 {life}% < {Condition.NpcLift} \n");
             }
+
+            // 武器条件
+            Player plr = Main.player[npc.target];
+            if (plr is null || !plr.active || plr.dead) return;
+            var WC = Condition.WeaponName == GetPlayerWeapon(plr);
+            if (Condition.WeaponName != "无" && !WC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {Condition.WeaponName}\n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            // 进度条件
+            var PC = ProgressChecker.IsProgress(Condition.Progress);
+            if (Condition.Progress != (ProgressType)(-1) && !PC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 进度条件未满足: 当前进度不符合 {Condition.Progress.ToString()}\n");
+            }
+
+            // 召怪条件
+            int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
+            var MC = snCount >= Condition.MonsterCount;
+            if (Condition.MonsterCount != -1 && !MC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 召怪条件未满足: 当前召怪次数 {snCount} < {Condition.MonsterCount}\n");
+            }
+
+            // 弹发条件
+            int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
+            var PrC = spCount >= Condition.ProjectileCount;
+            if (Condition.ProjectileCount != -1 && !PrC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {spCount} < {Condition.ProjectileCount}\n");
+            }
+
+            // 死亡次数条件
+            var DC = data.DeadCount >= Condition.DeadCount;
+            if (Condition.DeadCount != -1 && !DC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {Condition.DeadCount}\n");
+            }
+
+            // 距离条件
+            var RC = range >= Condition.Range * 16;
+            if (Condition.Range != -1 && !RC)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 距离条件未满足: 玩家距离 {range} < {Condition.Range} 格\n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            //速度条件
+            var absX = Math.Abs(npc.velocity.X);
+            var absY = Math.Abs(npc.velocity.Y);
+            var SP = absX >= Condition.Speed || absY >= Condition.Speed;
+            if (Condition.Speed != -1 && !SP)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {Condition.Speed}\n");
+            }
+
+            // 玩家生命条件
+            var PL = plr.statLife <= Condition.PlayerLife;
+            if (Condition.PlayerLife != -1 && !PL)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {Condition.PlayerLife} \n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            // 玩家防御条件
+            var DE = plr.statDefense <= Condition.PlrDefense;
+            if (Condition.PlrDefense != -1 && !DE)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {Condition.PlrDefense} \n");
+                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
+            }
+
+            // AI条件
+            if (Condition.AIPairs != null && Condition.AIPairs.Count > 0)
+            {
+                AICondition(npc, mess, ref all, ref loop, Condition);
+            }
+
         }
     }
     #endregion
