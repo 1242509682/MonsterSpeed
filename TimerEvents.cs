@@ -1,7 +1,9 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
+using Terraria.DataStructures;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.FilePlay;
@@ -28,19 +30,25 @@ public class TimerData
     public int NextAddTimer { get; set; } = 0;
 
     [JsonProperty("触发条件", Order = -50)]
-    public Conditions Condition { get; set; } = new Conditions(){ NpcLift = "0,100" };
+    public Conditions Condition { get; set; } = new Conditions() { NpcLift = "0,100" };
 
-    [JsonProperty("修改防御", Order = -8)]
+    [JsonProperty("修改防御", Order = -20)]
     public int Defense { get; set; } = 0;
 
-    [JsonProperty("AI赋值", Order = 0)]
-    public AIModes AIMode { get; set; }
+    [JsonProperty("环绕模式", Order = 4)]
+    public bool OrbitMode { get; set; }
+    [JsonProperty("环绕半径", Order = 5)]
+    public float OrbitRadius { get; set; } = 25f;
+    [JsonProperty("环绕速度", Order = 6)]
+    public float OrbitSpeed { get; set; } = 2.5f;
 
-    [JsonProperty("生成怪物", Order = 3)]
+    [JsonProperty("AI赋值", Order = 50)]
+    public AIModes AIMode { get; set; }
+    [JsonProperty("生成怪物", Order = 51)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
-    [JsonProperty("生成弹幕", Order = 4)]
+    [JsonProperty("生成弹幕", Order = 52)]
     public List<ProjData> SendProj { get; set; } = new List<ProjData>();
-    [JsonProperty("发射物品", Order = 5)]
+    [JsonProperty("发射物品", Order = 53)]
     public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
 }
 
@@ -65,25 +73,24 @@ public class PauseState
 internal class TimerEvents
 {
     #region 时间事件
-    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, Vector2 dict, float range, ref bool handled)
+    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, ref bool handled)
     {
         if (data?.TimerEvent == null || data.TimerEvent.Count <= 0) return;
 
         var state = GetState(npc);
-        var life = (int)(npc.life / (float)npc.lifeMax * 100);
         var Event = data.TimerEvent[state!.Index];
 
         // 文件播放器处理
         if (state.FileState.Playing)
         {
-            HandleFilePlay(npc, mess, data, life, state, ref handled);
+            HandleFilePlay(npc, mess, data, state, ref handled);
             return;
         }
 
         // 暂停检查 - 如果是强制播放，跳过暂停
         if (Event.PauseTime > 0 && !Event.NoCond)
         {
-            PauseMode(npc, mess, data, state, life, Event);
+            PauseMode(npc, mess, data, state, Event);
             return;
         }
 
@@ -101,7 +108,7 @@ internal class TimerEvents
                 bool loop = false;
                 if (!Event.NoCond) // 只有非强制播放时才检查条件
                 {
-                    Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+                    Conditions.Condition(npc, mess, data, Event, ref all, ref loop);
                 }
 
                 // 强制播放 或 条件满足时启动文件播放器
@@ -126,7 +133,7 @@ internal class TimerEvents
         {
             var all = true;
             var loop = false;
-            Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+            Conditions.Condition(npc, mess, data, Event, ref all, ref loop);
 
             if (data.Loop && loop)
             {
@@ -145,7 +152,7 @@ internal class TimerEvents
 
             if (all)
             {
-                StartEvent(npc, Event, ref handled);
+                StartEvent(data, npc, Event, ref handled);
             }
         }
 
@@ -153,13 +160,14 @@ internal class TimerEvents
         {
             int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
             int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
+            var life = (int)(npc.life / (float)npc.lifeMax * 100);
             mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
         }
     }
     #endregion
-    
+
     #region 暂停模式
-    public static void PauseMode(NPC npc, StringBuilder mess, NpcData data, TimerState state, int life, TimerData Event)
+    public static void PauseMode(NPC npc, StringBuilder mess, NpcData data, TimerState state, TimerData Event)
     {
         PauseState pause = state.PauseState;
         if (!pause.Paused)
@@ -183,6 +191,7 @@ internal class TimerEvents
         {
             ShowCoolText(npc, data, state);
             var remain = pause.Duration - (DateTime.UtcNow - pause.StateTime).TotalMilliseconds;
+            var life = (int)(npc.life / (float)npc.lifeMax * 100);
             mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 暂停剩余:[c/A2E4DB:{remain:F0}毫秒]\n");
             return;
         }
@@ -201,30 +210,77 @@ internal class TimerEvents
     #endregion
 
     #region 执行事件逻辑
-    public static void StartEvent(NPC npc, TimerData evt, ref bool handled)
+    public static void StartEvent(NpcData data, NPC npc, TimerData Event, ref bool handled)
     {
-        if (evt.AIMode != null)
-            AISystem.AIPairs(npc, evt.AIMode, npc.FullName, ref handled);
+        if (Event.OrbitMode)
+            OrbitMode(npc, data, Event, ref handled); // 环绕攻击
 
-        if (evt.SpawnNPC != null && evt.SpawnNPC.Count > 0)
-            MyMonster.SpawnMonsters(evt.SpawnNPC, npc);
+        if (Event.AIMode != null)
+            AISystem.AIPairs(npc, Event.AIMode, npc.FullName, ref handled);
 
-        if (evt.SendProj != null && evt.SendProj.Count > 0)
-            MyProjectile.SpawnProjectile(evt.SendProj, npc);
+        if (Event.SpawnNPC != null && Event.SpawnNPC.Count > 0)
+            MyMonster.SpawnMonsters(Event.SpawnNPC, npc);
 
-        if (evt.ShootItemList != null)
+        if (Event.SendProj != null && Event.SendProj.Count > 0)
+            MyProjectile.SpawnProjectile(Event.SendProj, npc);
+
+        if (Event.ShootItemList != null)
         {
-            foreach (var item in evt.ShootItemList)
+            foreach (var item in Event.ShootItemList)
                 npc.AI_87_BigMimic_ShootItem(item);
         }
 
-        if (evt.AIMode?.BossAI != null)
+        if (Event.AIMode?.BossAI != null)
         {
-            foreach (var bossAI in evt.AIMode.BossAI)
+            foreach (var bossAI in Event.AIMode.BossAI)
                 AISystem.TR_AI(bossAI, npc, ref handled);
         }
 
-        npc.defense = evt.Defense > 0 ? evt.Defense : npc.defDefense;
+        npc.defense = Event.Defense > 0 ? Event.Defense : npc.defDefense;
+    }
+    #endregion
+
+    #region 环绕攻击模式
+    private static Dictionary<int, float> OrbitAngles = new Dictionary<int, float>();
+    private static void OrbitMode(NPC npc, NpcData data, TimerData Event, ref bool handled)
+    {
+        if (!Event.OrbitMode) return;
+        var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
+        var range = Vector2.Distance(tar.Center, npc.Center);
+        var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
+        float orbitRadius = Event.OrbitRadius * 16f;
+        float orbitSpeed = Event.OrbitSpeed;
+        var flag = false;
+
+        // 初始化或获取环绕角度
+        if (!OrbitAngles.ContainsKey(npc.whoAmI))
+        {
+            OrbitAngles[npc.whoAmI] = 0f;
+        }
+
+        // 计算环绕位置
+        Vector2 orbitPos = tar.Center + new Vector2(
+            (float)Math.Cos(OrbitAngles[npc.whoAmI]) * orbitRadius,
+            (float)Math.Sin(OrbitAngles[npc.whoAmI]) * orbitRadius
+        );
+
+        // 朝环绕位置移动
+        Vector2 orbitDir = orbitPos - npc.Center;
+        if (orbitDir.Length() > 10f)
+        {
+            orbitDir.Normalize();
+            npc.velocity = Vector2.Lerp(npc.velocity, orbitDir * data.TrackSpeed, 0.1f);
+            flag = true;
+        }
+
+        // 更新角度
+        OrbitAngles[npc.whoAmI] += orbitSpeed * 0.01f;
+        if (OrbitAngles[npc.whoAmI] > MathHelper.TwoPi)
+        {
+            OrbitAngles[npc.whoAmI] -= MathHelper.TwoPi;
+        }
+
+        handled = flag;
     }
     #endregion
 

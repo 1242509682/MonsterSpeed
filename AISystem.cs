@@ -25,7 +25,7 @@ public class AIModes
 // 步进AI的配置
 public class AISetting
 {
-    [JsonProperty("模式")]
+    [JsonProperty("模式(0递增/1递减/2往复/3随机)")]
     public int Type { get; set; } = 2;
     [JsonProperty("步长")]
     public float Step { get; set; } = 1.0f;

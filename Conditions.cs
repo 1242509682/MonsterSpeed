@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using Microsoft.Xna.Framework;
 using MonsterSpeed.Progress;
 using Newtonsoft.Json;
 using Terraria;
@@ -35,13 +36,14 @@ public class Conditions
     public Dictionary<int, string[]> AIPairs { get; set; } = new Dictionary<int, string[]>();
 
     #region 触发条件
-    internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, float range, int life, TimerData Event, ref bool all, ref bool loop)
+    internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, TimerData Event, ref bool all, ref bool loop)
     {
         if (data is null) return;
         var Condition = Event.Condition;
         if (Condition != null)
         {
             // 生命条件
+            var life = (int)(npc.life / (float)npc.lifeMax * 100);
             var LC = LifeCondition(life, Condition);
             if (!LC && Condition.NpcLift != "0,100")
             {
@@ -101,6 +103,7 @@ public class Conditions
             }
 
             // 距离条件
+            var range = Vector2.Distance(Main.player[npc.target].Center, npc.Center);
             var RC = range >= Condition.Range * 16;
             if (Condition.Range != -1 && !RC)
             {

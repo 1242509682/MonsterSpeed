@@ -37,8 +37,6 @@ internal class Configuration
         "45 ftw种子 | 46 颠倒种子 | 47 蜂蜜种子 | 48 饥荒种子 | 49 天顶种子 | 50 陷阱种子",
         "51 满月 | 52 亏凸月 | 53 下弦月 | 54 残月 | 55 新月 | 56 娥眉月 | 57 上弦月 | 58 盈凸月",
     };
-    [JsonProperty("步进AI模式说明", Order = -9)]
-    public string AIMess { get; set; } = "0递增 | 1递减 | 2往复 | 3随机";
 
     [JsonProperty(PropertyName = "隐藏默认配置项", Order = -2)]
     public bool HideConfig { get; set; } = false;
@@ -195,7 +193,7 @@ internal class Configuration
     {
         CustomHideList = new List<string>()
         {
-            "武器条件说明","进度条件说明","步进AI模式说明","播放文件模式说明"
+            "武器条件说明","进度条件说明","播放文件模式说明"
         };
 
         NpcList = new List<int>()
@@ -416,12 +414,12 @@ internal class Configuration
 
         };
 
-        Dict!["世界吞噬怪"] = new NpcData(0, 62 * 2.5f, 25f, 35, 5)
+        Dict!["世界吞噬怪"] = new NpcData(0, 62 * 2.5f, 35f, 35, 5)
         {
             Teleport = 20,
         };
 
-        Dict!["毁灭者"] = new NpcData(0, 62 * 2f, 25f, 35, 5)
+        Dict!["毁灭者"] = new NpcData(0, 62 * 2f, 35f, 35, 5)
         {
             Teleport = 20,
         };

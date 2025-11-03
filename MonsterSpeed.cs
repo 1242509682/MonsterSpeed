@@ -6,6 +6,7 @@ using Terraria.DataStructures;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
+using static MonoMod.InlineRT.MonoModRule;
 using static MonsterSpeed.Configuration;
 
 namespace MonsterSpeed;
@@ -100,7 +101,7 @@ public class MonsterSpeed : TerrariaPlugin
         {
             DeadCount = 0,
             AutoTarget = true,
-            TrackSpeed = 25,
+            TrackSpeed = 35,
             TrackRange = 62,
             TrackStopRange = 25,
             ActiveTime = 5f,
@@ -138,8 +139,8 @@ public class MonsterSpeed : TerrariaPlugin
         // 清理TimerEvents中的状态
         TimerEvents.ClearStates(args.npc);
         // 清理传送和回血记录
-        Teleport.Remove(args.npc.FullName);
-        HealTimes.Remove(args.npc.FullName);
+        Teleport.Remove(args.npc.whoAmI);
+        HealTimes.Remove(args.npc.whoAmI);
 
         // 更新配置数据
         Config.Dict!.TryGetValue(args.npc.FullName, out var data);
@@ -166,11 +167,6 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
-        var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
-        if (tar.Invalid) return; //目标无效返回
-        var range = Vector2.Distance(tar.Center, npc.Center);
-        var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
-
         // 自动回血
         if (data.AutoHeal > 0)
         {
@@ -178,9 +174,9 @@ public class MonsterSpeed : TerrariaPlugin
         }
 
         var handled = false;
-        TimerEvents.TimerEvent(npc, mess, data, dict, range, ref handled); //时间事件
+        TimerEvents.TimerEvent(npc, mess, data, ref handled); //时间事件
 
-        TrackMode(npc, data, tar, range, dict); //超距离追击
+        TrackMode(npc, data); //超距离追击
 
         npc.netUpdate = true;
 
@@ -192,73 +188,144 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 超距离追击模式
-    private Dictionary<string, DateTime> Teleport = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次传送的时间
-    private void TrackMode(NPC npc, NpcData data, NPCAimedTarget tar, float range, Vector2 dict)
+    private Dictionary<int, DateTime> Teleport = new Dictionary<int, DateTime>(); // 跟踪每个NPC上次传送的时间
+    private void TrackMode(NPC npc, NpcData data)
     {
         if (data == null) return;
+
+        var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
+        var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
+        var range = Vector2.Distance(tar.Center, npc.Center);
+
         if (data.TrackRange != 0)
         {
-            if (range > data.TrackRange * 16f) // 超距离追击
+            // 使用平方距离比较优化性能
+            float TrackRange = data.TrackRange * 16f;
+            float TrackStopRange = data.TrackStopRange * 16f;
+            // 计算中间区域范围
+            float SmoothRange = TrackStopRange + (TrackRange - TrackStopRange) * 0.5f;
+
+            if (range > TrackRange) // 超距离追击
             {
-                var speedMax = dict * data.TrackSpeed + tar.Velocity;
-                if (speedMax.Length() > data.TrackSpeed)
+                // 动态速度调整：距离越远速度越快
+                float dicRatio = (range - TrackRange) / TrackRange;
+                float dySpeed = data.TrackSpeed * (1f + Math.Min(dicRatio, 1f) * 0.5f);
+
+                // 优化速度计算
+                Vector2 speedMax = dict * dySpeed + tar.Velocity * 0.3f;
+                if (speedMax.Length() > dySpeed)
                 {
                     speedMax.Normalize();
-                    speedMax *= data.TrackSpeed;
+                    speedMax *= dySpeed;
                 }
-                npc.velocity = speedMax;
 
-                //自动转换仇恨目标
-                AutoTar(npc, data);
+                // 平滑速度过渡
+                npc.velocity = Vector2.Lerp(npc.velocity, speedMax, 0.6f);
 
-                //超距离传送
-                if (data.Teleport > 0 && (!Teleport.ContainsKey(npc.FullName) ||
-                   (DateTime.UtcNow - Teleport[npc.FullName]).TotalSeconds >= data.Teleport))
+                // 智能目标切换：只在很远的距离切换
+                if (range > TrackRange * 1.5f)
                 {
-                    npc.Teleport(tar.Center, 10);
-                    Teleport[npc.FullName] = DateTime.UtcNow;
+                    AutoTar(npc, data);
                 }
 
-                npc.netUpdate = true;
-                return;
+                // 优化传送逻辑
+                if (data.Teleport > 0)
+                {
+                    SmartTeleport(npc, data, tar, range);
+                }
             }
-            else if (range < data.TrackStopRange)  // 在最小距离内停止
+            else if (range > TrackStopRange && range <= SmoothRange) // 中间区域平滑处理
             {
-                npc.netUpdate = false;
+                npc.velocity *= 0.95f;
+            }
+            else if (range < TrackStopRange)  // 在最小距离内停止更新恢复原版AI行为
+            {
                 return;
             }
         }
     }
     #endregion
 
-    #region 自动仇恨方法
+    #region 智能传送方法
+    private void SmartTeleport(NPC npc, NpcData data, NPCAimedTarget tar, float range)
+    {
+        bool canTeleport = !Teleport.ContainsKey(npc.whoAmI) ||
+                          (DateTime.UtcNow - Teleport[npc.whoAmI]).TotalSeconds >= data.Teleport;
+
+        // 只在足够远的距离传送，避免频繁传送
+        if (canTeleport && range > data.TrackRange * 20f)
+        {
+            // 尝试找到安全传送位置
+            Vector2 safePos = FindSafePosition(tar.Center, data.TrackStopRange * 16f);
+            if (safePos != Vector2.Zero)
+            {
+                npc.Teleport(safePos, 10);
+                Teleport[npc.whoAmI] = DateTime.UtcNow;
+            }
+        }
+    }
+    #endregion
+
+    #region 传送安全位置检测
+    private Vector2 FindSafePosition(Vector2 Center, float TrackStopRange)
+    {
+        // 在目标周围随机寻找安全位置
+        for (int i = 0; i < 5; i++)
+        {
+            Vector2 testPos = Center + new Vector2(Main.rand.Next(-80, 81),Main.rand.Next(-80, 81));
+
+            // 简单的位置有效性检查
+            Tile tile = (Tile)Framing.GetTileSafely((int)testPos.X / 16, (int)testPos.Y / 16);
+            if (!tile.active() || !Main.tileSolid[tile.type])
+            {
+                return testPos;
+            }
+        }
+
+        // 没找到安全位置就传送到追击停止范围
+        return new Vector2 (Center.X + TrackStopRange, Center.Y + TrackStopRange); 
+    }
+    #endregion
+
+    #region 自动仇恨方法（优化）
     internal static void AutoTar(NPC npc, NpcData data)
     {
         if (data.AutoTarget)
         {
+            // 保存当前速度方向
+            float SpeedX = npc.velocity.X;
+
             npc.TargetClosest(true);
             npc.netSpam = 0;
+
+            // 保持原有的移动方向逻辑
             npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
+
+            // 如果速度方向改变，平滑过渡
+            if (SpeedX * npc.velocity.X < 0)
+            {
+                npc.velocity.X *= 0.7f;
+            }
         }
     }
     #endregion
 
     #region 自动回血
-    public static Dictionary<string, DateTime> HealTimes = new Dictionary<string, DateTime>(); // 跟踪每个NPC上次回血的时间
+    public static Dictionary<int, DateTime> HealTimes = new Dictionary<int, DateTime>(); // 跟踪每个NPC上次回血的时间
     internal static void AutoHeal(NPC npc, NpcData data)
     {
-        if (!HealTimes.ContainsKey(npc.FullName))
+        if (!HealTimes.ContainsKey(npc.whoAmI))
         {
-            HealTimes[npc.FullName] = DateTime.UtcNow.AddSeconds(-data.AutoHealInterval); // 初始化为1秒前，确保第一次调用时立即回血
+            HealTimes[npc.whoAmI] = DateTime.UtcNow.AddSeconds(-data.AutoHealInterval); // 初始化为1秒前，确保第一次调用时立即回血
         }
 
         // 回血间隔
-        if ((DateTime.UtcNow - HealTimes[npc.FullName]).TotalMilliseconds >= data.AutoHealInterval * 1000)
+        if ((DateTime.UtcNow - HealTimes[npc.whoAmI]).TotalMilliseconds >= data.AutoHealInterval * 1000)
         {
             // 将AutoHeal视为百分比并计算相应的生命值恢复量
             var num = (int)(npc.lifeMax * (data.AutoHeal / 100.0f));
             npc.life = (int)Math.Min(npc.lifeMax, npc.life + num);
-            HealTimes[npc.FullName] = DateTime.UtcNow;
+            HealTimes[npc.whoAmI] = DateTime.UtcNow;
         }
     }
     #endregion

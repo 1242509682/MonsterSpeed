@@ -39,10 +39,11 @@ public class FilePlayState
 internal class FilePlay
 {
     #region 处理文件播放
-    public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, int life, TimerState state, ref bool handled)
+    public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, TimerState state, ref bool handled)
     {
         var fs = state.FileState;
         var Event = fs.Events[fs.EventIndex];
+        var life = (int)(npc.life / (float)npc.lifeMax * 100);
 
         // 状态验证
         if (fs == null || !fs.Playing ||
@@ -62,16 +63,8 @@ internal class FilePlay
         // 检查暂停时间 - 如果是强制播放，跳过暂停
         if (Event.PauseTime > 0 && fs.NoCond)
         {
-            PauseMode(npc, mess, data, state, life, Event);
+            PauseMode(npc, mess, data, state, Event);
             return;
-        }
-
-        // 计算玩家距离（用于条件检查）
-        float range = 0;
-        Player plr = Main.player[npc.target];
-        if (plr != null && plr.active && !plr.dead)
-        {
-            range = Vector2.Distance(plr.Center, npc.Center);
         }
 
         // 检查当前文件事件的条件，如果开启强制播放则跳过条件检查
@@ -79,7 +72,7 @@ internal class FilePlay
         bool loop = false;
         if (!fs.NoCond) // 只有非强制播放时才检查条件
         {
-            Conditions.Condition(npc, mess, data, range, life, Event, ref all, ref loop);
+            Conditions.Condition(npc, mess, data, Event, ref all, ref loop);
         }
 
         // 显示冷却文本
@@ -101,15 +94,14 @@ internal class FilePlay
                 UpdateFilePlay(npc, state); // 更新文件播放进度
                 if (!state.FileState.Playing) // 如果文件播放已完成，返回
                 {
-                    var curEvt = data.TimerEvent[state.Index];
-                    NextEvent(data, curEvt.NextAddTimer, npc, state);
+                    NextEvent(data, data.TimerEvent[state.Index].NextAddTimer, npc, state);
                     return;
                 }
             }
             else
             {
                 // 冷却时间未到，但如果条件满足仍然执行事件
-                StartEvent(npc, Event, ref handled);
+                StartEvent(data, npc, Event, ref handled);
             }
 
             // 显示状态（包含剩余时间）

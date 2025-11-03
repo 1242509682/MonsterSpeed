@@ -70,7 +70,42 @@ public class UpdateProjData
     public float Angle = 0f;
     [JsonProperty("旋转", Order = 6)]
     public float Rotate = 0;
-    [JsonProperty("弹幕AI", Order = 7)]
+
+    // 智能行为
+    [JsonProperty("追踪模式", Order = 7)]
+    public bool Homing = false;
+    [JsonProperty("追踪强度", Order = 8)]
+    public float HomingStrength = 0.1f;
+    [JsonProperty("最大追踪角度", Order = 9)]
+    public float MaxHomingAngle = 45f;
+    [JsonProperty("预测秒数", Order = 10)]
+    public float PredictTime = 0f;
+    [JsonProperty("智能规避", Order = 11)]
+    public bool SmartDodge = false;
+    [JsonProperty("规避距离", Order = 12)]
+    public float DodgeDistance = 100f;
+
+    // 运动模式
+    [JsonProperty("运动模式(0直线/1正弦/2螺旋/3环绕/4八字)", Order = 13)]
+    public int MovementPattern = 0;
+    [JsonProperty("正弦振幅", Order = 14)]
+    public float SineAmplitude = 0f;
+    [JsonProperty("正弦频率", Order = 15)]
+    public float SineFrequency = 1f;
+    [JsonProperty("螺旋半径", Order = 16)]
+    public float SpiralRadius = 0f;
+    [JsonProperty("螺旋速度", Order = 17)]
+    public float SpiralSpeed = 1f;
+    [JsonProperty("环绕半径", Order = 18)]
+    public float OrbitRadius = 0f;
+    [JsonProperty("环绕速度", Order = 19)]
+    public float OrbitSpeed = 1f;
+    [JsonProperty("八字幅度", Order = 20)]
+    public float EightAmplitude = 0f;
+    [JsonProperty("八字频率", Order = 21)]
+    public float EightFrequency = 1f;
+
+    [JsonProperty("弹幕AI", Order = 22)]
     public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
 }
 
@@ -83,12 +118,15 @@ public class UpdateProj
     public int whoAmI { get; set; }
     //弹幕ID
     public int Type { get; set; }
+    // 运动状态
+    public float MovementTimer { get; set; }
 
     public UpdateProj(int index, int useIndex, int type)
     {
         Index = index;
         whoAmI = useIndex;
         Type = type;
+        MovementTimer = 0f;
     }
 }
 
@@ -99,6 +137,10 @@ internal class MyProjectile
     public static void SpawnProjectile(List<ProjData> SpawnProj, NPC npc)
     {
         if (SpawnProj == null || SpawnProj.Count == 0) return;
+
+        var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
+        var range = Vector2.Distance(tar.Center, npc.Center);
+        var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
 
         // 获取NPC的状态
         var state = GetState(npc);
@@ -116,7 +158,6 @@ internal class MyProjectile
 
         // 获取距离和方向向量 新增目标筛选逻辑
         Player plr = Main.player[npc.target];
-        Vector2 dict = plr.Center - npc.Center;
 
         // 数量超标 目标无效 或 不在进度则跳过
         if (state.SendStack[state.Index] >= proj.stack || proj.Type <= 0 || plr == null)
@@ -193,7 +234,7 @@ internal class MyProjectile
             if (proj.Lift > 0)
             {
                 // 创建并发射弹幕
-                var newProj = Projectile.NewProjectile(Projectile.GetNoneSource(),
+                var newProj = Projectile.NewProjectile(npc.GetSpawnSourceForNPCFromNPCAI(),
                                                        NewPos.X, NewPos.Y, vel.X, vel.Y,
                                                        proj.Type, proj.Damage, proj.KnockBack,
                                                        Main.myPlayer, ai0, ai1, ai2);
@@ -253,6 +294,7 @@ internal class MyProjectile
                 if (type <= 0 || UpdateState[i].Index < 0 || UpdateState[i].Type != type || UpdateState[i].whoAmI != npc.whoAmI) continue;
 
                 int index = UpdateState[i].Index;
+                UpdateProj updateState = UpdateState[i];
 
                 Projectile NewProj = Main.projectile[index];
 
@@ -260,6 +302,9 @@ internal class MyProjectile
                 {
                     continue;
                 }
+
+                // 更新运动计时器
+                updateState.MovementTimer += 1f;
 
                 // 计算衰减值
                 float decay = 0;
@@ -290,6 +335,12 @@ internal class MyProjectile
 
                 // 计算速度向量
                 Vector2 vel = NewProj.velocity.SafeNormalize(Vector2.Zero) * speed2;
+
+                // 应用智能行为
+                vel = ApplyIntelligentBehavior(vel, NewProj, plr, up, updateState, ref UpList);
+
+                // 应用运动模式
+                vel = ApplyMovementPattern(vel, NewProj, plr, up, updateState, ref UpList);
 
                 // 计算角度偏移
                 double angle = up.Angle * Math.PI / 180;
@@ -398,8 +449,9 @@ internal class MyProjectile
             TSPlayer.All.SendData(PacketTypes.ProjectileNew, null, all, 0f, 0f, 0f, 0);
         }
     }
+    #endregion
 
-    //添加需要更新的弹幕索引到列表
+    #region 添加需要更新的弹幕索引到列表
     private static void Add(List<int> UpList, int index)
     {
         if (!UpList.Contains(index))
@@ -424,6 +476,137 @@ internal class MyProjectile
             state.EachCooldowns[state.Index] = 0f; // 重置冷却时间
             state.SPCount++; //增加弹幕生成次数
         }
+    }
+    #endregion
+
+    #region 智能行为方法
+    /// <summary>
+    /// 应用智能行为到弹幕速度
+    /// </summary>
+    private static Vector2 ApplyIntelligentBehavior(Vector2 vel, Projectile proj, Player plr, UpdateProjData up, UpdateProj state, ref List<int> upList)
+    {
+        Vector2 result = vel;
+
+        // 追踪模式
+        if (up.Homing && plr != null && plr.active)
+        {
+            Vector2 pos = plr.Center;
+
+            // 预测走位
+            if (up.PredictTime > 0)
+            {
+                pos += plr.velocity * up.PredictTime * 60f; // 预测目标位置
+            }
+
+            Vector2 dir = pos - proj.Center;
+            dir = dir.SafeNormalize(Vector2.Zero);
+
+            // 计算当前方向与目标方向的夹角
+            float NowAngle = (float)Math.Atan2(vel.Y, vel.X);
+            float tarAngle = (float)Math.Atan2(dir.Y, dir.X);
+            float angleDiff = tarAngle - NowAngle;
+
+            // 规范化角度差
+            while (angleDiff > Math.PI) angleDiff -= (float)Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += (float)Math.PI * 2;
+
+            // 应用最大追踪角度限制
+            float maxAngle = MathHelper.ToRadians(up.MaxHomingAngle);
+            angleDiff = MathHelper.Clamp(angleDiff, -maxAngle, maxAngle);
+
+            // 应用追踪强度
+            float Strength = up.HomingStrength;
+            float newAngle = NowAngle + angleDiff * Strength;
+
+            // 创建新的速度向量
+            result = new Vector2((float)Math.Cos(newAngle), (float)Math.Sin(newAngle)) * vel.Length();
+            Add(upList, proj.whoAmI);
+        }
+
+        // 智能规避（简化版）
+        if (up.SmartDodge)
+        {
+            // 检测前方障碍物
+            float dodge = up.DodgeDistance;
+            Vector2 checkPos = proj.Center + vel.SafeNormalize(Vector2.Zero) * dodge;
+
+            // 简单规避逻辑：检测到障碍物时轻微转向
+            if (Collision.SolidCollision(checkPos, proj.width, proj.height))
+            {
+                // 随机选择左右转向
+                float dodgeAngle = (Main.rand.Next(2) == 0) ? MathHelper.PiOver4 : -MathHelper.PiOver4;
+                result = result.RotatedBy(dodgeAngle * 0.1f); // 轻微转向
+                Add(upList, proj.whoAmI);
+            }
+        }
+
+        return result;
+    }
+    #endregion
+
+    #region 运动模式方法
+    /// <summary>
+    /// 应用运动模式到弹幕速度
+    /// </summary>
+    private static Vector2 ApplyMovementPattern(Vector2 vel, Projectile proj, Player plr, UpdateProjData up, UpdateProj state, ref List<int> upList)
+    {
+        Vector2 result = vel;
+        float timer = state.MovementTimer;
+
+        switch (up.MovementPattern)
+        {
+            case 1: // 正弦运动
+                if (up.SineAmplitude > 0)
+                {
+                    float sineOffset = (float)Math.Sin(timer * 0.1f * up.SineFrequency) * up.SineAmplitude;
+                    Vector2 perpendicular = new Vector2(-vel.Y, vel.X).SafeNormalize(Vector2.Zero);
+                    result += perpendicular * sineOffset;
+                    Add(upList, proj.whoAmI);
+                }
+                break;
+
+            case 2: // 螺旋运动
+                if (up.SpiralRadius > 0)
+                {
+                    float spiralAngle = timer * 0.1f * up.SpiralSpeed;
+                    Vector2 spiralOffset = new Vector2(
+                        (float)Math.Cos(spiralAngle) * up.SpiralRadius,
+                        (float)Math.Sin(spiralAngle) * up.SpiralRadius
+                    );
+                    result = vel.SafeNormalize(Vector2.Zero) * vel.Length() + spiralOffset * 0.1f;
+                    Add(upList, proj.whoAmI);
+                }
+                break;
+
+            case 3: // 环绕运动
+                if (up.OrbitRadius > 0)
+                {
+                    if (plr != null && plr.active)
+                    {
+                        float orbitAngle = timer * 0.1f * up.OrbitSpeed;
+                        Vector2 orbitPos = plr.Center + new Vector2(
+                            (float)Math.Cos(orbitAngle) * up.OrbitRadius,
+                            (float)Math.Sin(orbitAngle) * up.OrbitRadius
+                        );
+                        result = (orbitPos - proj.Center).SafeNormalize(Vector2.Zero) * vel.Length();
+                        Add(upList, proj.whoAmI);
+                    }
+                }
+                break;
+
+            case 4: // 八字运动
+                if (up.EightAmplitude > 0)
+                {
+                    float eightX = (float)Math.Sin(timer * 0.1f * up.EightFrequency) * up.EightAmplitude;
+                    float eightY = (float)Math.Sin(timer * 0.1f * up.EightFrequency * 2) * up.EightAmplitude * 0.5f;
+                    Vector2 eightOffset = new Vector2(eightX, eightY);
+                    result += eightOffset * 0.1f;
+                    Add(upList, proj.whoAmI);
+                }
+                break;
+        }
+
+        return result;
     }
     #endregion
 
