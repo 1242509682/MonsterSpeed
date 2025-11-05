@@ -64,7 +64,6 @@ internal class FilePlay
         if (Event.PauseTime > 0 && fs.NoCond)
         {
             PauseMode(npc, mess, data, state, Event);
-            return;
         }
 
         // 检查当前文件事件的条件，如果开启强制播放则跳过条件检查
@@ -101,7 +100,7 @@ internal class FilePlay
             else
             {
                 // 冷却时间未到，但如果条件满足仍然执行事件
-                StartEvent(data, npc, Event, ref handled);
+                StartEvent(data, npc, Event, mess, ref handled);
             }
 
             // 显示状态（包含剩余时间）

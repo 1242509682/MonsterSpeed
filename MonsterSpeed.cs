@@ -17,7 +17,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 1);
+    public override Version Version => new Version(1, 3, 2);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -191,7 +191,7 @@ public class MonsterSpeed : TerrariaPlugin
     private Dictionary<int, DateTime> Teleport = new Dictionary<int, DateTime>(); // 跟踪每个NPC上次传送的时间
     private void TrackMode(NPC npc, NpcData data)
     {
-        if (data == null) return;
+        if (data == null || !data.AutoTrack) return;
 
         var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
         var dict = tar.Center - npc.Center; // 目标到NPC的方向向量

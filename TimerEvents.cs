@@ -1,12 +1,11 @@
-﻿using System;
-using System.Text;
+﻿using System.Text;
 using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
-using Terraria.DataStructures;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.FilePlay;
+using static MonsterSpeed.MoveMod;
 
 namespace MonsterSpeed;
 
@@ -35,12 +34,8 @@ public class TimerData
     [JsonProperty("修改防御", Order = -20)]
     public int Defense { get; set; } = 0;
 
-    [JsonProperty("环绕模式", Order = 4)]
-    public bool OrbitMode { get; set; }
-    [JsonProperty("环绕半径", Order = 5)]
-    public float OrbitRadius { get; set; } = 25f;
-    [JsonProperty("环绕速度", Order = 6)]
-    public float OrbitSpeed { get; set; } = 2.5f;
+    [JsonProperty("行动模式", Order = 1)]
+    public MoveModeData MoveData { get; set; }
 
     [JsonProperty("AI赋值", Order = 50)]
     public AIModes AIMode { get; set; }
@@ -55,18 +50,19 @@ public class TimerData
 // 状态管理类
 public class TimerState
 {
+    public int Index { get; set; } = 0; // 当前执行的事件索引
     public FilePlayState FileState { get; set; } = new FilePlayState(); // 文件播放状态管理
     public PauseState PauseState { get; set; } = new PauseState(); // 暂停状态管理
-    public int Index { get; set; } = 0; // 当前执行的事件索引
     public DateTime UpdateTimer { get; set; } = DateTime.UtcNow; // 事件更新时间戳
     public DateTime LastTextTime { get; set; } = DateTime.UtcNow; // 上次显示文本时间
+    public MoveModeState MoveState { get; set; } = new MoveModeState(); // 移动模式状态
 }
 
 // 暂停状态类
 public class PauseState
 {
     public bool Paused { get; set; } = false; // 是否处于暂停状态
-    public DateTime StateTime { get; set; } = DateTime.UtcNow; // 状态开始时间
+    public DateTime StateTime { get; set; } = DateTime.MinValue; // 状态开始时间
     public double Duration { get; set; } = 0; // 状态持续时间
 }
 
@@ -91,7 +87,25 @@ internal class TimerEvents
         if (Event.PauseTime > 0 && !Event.NoCond)
         {
             PauseMode(npc, mess, data, state, Event);
-            return;
+            // 如果在暂停状态，阻止除NextEvent外的其他逻辑
+            if (state.PauseState.Paused)
+            {
+                // 但仍然检查事件冷却，允许NextEvent切换
+                if ((DateTime.UtcNow - state.UpdateTimer).TotalSeconds >= data.ActiveTime)
+                {
+                    // 强制播放文件检查（即使在暂停状态下也允许）
+                    if (Event.FilePlayList != null && Event.FilePlayList.Count > 0 && Event.PlayCount != 0 && Event.NoCond)
+                    {
+                        StartFilePlay(npc.FullName, Event.FilePlayList, Event.PlayCount, Event.NoCond, Event.ByFile, state);
+                    }
+                    else
+                    {
+                        // 正常切换到下一个事件
+                        NextEvent(data, Event.NextAddTimer, npc, state);
+                    }
+                }
+                return;
+            }
         }
 
         // 显示冷却文本
@@ -152,7 +166,7 @@ internal class TimerEvents
 
             if (all)
             {
-                StartEvent(data, npc, Event, ref handled);
+                StartEvent(data, npc, Event, mess, ref handled);
             }
         }
 
@@ -170,30 +184,64 @@ internal class TimerEvents
     public static void PauseMode(NPC npc, StringBuilder mess, NpcData data, TimerState state, TimerData Event)
     {
         PauseState pause = state.PauseState;
-        if (!pause.Paused)
+
+        // 初始化暂停状态
+        if (!pause.Paused && pause.StateTime == DateTime.MinValue)
         {
             pause.Paused = true;
             pause.StateTime = DateTime.UtcNow;
             pause.Duration = Event.PauseTime;
         }
 
-        double elapsed = (DateTime.UtcNow - pause.StateTime).TotalMilliseconds;
-        double reTime = Event.ReleaseTime > 0 ? Event.ReleaseTime : Event.PauseTime;
-
-        if (elapsed >= (pause.Paused ? Event.PauseTime : reTime))
-        {
-            pause.Paused = !pause.Paused;
-            pause.StateTime = DateTime.UtcNow;
-            pause.Duration = pause.Paused ? Event.PauseTime : reTime;
-        }
+        // 计算经过的时间（秒）
+        double elapsedSeconds = (DateTime.UtcNow - pause.StateTime).TotalSeconds;
 
         if (pause.Paused)
         {
-            ShowCoolText(npc, data, state);
-            var remain = pause.Duration - (DateTime.UtcNow - pause.StateTime).TotalMilliseconds;
-            var life = (int)(npc.life / (float)npc.lifeMax * 100);
-            mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 暂停剩余:[c/A2E4DB:{remain:F0}毫秒]\n");
-            return;
+            // 暂停状态：检查是否应该切换到释放状态
+            if (elapsedSeconds >= pause.Duration)
+            {
+                // 暂停时间结束，切换到释放状态
+                pause.Paused = false;
+                pause.StateTime = DateTime.UtcNow;
+
+                // 如果释放时间为0，则使用与暂停相同的时间（1:1循环）
+                // 如果释放时间>0，使用设置的释放时间
+                pause.Duration = Event.ReleaseTime > 0 ? Event.ReleaseTime : Event.PauseTime;
+
+                // 状态切换后立即返回，让后续逻辑有机会执行
+                return;
+            }
+            else
+            {
+                // 仍在暂停中，显示信息并返回
+                ShowCoolText(npc, data, state);
+                var remain = pause.Duration - elapsedSeconds;
+                var life = (int)(npc.life / (float)npc.lifeMax * 100);
+                mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 暂停剩余:[c/A2E4DB:{remain:F1}秒]\n");
+
+                // 暂停期间只允许强制播放文件，其他事件逻辑被阻止
+                // 但允许NextEvent切换（在TimerEvent中处理）
+                return;
+            }
+        }
+        else
+        {
+            // 释放状态：检查是否应该切换到暂停状态
+            if (elapsedSeconds >= pause.Duration)
+            {
+                // 释放时间结束，切换回暂停状态
+                pause.Paused = true;
+                pause.StateTime = DateTime.UtcNow;
+                pause.Duration = Event.PauseTime;
+
+                // 显示状态切换信息
+                ShowCoolText(npc, data, state);
+                var life = (int)(npc.life / (float)npc.lifeMax * 100);
+                mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 释放结束，进入暂停\n");
+                return;
+            }
+            // 释放状态下不返回，允许执行后续事件逻辑
         }
     }
     #endregion
@@ -202,6 +250,8 @@ internal class TimerEvents
     public static void NextEvent(NpcData data, int timer, NPC npc, TimerState state)
     {
         state.PauseState = new PauseState();
+        state.MoveState = new MoveModeState();
+        state.FileState = new FilePlayState();
         state.Index = (state.Index + 1) % data.TimerEvent.Count;
         var addTime = timer >= 0 ? timer : 0;
 
@@ -210,10 +260,10 @@ internal class TimerEvents
     #endregion
 
     #region 执行事件逻辑
-    public static void StartEvent(NpcData data, NPC npc, TimerData Event, ref bool handled)
+    public static void StartEvent(NpcData data, NPC npc, TimerData Event, StringBuilder mess, ref bool handled)
     {
-        if (Event.OrbitMode)
-            OrbitMode(npc, data, Event, ref handled); // 环绕攻击
+        // 移动模式处理（新增）
+        HandleMoveMode(npc, Event, mess, ref handled);
 
         if (Event.AIMode != null)
             AISystem.AIPairs(npc, Event.AIMode, npc.FullName, ref handled);
@@ -237,50 +287,6 @@ internal class TimerEvents
         }
 
         npc.defense = Event.Defense > 0 ? Event.Defense : npc.defDefense;
-    }
-    #endregion
-
-    #region 环绕攻击模式
-    private static Dictionary<int, float> OrbitAngles = new Dictionary<int, float>();
-    private static void OrbitMode(NPC npc, NpcData data, TimerData Event, ref bool handled)
-    {
-        if (!Event.OrbitMode) return;
-        var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
-        var range = Vector2.Distance(tar.Center, npc.Center);
-        var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
-        float orbitRadius = Event.OrbitRadius * 16f;
-        float orbitSpeed = Event.OrbitSpeed;
-        var flag = false;
-
-        // 初始化或获取环绕角度
-        if (!OrbitAngles.ContainsKey(npc.whoAmI))
-        {
-            OrbitAngles[npc.whoAmI] = 0f;
-        }
-
-        // 计算环绕位置
-        Vector2 orbitPos = tar.Center + new Vector2(
-            (float)Math.Cos(OrbitAngles[npc.whoAmI]) * orbitRadius,
-            (float)Math.Sin(OrbitAngles[npc.whoAmI]) * orbitRadius
-        );
-
-        // 朝环绕位置移动
-        Vector2 orbitDir = orbitPos - npc.Center;
-        if (orbitDir.Length() > 10f)
-        {
-            orbitDir.Normalize();
-            npc.velocity = Vector2.Lerp(npc.velocity, orbitDir * data.TrackSpeed, 0.1f);
-            flag = true;
-        }
-
-        // 更新角度
-        OrbitAngles[npc.whoAmI] += orbitSpeed * 0.01f;
-        if (OrbitAngles[npc.whoAmI] > MathHelper.TwoPi)
-        {
-            OrbitAngles[npc.whoAmI] -= MathHelper.TwoPi;
-        }
-
-        handled = flag;
     }
     #endregion
 
@@ -345,37 +351,38 @@ internal class TimerEvents
 
     #region 状态管理
     public static readonly Dictionary<int, TimerState> TimerStates = new();
-
-    /// <summary>
-    /// 获取或创建NPC的状态
-    /// </summary>
-    /// <param name="npc">NPC实例</param>
-    /// <returns>状态对象</returns>
+    // 获取或创建NPC的状态
     public static TimerState? GetState(NPC npc)
     {
         if (npc == null || !npc.active)
             return new TimerState();
 
         if (!TimerStates.ContainsKey(npc.whoAmI))
-            TimerStates[npc.whoAmI] = new TimerState();
+        {
+            var state = new TimerState();
+
+            // 初始化移动状态
+            state.MoveState.DashStartPosition = npc.Center;
+
+            TimerStates[npc.whoAmI] = state;
+        }
+
         return TimerStates[npc.whoAmI];
     }
 
-    /// <summary>
-    /// 清理NPC的状态
-    /// </summary>
-    /// <param name="npc">NPC实例</param>
+    // 清理NPC的状态
     public static void ClearStates(NPC npc)
     {
-        if (npc != null && TimerStates.ContainsKey(npc.whoAmI))
+        if (npc != null)
         {
-            TimerStates.Remove(npc.whoAmI);
+            if (TimerStates.ContainsKey(npc.whoAmI))
+            {
+                TimerStates.Remove(npc.whoAmI);
+            }
         }
     }
 
-    /// <summary>
-    /// 清理所有状态（用于重置）
-    /// </summary>
+    // 清理所有状态（用于重置）
     public static void ClearAllStates()
     {
         TimerStates.Clear();

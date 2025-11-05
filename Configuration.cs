@@ -57,6 +57,8 @@ internal class Configuration
         public int DeadCount { get; set; }
         [JsonProperty("自动仇恨", Order = -2)]
         public bool AutoTarget { get; set; } = true;
+        [JsonProperty("追击模式", Order = -2)]
+        public bool AutoTrack { get; set; } = true;
         [JsonProperty("追击距离", Order = -1)]
         public float TrackRange { get; set; } = 62f;
         [JsonProperty("停追距离", Order = 0)]
@@ -210,11 +212,13 @@ internal class Configuration
         Dict!["克苏鲁之眼"] = new NpcData(0, 62, 25f, 35, 5)
         {
             AutoHealInterval = 5,
+            Loop = true,
             TimerEvent = new List<TimerData>()
             {
                 new TimerData
                 {
                     Condition = new Conditions () { NpcLift = "0,100" },
+                    MoveData = new MoveModeData(),
                     SendProj = new List<ProjData>()
                     {
                         new ProjData()
@@ -236,7 +240,6 @@ internal class Configuration
                             {
                                 new UpdateProjData()
                                 {
-                                    Backer = true,
                                     Velocity = 25,
                                     Angle = 10,
                                 }
