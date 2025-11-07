@@ -8,14 +8,16 @@ namespace MonsterSpeed;
 // 移动模式参数统一封装类
 public class MoveModeData
 {
-    [JsonProperty("模式(0无/1停留/2环绕/3徘徊/4突进/5对视)", Order = 0)]
+    [JsonProperty("模式说明", Order = -1)]
+    public string Text = "0不启用, 1怪物停留原地, 2环绕模式(0顺时针、1逆时针、2根据交替间隔切换顺时针与逆时针), 3徘徊模式, 4突进模式, 5对视模式)";
+    [JsonProperty("模式类型", Order = 0)]
     public MoveMode Mode { get; set; } = MoveMode.None;
 
     [JsonProperty("平滑系数", Order = 1)]
     public float SmoothFactor { get; set; } = 0.15f;
 
     // 环绕模式参数
-    [JsonProperty("环绕方向(0顺/1逆/2交替)", Order = 8)]
+    [JsonProperty("环绕方向", Order = 8)]
     public OrbitDirection OrbitDir { get; set; } = OrbitDirection.Clockwise;
     [JsonProperty("交替间隔", Order = 9)]
     public float DirTimer { get; set; } = 180f;

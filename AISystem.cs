@@ -7,6 +7,8 @@ namespace MonsterSpeed;
 // 新增：AI模式配置类
 public class AIModes
 {
+    [JsonProperty("步进说明", Order = -3)]
+    public string Text2 = "0递增(从最小值加到最大值,回到最小值), 1递减(从最大值减到最小值,回到最大值), 2往复(从最小值到最大值,再从最大值回到最小值), 3随机(在最小值与最大值之间随机)";
     [JsonProperty("启用模式", Order = -2)]
     public bool Enabled { get; set; } = false;
 
@@ -25,7 +27,7 @@ public class AIModes
 // 步进AI的配置
 public class AISetting
 {
-    [JsonProperty("模式(0递增/1递减/2往复/3随机)")]
+    [JsonProperty("模式")]
     public int Type { get; set; } = 2;
     [JsonProperty("步长")]
     public float Step { get; set; } = 1.0f;

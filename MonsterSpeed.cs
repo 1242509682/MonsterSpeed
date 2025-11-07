@@ -17,14 +17,14 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 2);
+    public override Version Version => new Version(1, 3, 3);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
-    #region 注册与释放
+    #region 注册与释放   
     public MonsterSpeed(Main game) : base(game)
     {
-        MyProjectile.UpdateState = new UpdateProj[1001];
+        MyProjectile.UpdateState = new UpdateProjInfo[1001];
     }
 
     public override void Initialize()
@@ -86,9 +86,13 @@ public class MonsterSpeed : TerrariaPlugin
             if (state != null)
             {
                 state.Index = 0;
-                state.UpdateTimer = DateTime.UtcNow;
                 state.FileState = new FilePlayState();
                 state.PauseState = new PauseState();
+                state.UpdateTimer = DateTime.UtcNow;
+                state.LastTextTime = DateTime.UtcNow;
+                state.MoveState = new MoveModeState();
+                state.EventStopCounts = new Dictionary<int, int>();
+                state.PlayCounts = new Dictionary<int, int>();
             }
         }
     }
@@ -113,6 +117,17 @@ public class MonsterSpeed : TerrariaPlugin
                     Condition = new Conditions()
                     {
                         NpcLift = "0,100"
+                    },
+
+                    SendProj = new List<SpawnProjData>()
+                    {
+                        new SpawnProjData()
+                        {
+                            SpawnPoint = new List<SpawnPointData>()
+                            {
+                                new SpawnPointData(){ Type = 0 }
+                            }
+                        }
                     }
                 }
             },
@@ -132,8 +147,8 @@ public class MonsterSpeed : TerrariaPlugin
         }
 
         // 清理MyProjectile中的状态
+        MyProjectile.ClearUpdateState(args.npc);
         MyProjectile.ClearState(args.npc);
-        MyProjectile.ClearUpState(args.npc);
         // 清理MyMonster中的状态
         MyMonster.ClearState(args.npc);
         // 清理TimerEvents中的状态

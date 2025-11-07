@@ -64,7 +64,7 @@ internal class Command
                 Commands.HandleCommand(args.Player, "/butcher");
 
                 MyProjectile.ClearAllStates();
-                MyProjectile.ClearAllStates();
+                MyMonster.ClearAllStates();
                 TimerEvents.ClearAllStates();
 
                 Config.Dict.Clear();

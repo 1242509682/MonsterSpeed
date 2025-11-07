@@ -1,6 +1,5 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
-using Microsoft.Xna.Framework;
 using Terraria;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
@@ -13,6 +12,8 @@ public class EventFileData
 {
     [JsonProperty("事件名称")]
     public string EventName { get; set; } = "未命名事件";
+    [JsonProperty("独立冷却")]
+    public bool SoloCooldown { get; set; } = false;
     [JsonProperty("冷却延长")]
     public double MoreActiveTime { get; set; }
     [JsonProperty("事件列表")]
@@ -34,16 +35,16 @@ public class FilePlayState
     public double MoreActiveTime { get; set; } = 0; // 冷却延长
     public bool NoCond { get; set; } = false; // 无条件播放
     public bool ByFile { get; set; } = false; // 限次播放
+    public bool SoloCooldown { get; set; } = true; // 使用独立冷却
 }
 
-internal class FilePlay
+internal class FilePlayManager
 {
     #region 处理文件播放
     public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, TimerState state, ref bool handled)
     {
         var fs = state.FileState;
         var Event = fs.Events[fs.EventIndex];
-        var life = (int)(npc.life / (float)npc.lifeMax * 100);
 
         // 状态验证
         if (fs == null || !fs.Playing ||
@@ -56,8 +57,9 @@ internal class FilePlay
         }
 
         // 计算文件播放模式下的实际冷却时间和剩余时间
-        double ActiveTime = data.ActiveTime + fs.MoreActiveTime;
-        double remaining = ActiveTime - (DateTime.UtcNow - fs.EventTimer).TotalSeconds;
+        double ActiveTime = GetActiveTime(fs, data);
+        TimeSpan elapsed = DateTime.UtcNow - fs.EventTimer;
+        double remaining = ActiveTime - elapsed.TotalSeconds;
         remaining = Math.Max(0, remaining); // 确保不为负数
 
         // 检查暂停时间 - 如果是强制播放，跳过暂停
@@ -75,14 +77,8 @@ internal class FilePlay
         }
 
         // 显示冷却文本
+        string Info = GetStatusInfo(fs, remaining, ActiveTime);
         ShowCoolText(npc, data, state);
-
-        // 显示状态（包含剩余时间）- 调整显示顺序
-        string playMode = "";
-        if (fs.NoCond)
-            playMode += "[强制]";
-        if (fs.ByFile)
-            playMode += "[限次]";
 
         // 强制播放或条件满足
         if (fs.NoCond || all)
@@ -104,10 +100,7 @@ internal class FilePlay
             }
 
             // 显示状态（包含剩余时间）
-            mess.Append($" {playMode}文件:[c/A2E4DB:{fs.FileIndex + 1}/{fs.FileSeq.Count}] " +
-                        $"事件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
-                        $"次数:[c/A2E4DB:{fs.PlayCount + 1}/{fs.TotalCount}] " +
-                        $"剩余:[c/A2E4DB:{remaining:F1}秒]\n");
+            mess.Append($"{Info}");
 
             // 不是暂停状态时显示血量和召怪弹发数量
             if (!state.PauseState.Paused)
@@ -115,16 +108,14 @@ internal class FilePlay
                 // 获取召怪和弹发数量用于广播显示
                 int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
                 int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
-                mess.Append($" 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
+                mess.Append($" 血量:[c/A2E4DB:{(int)(npc.life / (float)npc.lifeMax * 100)}%]" +
+                            $" 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
             }
         }
         else
         {
             // 显示状态（包含剩余时间）
-            mess.Append($" {playMode}文件:[c/A2E4DB:{fs.FileIndex + 1}/{fs.FileSeq.Count}] " +
-                        $"事件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
-                        $"次数:[c/A2E4DB:{fs.PlayCount + 1}/{fs.TotalCount}] " +
-                        $"剩余:[c/A2E4DB:{remaining:F1}秒]\n");
+            mess.Append($"{Info}");
 
             // 不是暂停状态时显示血量和召怪弹发数量
             if (!state.PauseState.Paused)
@@ -132,7 +123,8 @@ internal class FilePlay
                 // 获取召怪和弹发数量用于广播显示
                 int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
                 int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
-                mess.Append($" 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
+                mess.Append($" 血量:[c/A2E4DB:{(int)(npc.life / (float)npc.lifeMax * 100)}%]" +
+                            $" 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
             }
 
             mess.Append($" [c/FF6B6B:文件事件条件未满足]\n");
@@ -218,6 +210,60 @@ internal class FilePlay
     }
     #endregion
 
+    #region 获取文件独立冷却时间
+    public static double GetActiveTime(FilePlayState fs, NpcData data)
+    {
+        if (fs.SoloCooldown)
+        {
+            // 如果使用独立冷却，只使用文件本身的冷却时间（毫秒）
+            return fs.MoreActiveTime;
+        }
+        else
+        {
+            // 兼容旧模式：主事件冷却 + 文件延长冷却
+            return data.ActiveTime + fs.MoreActiveTime;
+        }
+    }
+    #endregion
+
+    #region 更新文件播放次数
+    public static void UpdateFilePlayCount(TimerState state, List<int> fileList)
+    {
+        if (state.PlayCounts == null)
+        {
+            state.PlayCounts = new Dictionary<int, int>();
+        }
+
+        foreach (int fileNumber in fileList)
+        {
+            if (state.PlayCounts.ContainsKey(fileNumber))
+            {
+                state.PlayCounts[fileNumber]++;
+            }
+            else
+            {
+                state.PlayCounts[fileNumber] = 1;
+            }
+        }
+    }
+    #endregion
+
+    #region 监控广播状态信息显示
+    private static string GetStatusInfo(FilePlayState fs, double remaining, double activeTime)
+    {
+        string Info = "";
+        if (fs.NoCond) Info += "[强制]";
+        if (fs.ByFile) Info += "[限次]";
+        if (fs.SoloCooldown) Info += "[独立冷却]";
+
+        return $" {Info}文件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
+               $"事件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
+               $"次数:[c/A2E4DB:{fs.PlayCount + 1}/{fs.TotalCount}] " +
+               $"冷却:[c/A2E4DB:{activeTime}秒] " +
+               $"剩余:[c/A2E4DB:{remaining:F1}秒]\n";
+    }
+    #endregion
+
     #region 开始文件播放
     public static void StartFilePlay(string npcName, List<int> fileList, int playCount, bool noCond, bool byFile, TimerState state)
     {
@@ -242,6 +288,9 @@ internal class FilePlay
             {
                 fs.FileSeq.Reverse();
             }
+
+            // 更新播放计数
+            UpdateFilePlayCount(state, fileList);
 
             // 加载第一个文件
             if (!LoadNextFile(fs, npcName))
@@ -268,7 +317,7 @@ internal class FilePlay
         {
             var fileNum = fs.FileSeq[fs.FileIndex];
 
-            var (events, moreActiveTime) = LoadEventFile(fileNum);
+            var (events, moreActiveTime, SoloCooldown) = LoadEventFile(fileNum);
 
             if (events == null || events.Count == 0)
             {
@@ -278,6 +327,7 @@ internal class FilePlay
 
             fs.Events = events;
             fs.MoreActiveTime = moreActiveTime; // 设置冷却延长
+            fs.SoloCooldown = SoloCooldown; // 设置独立冷却
             fs.EventIndex = 0;
             fs.EventTimer = DateTime.UtcNow;
             return true;
@@ -291,7 +341,7 @@ internal class FilePlay
     #endregion
 
     #region 加载文件播放（核心方法）
-    public static (List<TimerData>? events, double moreActiveTime) LoadEventFile(int fileNum)
+    public static (List<TimerData>? events, double moreActiveTime, bool SoloCooldown) LoadEventFile(int fileNum)
     {
         try
         {
@@ -299,7 +349,7 @@ internal class FilePlay
             if (!Directory.Exists(dir))
             {
                 TShock.Log.ConsoleError($"事件文件夹不存在: {dir}");
-                return (null, 0);
+                return (null, 0, false);
             }
 
             var pattern = $"{fileNum}.*.json";
@@ -308,7 +358,7 @@ internal class FilePlay
             if (files.Length == 0)
             {
                 TShock.Log.ConsoleError($"未找到文件: {fileNum}");
-                return (null, 0);
+                return (null, 0, false);
             }
 
             var filePath = files[0];
@@ -318,15 +368,15 @@ internal class FilePlay
             if (fileData?.TimerEvents == null || fileData.TimerEvents.Count == 0)
             {
                 TShock.Log.ConsoleError($"文件内容错误: {filePath}");
-                return (null, 0);
+                return (null, 0, false);
             }
 
-            return (fileData.TimerEvents, fileData.MoreActiveTime);
+            return (fileData.TimerEvents, fileData.MoreActiveTime, fileData.SoloCooldown);
         }
         catch (Exception ex)
         {
             TShock.Log.ConsoleError($"加载文件失败: {fileNum}, 错误: {ex.Message}");
-            return (null, 0);
+            return (null, 0, false);
         }
     }
     #endregion

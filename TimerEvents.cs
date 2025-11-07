@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
-using static MonsterSpeed.FilePlay;
+using static MonsterSpeed.FilePlayManager;
 using static MonsterSpeed.MoveMod;
 
 namespace MonsterSpeed;
@@ -42,7 +42,7 @@ public class TimerData
     [JsonProperty("生成怪物", Order = 51)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
     [JsonProperty("生成弹幕", Order = 52)]
-    public List<ProjData> SendProj { get; set; } = new List<ProjData>();
+    public List<SpawnProjData> SendProj { get; set; } = new List<SpawnProjData>();
     [JsonProperty("发射物品", Order = 53)]
     public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
 }
@@ -56,6 +56,8 @@ public class TimerState
     public DateTime UpdateTimer { get; set; } = DateTime.UtcNow; // 事件更新时间戳
     public DateTime LastTextTime { get; set; } = DateTime.UtcNow; // 上次显示文本时间
     public MoveModeState MoveState { get; set; } = new MoveModeState(); // 移动模式状态
+    public Dictionary<int, int> EventStopCounts { get; set; } = new Dictionary<int, int>(); // 事件执行次数统计
+    public Dictionary<int, int> PlayCounts { get; set; } = new Dictionary<int, int>(); // 文件播放次数统计
 }
 
 // 暂停状态类
@@ -112,7 +114,7 @@ internal class TimerEvents
         ShowCoolText(npc, data, state);
 
         // 事件冷却检查
-        if ((DateTime.UtcNow - state.UpdateTimer).TotalSeconds >= data.ActiveTime)
+        if ((DateTime.UtcNow - state.UpdateTimer) >= TimeSpan.FromSeconds(data.ActiveTime))
         {
             // 启动文件播放器
             if (Event.FilePlayList != null && Event.FilePlayList.Count > 0 && Event.PlayCount != 0)
@@ -172,11 +174,19 @@ internal class TimerEvents
 
         if (!state.PauseState.Paused)
         {
-            int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
-            int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
-            var life = (int)(npc.life / (float)npc.lifeMax * 100);
-            mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
+            AppendStatusInfo(npc, mess, data, state, Event);
         }
+    }
+    #endregion
+
+    #region 非暂停模式下状态信息显示
+    public static void AppendStatusInfo(NPC npc, StringBuilder mess, NpcData data, TimerState state, TimerData Event)
+    {
+        int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
+        int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
+        var life = (int)(npc.life / (float)npc.lifeMax * 100);
+
+        mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
     }
     #endregion
 
@@ -249,13 +259,35 @@ internal class TimerEvents
     #region 让计数器自动前进到下一个事件
     public static void NextEvent(NpcData data, int timer, NPC npc, TimerState state)
     {
+        // 更新当前事件的执行次数
+        UpdateEventExecuteCount(state, state.Index);
         state.PauseState = new PauseState();
         state.MoveState = new MoveModeState();
         state.FileState = new FilePlayState();
+        state.LastTextTime = DateTime.UtcNow;
         state.Index = (state.Index + 1) % data.TimerEvent.Count;
         var addTime = timer >= 0 ? timer : 0;
 
         state.UpdateTimer = DateTime.UtcNow.AddSeconds(addTime);
+    }
+    #endregion
+
+    #region 更新事件执行次数
+    private static void UpdateEventExecuteCount(TimerState state, int Index)
+    {
+        if (state.EventStopCounts == null)
+        {
+            state.EventStopCounts = new Dictionary<int, int>();
+        }
+
+        if (state.EventStopCounts.ContainsKey(Index))
+        {
+            state.EventStopCounts[Index]++;
+        }
+        else
+        {
+            state.EventStopCounts[Index] = 1;
+        }
     }
     #endregion
 
@@ -311,7 +343,7 @@ internal class TimerEvents
         {
             // 文件播放模式
             var fs = state.FileState;
-            var time = data.ActiveTime + fs.MoreActiveTime;
+            var time = GetActiveTime(fs, data);
             ActionTime = TimeSpan.FromSeconds(time) - (DateTime.UtcNow - fs.EventTimer);
             text = $"File {ActionTime.TotalSeconds:F2} [{fs.FileIndex + 1}/{fs.FileSeq.Count}]";
             color = Color.Blue;

@@ -6,6 +6,7 @@ using Terraria;
 using Terraria.ID;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
+using static MonsterSpeed.TimerEvents;
 
 namespace MonsterSpeed;
 
@@ -34,6 +35,15 @@ public class Conditions
     public float Speed { get; set; } = -1;
     [JsonProperty("AI条件", Order = -12)]
     public Dictionary<int, string[]> AIPairs { get; set; } = new Dictionary<int, string[]>();
+
+    [JsonProperty("时间范围", Order = -11)]
+    public string Timer { get; set; } = "0,0";
+    [JsonProperty("执行次数", Order = -10)]
+    public Dictionary<int, int> ExecuteCount { get; set; } = new Dictionary<int, int>();
+    [JsonProperty("累计播放次数", Order = -9)] // 新增：所有文件累计播放次数
+    public int TotalPlayCount { get; set; } = -1;
+    [JsonProperty("指定文件播放次数", Order = -8)] // 新增：指定文件播放次数
+    public Dictionary<int, int> FilePlayCount { get; set; } = new Dictionary<int, int>();   
 
     #region 触发条件
     internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, TimerData Event, ref bool all, ref bool loop)
@@ -150,6 +160,39 @@ public class Conditions
                 AICondition(npc, mess, ref all, ref loop, Condition);
             }
 
+            // 时间范围条件
+            var TC = TimerCondition(npc, data, Condition, mess);
+            if (!TC && Condition.Timer != "0,0")
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 时间条件未满足: 当前时间不在 {Condition.Timer} 秒范围内\n");
+            }
+
+            // 执行次数条件
+            var EC = ExecuteCountCondition(npc, Condition, mess);
+            if (!EC && Condition.ExecuteCount.Count > 0)
+            {
+                all = false;
+                loop = true;
+            }
+
+            // 累计播放次数条件 - 新增
+            var TPC = TotalPlayCountCondition(npc, Condition, mess);
+            if (!TPC && Condition.TotalPlayCount != -1)
+            {
+                all = false;
+                loop = true;
+                mess.Append($" 累计播放次数条件未满足: 当前累计播放 {GetTotalPlayCount(npc)} 次 < 需要 {Condition.TotalPlayCount} 次\n");
+            }
+
+            // 指定文件播放次数条件 - 新增
+            var FPC = FilePlayCountCondition(npc, Condition, mess);
+            if (!FPC && Condition.FilePlayCount.Count > 0)
+            {
+                all = false;
+                loop = true;
+            }
         }
     }
     #endregion
@@ -405,6 +448,152 @@ public class Conditions
                 }
             }
         }
+    }
+    #endregion
+
+    #region 时间范围条件
+    private static bool TimerCondition(NPC npc, NpcData data, Conditions Condition, StringBuilder mess)
+    {
+        if (Condition.Timer == "0,0") return true;
+
+        var result = CheckTimer(Condition.Timer);
+        if (!result.success)
+        {
+            mess.Append($" 时间条件格式错误: {Condition.Timer}\n");
+            return false;
+        }
+
+        var state = GetState(npc);
+        if (state == null) return false;
+
+        // 计算当前事件已经运行的时间
+        double elapsed = (DateTime.UtcNow - state.UpdateTimer).TotalSeconds;
+        double Time = data.ActiveTime - elapsed; // 剩余时间
+        double actual = data.ActiveTime - Time; // 已过时间
+
+        // 检查是否在指定的时间范围内
+        bool inRange = actual >= result.min && actual <= result.max;
+
+        return inRange;
+    }
+
+    private static (bool success, double min, double max) CheckTimer(string condition)
+    {
+        var parts = condition.Split(',');
+        if (parts.Length != 2 || !double.TryParse(parts[0].Trim(), out double min) || !double.TryParse(parts[1].Trim(), out double max))
+        {
+            return (false, -1, -1);
+        }
+
+        return (true, Math.Min(min, max), Math.Max(min, max));
+    }
+    #endregion
+
+    #region 执行次数条件
+    private static bool ExecuteCountCondition(NPC npc, Conditions Condition, StringBuilder mess)
+    {
+        if (Condition.ExecuteCount.Count == 0) return true;
+
+        var state = GetState(npc);
+        if (state == null) return false;
+
+        bool Met = true;
+
+        foreach (var kvp in Condition.ExecuteCount)
+        {
+            int Index = kvp.Key;
+            int NeedCount = kvp.Value;
+
+            // 获取指定事件的执行次数
+            int NewCount = GetEventExecuteCount(state, Index);
+
+            if (NewCount < NeedCount)
+            {
+                Met = false;
+                mess.Append($" 执行次数条件未满足: 事件[{Index}] 当前执行 {NewCount} 次 < 需要 {NeedCount} 次\n");
+            }
+        }
+
+        return Met;
+    }
+
+    private static int GetEventExecuteCount(TimerState state, int eventIndex)
+    {
+        // 从状态中获取指定事件的执行次数
+        if (state.EventStopCounts != null && state.EventStopCounts.ContainsKey(eventIndex))
+        {
+            return state.EventStopCounts[eventIndex];
+        }
+        return 0;
+    }
+    #endregion
+
+    #region 累计播放次数条件
+    private static bool TotalPlayCountCondition(NPC npc, Conditions Condition, StringBuilder mess)
+    {
+        if (Condition.TotalPlayCount == -1) return true;
+
+        int Total = GetTotalPlayCount(npc);
+        return Total >= Condition.TotalPlayCount;
+    }
+
+    // 获取所有文件的累计播放次数
+    private static int GetTotalPlayCount(NPC npc)
+    {
+        var state = GetState(npc);
+        if (state == null) return 0;
+
+        // 计算所有事件的执行次数总和
+        int total = 0;
+        if (state.EventStopCounts != null)
+        {
+            foreach (var count in state.EventStopCounts.Values)
+            {
+                total += count;
+            }
+        }
+        return total;
+    }
+    #endregion
+
+    #region 指定文件播放次数条件
+    private static bool FilePlayCountCondition(NPC npc, Conditions Condition, StringBuilder mess)
+    {
+        if (Condition.FilePlayCount.Count == 0) return true;
+
+        var state = GetState(npc);
+        if (state == null) return false;
+
+        bool all = true;
+
+        foreach (var kvp in Condition.FilePlayCount)
+        {
+            int fileNumber = kvp.Key;
+            int NeedCount = kvp.Value;
+
+            // 获取指定文件的播放次数
+            int NewCount = GetFilePlayCount(state, fileNumber);
+
+            if (NewCount < NeedCount)
+            {
+                all = false;
+                mess.Append($" 文件播放次数条件未满足: 文件{fileNumber} 当前播放 {NewCount} 次 < 需要 {NeedCount} 次\n");
+            }
+        }
+
+        return all;
+    }
+    #endregion
+
+    #region 获取指定文件的播放次数
+    private static int GetFilePlayCount(TimerState state, int fileNumber)
+    {
+        // 从状态中获取指定文件的播放次数
+        if (state.PlayCounts != null && state.PlayCounts.ContainsKey(fileNumber))
+        {
+            return state.PlayCounts[fileNumber];
+        }
+        return 0;
     }
     #endregion
 }

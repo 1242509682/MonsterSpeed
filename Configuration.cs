@@ -16,6 +16,7 @@ internal class Configuration
 {
         "使用 /mos all 导出时间事件 再用/mos list 列出文件,在[文件播放器]填写文件【序号】",
         "导出的时间事件文件生成路径在: tshock/怪物加速_时间事件集 ",
+        "播放类型 1并行播放:主事件运行同时可按次数循环播放文件 2同时播放:主事件运行同时点播所有文件",
         "播放次数 0不播放，>1正序播放一次,<1倒序播放一次",
         "播放时间 默认以怪物数据表本身的【冷却时间】(默认5秒) + 文件里的【冷却延长】构成",
         "强制播放 可忽略【触发条件】与【暂停间隔】进行无约束播放,【循环执行】无法跳过",
@@ -195,7 +196,8 @@ internal class Configuration
     {
         CustomHideList = new List<string>()
         {
-            "武器条件说明","进度条件说明","播放文件模式说明"
+            "追踪说明", "模式说明","步进说明","类型说明","射向说明",
+            "新弹幕ID说明","武器条件说明","进度条件说明","播放文件模式说明"
         };
 
         NpcList = new List<int>()
@@ -219,9 +221,9 @@ internal class Configuration
                 {
                     Condition = new Conditions () { NpcLift = "0,100" },
                     MoveData = new MoveModeData(),
-                    SendProj = new List<ProjData>()
+                    SendProj = new List<SpawnProjData>()
                     {
-                        new ProjData()
+                        new SpawnProjData()
                         {
                             Type = 115,
                             Damage = 10,
@@ -234,18 +236,12 @@ internal class Configuration
                             Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
                             Lift = 180,
-                            TarCenter = false,
-                            UpdateTime = 500f,
-                            UpdateProj = new List<UpdateProjData>()
+                            SpawnPoint = new List<SpawnPointData>()
                             {
-                                new UpdateProjData()
-                                {
-                                    Velocity = 25,
-                                    Angle = 10,
-                                }
+                                new SpawnPointData(){ Type = 0 }
                             }
                         },
-                        new ProjData()
+                        new SpawnProjData()
                         {
                             Type = 44,
                             Damage = 10,
@@ -258,10 +254,13 @@ internal class Configuration
                             Rotate = 0f,
                             ai = new Dictionary<int, float>(),
                             Lift = 120,
-                            TarCenter = false,
+                            SpawnPoint = new List<SpawnPointData>()
+                            {
+                                new SpawnPointData(){ Type = 0 }
+                            }
                         },
 
-                    }
+                    },
                 },
 
                 new TimerData
@@ -270,12 +269,12 @@ internal class Configuration
                     Defense = 50,
                     Condition = new Conditions()
                     {
-                            NpcLift = "0,50",
+                        NpcLift = "0,50",
                     },
 
-                    SendProj = new List<ProjData>()
+                    SendProj = new List<SpawnProjData>()
                     {
-                        new ProjData()
+                        new SpawnProjData()
                         {
                             Type = 671,
                             Damage = 10,
@@ -288,9 +287,12 @@ internal class Configuration
                             Rotate = 2f,
                             ai = new Dictionary<int, float>(),
                             Lift = 180,
-                            TarCenter = false,
+                            SpawnPoint = new List<SpawnPointData>()
+                            {
+                                new SpawnPointData(){ Type = 0 }
+                            }
                         },
-                        new ProjData()
+                        new SpawnProjData()
                         {
                             Type = 454,
                             Damage = 20,
@@ -303,7 +305,10 @@ internal class Configuration
                             Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
                             Lift = 60,
-                            TarCenter = false,
+                            SpawnPoint = new List<SpawnPointData>()
+                            {
+                                new SpawnPointData(){ Type = 0 }
+                            }
                         },
                     }
                 },
@@ -355,9 +360,9 @@ internal class Configuration
                         }
                     },
 
-                    SendProj = new List<ProjData>()
+                    SendProj = new List<SpawnProjData>()
                     {
-                        new ProjData()
+                        new SpawnProjData()
                         {
                             Type = 671,
                             Lift = 180,
@@ -369,18 +374,12 @@ internal class Configuration
                             Angle = 15f,
                             Rotate = 0f,
                             Velocity = 30.0f,
-                            UpdateTime = 2000f,
-                            UpdateProj = new List<UpdateProjData>()
+                            SpawnPoint = new List<SpawnPointData>()
                             {
-                                new UpdateProjData()
-                                {
-                                    Velocity = 1.0f,
-                                    Radius = 40f,
-                                    Angle = 30f,
-                                }
+                                new SpawnPointData(){ Type = 0 }
                             }
                         },
-                    }
+                    },
                 },
 
                 new TimerData
@@ -395,9 +394,9 @@ internal class Configuration
                         }
                     },
 
-                    SendProj = new List<ProjData>()
+                    SendProj = new List<SpawnProjData>()
                     {
-                        new ProjData()
+                        new SpawnProjData()
                         {
                             Type = 351,
                             Lift = 60,
@@ -410,6 +409,10 @@ internal class Configuration
                             Rotate = 2f,
                             Velocity = 20f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
+                            SpawnPoint = new List<SpawnPointData>()
+                            {
+                                new SpawnPointData(){ Type = 0 }
+                            }
                         },
                     }
                 },
