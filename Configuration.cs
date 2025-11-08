@@ -196,8 +196,7 @@ internal class Configuration
     {
         CustomHideList = new List<string>()
         {
-            "追踪说明", "模式说明","步进说明","类型说明","射向说明",
-            "新弹幕ID说明","武器条件说明","进度条件说明","播放文件模式说明"
+            "行动模式说明","步进说明","新弹幕ID说明","武器条件说明","进度条件说明","播放文件模式说明"
         };
 
         NpcList = new List<int>()
@@ -236,10 +235,8 @@ internal class Configuration
                             Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
                             Lift = 180,
-                            SpawnPoint = new List<SpawnPointData>()
-                            {
-                                new SpawnPointData(){ Type = 0 }
-                            }
+                            SpawnPointType = 0,
+                            AimMode = 0
                         },
                         new SpawnProjData()
                         {
@@ -254,10 +251,8 @@ internal class Configuration
                             Rotate = 0f,
                             ai = new Dictionary<int, float>(),
                             Lift = 120,
-                            SpawnPoint = new List<SpawnPointData>()
-                            {
-                                new SpawnPointData(){ Type = 0 }
-                            }
+                            SpawnPointType = 0,
+                            AimMode = 0
                         },
 
                     },
@@ -287,10 +282,8 @@ internal class Configuration
                             Rotate = 2f,
                             ai = new Dictionary<int, float>(),
                             Lift = 180,
-                            SpawnPoint = new List<SpawnPointData>()
-                            {
-                                new SpawnPointData(){ Type = 0 }
-                            }
+                            SpawnPointType = 0,
+                            AimMode = 0
                         },
                         new SpawnProjData()
                         {
@@ -305,10 +298,8 @@ internal class Configuration
                             Rotate = 0f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
                             Lift = 60,
-                            SpawnPoint = new List<SpawnPointData>()
-                            {
-                                new SpawnPointData(){ Type = 0 }
-                            }
+                            SpawnPointType = 0,
+                            AimMode = 0
                         },
                     }
                 },
@@ -374,10 +365,8 @@ internal class Configuration
                             Angle = 15f,
                             Rotate = 0f,
                             Velocity = 30.0f,
-                            SpawnPoint = new List<SpawnPointData>()
-                            {
-                                new SpawnPointData(){ Type = 0 }
-                            }
+                            SpawnPointType = 0,
+                            AimMode = 0
                         },
                     },
                 },
@@ -409,10 +398,8 @@ internal class Configuration
                             Rotate = 2f,
                             Velocity = 20f,
                             ai = new Dictionary<int, float>() { { 0, 50f } },
-                            SpawnPoint = new List<SpawnPointData>()
-                            {
-                                new SpawnPointData(){ Type = 0 }
-                            }
+                            SpawnPointType = 0,
+                            AimMode = 0
                         },
                     }
                 },

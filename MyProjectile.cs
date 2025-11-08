@@ -35,11 +35,12 @@ public class SpawnProjData
     public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
     [JsonProperty("持续时间", Order = 13)]
     public int Lift = 120;
-
-    [JsonProperty("生成点切换间隔", Order = 15)]
-    public float SpawnPointInterval = 500f;
-    [JsonProperty("自定义生成点", Order = 16)]
-    public List<SpawnPointData> SpawnPoint { get; set; } = new List<SpawnPointData>();
+    [JsonProperty("生成点(0怪物/1玩家/2弹幕)", Order = 14)]
+    public int SpawnPointType = 0;
+    [JsonProperty("射向模式(0玩家/1怪物/2固定方向)", Order = 15)]
+    public int AimMode = 0;
+    [JsonProperty("固定方向", Order = 16)]
+    public Vector2 FixedDir = new Vector2(1, 0);
 
     [JsonProperty("更新间隔", Order = 20)]
     public double UpdateTime = 500f;
@@ -72,14 +73,14 @@ public class UpdateProjData
     [JsonProperty("旋转", Order = 7)]
     public float Rotate = 0;
 
-    [JsonProperty("生成点切换间隔", Order = 8)]
-    public float SpawnPointInterval = 0f;
-    [JsonProperty("自定义生成点", Order = 9)]
-    public List<SpawnPointData> SpawnPoint { get; set; } = new List<SpawnPointData>();
+    [JsonProperty("生成点(0怪物/1玩家/2更新位)", Order = 8)]
+    public int SpawnPointType = 0;
+    [JsonProperty("射向模式(0玩家/1怪物/2固定方向)", Order = 9)]
+    public int AimMode = 0;
+    [JsonProperty("固定方向", Order = 10)]
+    public Vector2 FixedDir = new Vector2(1, 0);
 
-    [JsonProperty("追踪说明", Order = 24)]
-    public string Text2 = "0追踪怪物, 1追踪玩家, 2追踪弹幕位置";
-    [JsonProperty("追踪模式", Order = 25)]
+    [JsonProperty("追踪模式(0怪物/1玩家/2弹幕)", Order = 25)]
     public bool Homing = false;
     [JsonProperty("追踪目标", Order = 26)]
     public int Tar = 0;
@@ -94,28 +95,6 @@ public class UpdateProjData
     public Dictionary<int, float> ai { get; set; } = new Dictionary<int, float>();
 }
 
-public class SpawnPointData
-{
-    [JsonProperty("类型说明", Order = -1)]
-    public string Text = "自定义出生点留空【无法发射弹幕】 0怪物中心, 1玩家中心, 2绝对坐标, 3相对NPC偏移, 4相对玩家偏移, 5上次更新位置";
-    [JsonProperty("出生点类型", Order = 0)]
-    public int Type = 0;
-    [JsonProperty("坐标", Order = 1)]
-    public Vector2 Position = Vector2.Zero;
-    [JsonProperty("偏移", Order = 2)]
-    public Vector2 Offset = Vector2.Zero;
-    [JsonProperty("使用NPC朝向", Order = 3)]
-    public bool UseNpcDir = false;
-    [JsonProperty("重置偏移", Order = 4)]
-    public bool ResetOffset = false;
-    [JsonProperty("射向说明", Order = 5)]
-    public string Text2 = "0射向玩家, 1射向怪物, 2使用固定方向";
-    [JsonProperty("射向模式", Order = 6)]
-    public int AimMode = 0; // 0: 射向玩家, 1: 射向NPC, 2: 固定方向
-    [JsonProperty("固定方向", Order = 7)]
-    public Vector2 FixedDir = new Vector2(1, 0); // 固定方向向量
-}
-
 public class SpawnProjInfo
 {
     public int Index = 0; //存储弹幕组索引
@@ -123,20 +102,13 @@ public class SpawnProjInfo
     public Dictionary<int, int> SendStack = new Dictionary<int, int>(); //追踪每发弹幕的数量
     public Dictionary<int, float> SpawnCooldowns = new Dictionary<int, float>(); // 追踪每组弹幕的冷却时间
     public Dictionary<int, Vector2> LastGroupPos = new Dictionary<int, Vector2>(); // 追踪每组弹幕的最后位置
-    public Dictionary<int, float> SendCooldowns = new Dictionary<int, float>(); //追踪每发弹幕之间的发射间隔
-    public Dictionary<int, int> SpawnIndex = new Dictionary<int, int>(); // 追踪当前使用的生成点索引
 
     public void ClearOld(int Index)
     {
-        var oldKeys = LastGroupPos.Keys
-            .Where(k => Math.Abs(k - Index) > 5)
-            .ToList();
-
+        var oldKeys = LastGroupPos.Keys.Where(k => Math.Abs(k - Index) > 5).ToList();
         foreach (var key in oldKeys)
         {
             LastGroupPos.Remove(key);
-            SendCooldowns.Remove(key);
-            SpawnIndex.Remove(key);
         }
     }
 }
@@ -152,9 +124,6 @@ public class UpdateProjInfo
     public int GroupIndex { get; set; } // 弹幕组索引
     public int FireIndex { get; set; } // 发射索引
     public Vector2 LastPos { get; set; } // 上次更新弹幕的位置
-    public Vector2 InitOffset { get; set; } // 初始偏移量
-    public int SpawnIndex { get; set; } = 0; // 当前生成点索引
-    public float UpdateSpawnTimer { get; set; } = 0f; // 生成点切换计时器
 
     public UpdateProjInfo(int index, int npcId, int type, int groupIndex, int fireIndex)
     {
@@ -169,23 +138,15 @@ public class UpdateProjInfo
         if (index >= 0 && index < Main.maxProjectiles && Main.projectile[index] != null)
         {
             LastPos = Main.projectile[index].Center;
-            var npc = GetNPC(npcId);
-            if (npc != null)
-                InitOffset = LastPos - npc.Center;
         }
-    }
-
-    private NPC? GetNPC(int whoAmI)
-    {
-        return whoAmI >= 0 && whoAmI < Main.maxNPCs ? Main.npc[whoAmI] : null;
     }
 }
 
 internal class MyProjectile
 {
     #region 核心字段
-    public static Dictionary<int, DateTime> UpdateTimes = new Dictionary<int, DateTime>();  //用于追踪更新弹幕的时间
-    public static UpdateProjInfo[] UpdateState { get; set; } = new UpdateProjInfo[Main.maxProjectiles]; // 用于存储每个弹幕的更新信息
+    public static Dictionary<int, DateTime> UpdateTimes = new Dictionary<int, DateTime>();
+    public static UpdateProjInfo[] UpdateState { get; set; } = new UpdateProjInfo[Main.maxProjectiles];
     #endregion
 
     #region 生成弹幕(核心方法)
@@ -195,48 +156,35 @@ internal class MyProjectile
             return;
 
         var state = GetState(npc);
-        if (state == null) return;
-
-        if (state.Index >= projList.Count) return;
+        if (state == null || state.Index >= projList.Count) return;
 
         // 确保所有必要的字典键都存在
         if (!state.SendStack.ContainsKey(state.Index))
             state.SendStack[state.Index] = 0;
         if (!state.SpawnCooldowns.ContainsKey(state.Index))
             state.SpawnCooldowns[state.Index] = 0f;
-        if (!state.SpawnIndex.ContainsKey(state.Index))
-            state.SpawnIndex[state.Index] = 0;
-        if (!state.SendCooldowns.ContainsKey(state.Index))
-            state.SendCooldowns[state.Index] = 0f;
-        if (!state.SendStack.ContainsKey(state.Index))
-            state.SendStack[state.Index] = 0;
-        if (!state.SpawnCooldowns.ContainsKey(state.Index))
-            state.SpawnCooldowns[state.Index] = 0f;
-        if (!state.SpawnIndex.ContainsKey(state.Index))
-            state.SpawnIndex[state.Index] = 0;
-        if (!state.SendCooldowns.ContainsKey(state.Index))
-            state.SendCooldowns[state.Index] = 0f;
 
         SpawnProjData data = projList[state.Index];
         Player plr = Main.player[npc.target];
 
         // 检查完成条件
-        if (IsGroupComplete(state, data, plr))
+        if ((state.SendStack[state.Index] >= data.stack) || data.Type <= 0 || plr == null || !plr.active)
         {
-            RecordEndPos(state, data, npc, plr);
+            RecordPos(state, data, npc, plr);
             Next(projList, state);
             return;
         }
 
         // 处理冷却
-        if (!IsReady(state)) return;
+        if (state.SpawnCooldowns[state.Index] > 0f)
+        {
+            state.SpawnCooldowns[state.Index] -= 1f;
+            return;
+        }
 
         int fireIndex = state.SendStack[state.Index];
 
-        // 选择生成点配置
-        SpawnPointData Settiing = SelectSpawnSetting(data, state, npc, plr);
-
-        HandleSpawnProjectile(data, npc, plr, state, fireIndex, Settiing);
+        HandleSpawnProjectile(data, npc, plr, state, fireIndex);
 
         state.SendStack[state.Index]++;
         state.SpawnCooldowns[state.Index] = data.interval;
@@ -248,9 +196,8 @@ internal class MyProjectile
     #region 更新弹幕(核心方法)
     private static void UpdateProj(SpawnProjData proj, List<UpdateProjData> updates, NPC npc, Player plr, UpdateProjInfo info)
     {
-        if (updates == null || updates.Count == 0) return;
-
-        if (info.UpdateIndex >= updates.Count) return;
+        if (updates == null || updates.Count == 0 || info.UpdateIndex >= updates.Count)
+            return;
 
         UpdateProjData up = updates[info.UpdateIndex];
         if (up == null) return;
@@ -264,6 +211,14 @@ internal class MyProjectile
 
         List<int> upList = new List<int>();
 
+        // 处理友好变更
+        if (obj.friendly)
+        {
+            obj.friendly = false;
+            if (!upList.Contains(info.Index))
+                upList.Add(info.Index);
+        }
+
         // 处理类型变更
         if (up.NewType != 0)
         {
@@ -272,7 +227,8 @@ internal class MyProjectile
             {
                 obj.type = newType;
                 info.NewType = newType;
-                Add(upList, info.Index);
+                if (!upList.Contains(info.Index))
+                    upList.Add(info.Index);
             }
         }
 
@@ -280,47 +236,25 @@ internal class MyProjectile
         if (up.ExtraTime != 0)
         {
             obj.timeLeft += up.ExtraTime;
-            Add(upList, info.Index);
+            if (!upList.Contains(info.Index))
+                upList.Add(info.Index);
         }
 
         // 处理生成点
-        if (up.SpawnPoint != null && up.SpawnPoint.Count > 0)
-        {
-            // 更新生成点计时器
-            info.UpdateSpawnTimer += (float)proj.UpdateTime;
+        Vector2 newPos = GetSpawnPos(up.SpawnPointType, npc, plr, info, null, 0, info.FireIndex, up.Radius, proj.stack, true);
+        obj.position = newPos - new Vector2(obj.width, obj.height) / 2f;
+        if (!upList.Contains(info.Index))
+            upList.Add(info.Index);
 
-            // 检查是否需要切换生成点
-            if (up.SpawnPointInterval > 0 && info.UpdateSpawnTimer >= up.SpawnPointInterval)
-            {
-                info.SpawnIndex = (info.SpawnIndex + 1) % up.SpawnPoint.Count;
-                info.UpdateSpawnTimer = 0f;
-            }
-
-            // 使用当前生成点
-            int spawnIndex = info.SpawnIndex % up.SpawnPoint.Count;
-            SpawnPointData spawnConfig = up.SpawnPoint[spawnIndex];
-
-            Vector2 newPos = GetSpawnPos(spawnConfig, npc, plr, info, null, 0, info.FireIndex, up.Radius, proj.stack, true);
-
-            if (spawnConfig.ResetOffset)
-                info.InitOffset = newPos - npc.Center;
-
-            obj.position = newPos - new Vector2(obj.width, obj.height) / 2f;
-            Add(upList, info.Index);
-
-            info.LastPos = obj.Center;
-        }
-        else
-        {
-            info.LastPos = obj.Center;
-        }
+        info.LastPos = obj.Center;
 
         // 更新速度
         Vector2 newVel = GetUpdateVel(up, obj, proj, info, npc, plr, ref upList);
         if (obj.velocity != newVel)
         {
             obj.velocity = newVel;
-            Add(upList, info.Index);
+            if (!upList.Contains(info.Index))
+                upList.Add(info.Index);
         }
 
         // 更新AI
@@ -331,25 +265,13 @@ internal class MyProjectile
                 if (up.ai.ContainsKey(j))
                 {
                     obj.ai[j] = up.ai[j];
-                    Add(upList, info.Index);
+                    if (!upList.Contains(info.Index))
+                        upList.Add(info.Index);
                 }
             }
         }
 
-        // 进入下一阶段或循环到第一阶段
-        info.UpdateIndex++;
-
-        // 如果已经到达最后一个阶段，循环回到第一个阶段
-        if (info.UpdateIndex >= updates.Count)
-        {
-            info.UpdateIndex = 0;
-
-            // 重置生成点状态，让每个循环重新开始
-            info.SpawnIndex = 0;
-            info.UpdateSpawnTimer = 0f;
-        }
-
-        info.UpdateCooldowns = DateTime.UtcNow;
+        NextUpdate(updates, info);
 
         // 发送更新
         if (upList.Count > 0)
@@ -362,79 +284,16 @@ internal class MyProjectile
     }
     #endregion
 
-    #region 完成检查方法
-    private static bool IsGroupComplete(SpawnProjInfo state, SpawnProjData proj, Player plr)
-    {
-        return (state.SendStack.ContainsKey(state.Index) && state.SendStack[state.Index] >= proj.stack) ||
-               proj.Type <= 0 || plr == null;
-    } 
-    #endregion
-
-    #region 冷却检查方法
-    private static bool IsReady(SpawnProjInfo state)
-    {
-        if (!state.SpawnCooldowns.ContainsKey(state.Index) || state.SpawnCooldowns[state.Index] <= 0f)
-            return true;
-
-        state.SpawnCooldowns[state.Index] -= 1f;
-        return false;
-    } 
-    #endregion
-
-    #region 选择生成点配置方法
-    private static SpawnPointData SelectSpawnSetting(SpawnProjData proj, SpawnProjInfo state, NPC npc, Player plr)
-    {
-        // 如果没有多重生成点，创建一个默认的生成点
-        if (proj.SpawnPoint == null || proj.SpawnPoint.Count == 0)
-        {
-            return null;
-        }
-
-        // 初始化状态
-        if (!state.SpawnIndex.ContainsKey(state.Index))
-            state.SpawnIndex[state.Index] = 0;
-        if (!state.SendCooldowns.ContainsKey(state.Index))
-            state.SendCooldowns[state.Index] = 0f;
-
-        // 更新计时器
-        state.SendCooldowns[state.Index] += 1f;
-
-        // 检查是否需要切换生成点
-        if (proj.SpawnPointInterval > 0 && state.SendCooldowns[state.Index] >= proj.SpawnPointInterval)
-        {
-            state.SpawnIndex[state.Index] = (state.SpawnIndex[state.Index] + 1) % proj.SpawnPoint.Count;
-            state.SendCooldowns[state.Index] = 0f;
-        }
-
-        // 返回当前生成点
-        return proj.SpawnPoint[state.SpawnIndex[state.Index]];
-    } 
-    #endregion
-
     #region 处理弹幕生成方法
-    private static void HandleSpawnProjectile(SpawnProjData proj, NPC npc, Player plr, SpawnProjInfo state, int fireIndex, SpawnPointData spawnConfig)
+    private static void HandleSpawnProjectile(SpawnProjData proj, NPC npc, Player plr, SpawnProjInfo state, int fireIndex)
     {
-        Vector2 spawnPos;
-        Vector2 dir;
-        Vector2 vel;
+        Vector2 spawnPos = GetSpawnPos(proj.SpawnPointType, npc, plr, null, state, state.Index, fireIndex, proj.Radius, proj.stack, false);
+        Vector2 dir = GetDir(proj.AimMode, proj.FixedDir, npc, plr, spawnPos, fireIndex, proj.stack);
+        Vector2 vel = GetVel(proj, dir, fireIndex);
 
         float ai0 = proj.ai?.ContainsKey(0) == true ? proj.ai[0] : 0f;
         float ai1 = proj.ai?.ContainsKey(1) == true ? proj.ai[1] : 0f;
         float ai2 = proj.ai?.ContainsKey(2) == true ? proj.ai[2] : 0f;
-
-        if (spawnConfig is null)
-        {
-            var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
-            spawnPos = tar.Center - npc.Center;
-            dir = (tar.Center - npc.Center).SafeNormalize(Vector2.Zero);
-            vel = GetVel(proj, dir, fireIndex);
-        }
-        else
-        {
-            spawnPos = GetSpawnPos(spawnConfig, npc, plr, null, state, state.Index, fireIndex, proj.Radius, proj.stack, false);
-            dir = GetDir(spawnConfig, npc, plr, spawnPos, fireIndex, proj.stack, proj.Angle, proj.Rotate);
-            vel = GetVel(proj, dir, fireIndex);
-        }
 
         if (proj.Lift > 0)
         {
@@ -448,87 +307,54 @@ internal class MyProjectile
             if (newProj >= 0 && newProj < Main.maxProjectiles)
             {
                 Main.projectile[newProj].timeLeft = proj.Lift;
-
-                int spawnIndex = 0;
-                if (state.SpawnIndex.ContainsKey(state.Index))
-                {
-                    spawnIndex = state.SpawnIndex[state.Index];
-                }
-                else
-                {
-                    state.SpawnIndex[state.Index] = 0;
-                }
-
-                SetupUpdate(newProj, npc, proj, state.Index, fireIndex, spawnIndex);
+                SetupUpdate(newProj, npc, proj, state.Index, fireIndex);
             }
         }
-    } 
-    #endregion
-
-    #region 设置弹幕更新信息
-    private static void SetupUpdate(int projId, NPC npc, SpawnProjData proj, int groupIndex, int fireIndex, int spawnIndex)
-    {
-        if (proj.UpdateProj != null && proj.UpdateProj.Count > 0)
-        {
-            UpdateState[projId] = new UpdateProjInfo(projId, npc.whoAmI, proj.Type, groupIndex, fireIndex)
-            {
-                SpawnIndex = spawnIndex
-            };
-            UpdateTimes[projId] = DateTime.UtcNow;
-        }
-    } 
-    #endregion
-
-    #region 位置计算
-    private static Vector2 GetSpawnPos(SpawnPointData spawn, NPC npc, Player plr, UpdateProjInfo info, SpawnProjInfo state, int groupIndex, int fireIndex, float radius, int stack, bool isUpdate)
-    {
-        if (npc == null) return Vector2.Zero;
-
-        Vector2 basePos = GetBasePos(spawn, npc, plr, info, state, groupIndex, isUpdate);
-        basePos = ApplySpawnSetting(spawn, basePos, npc, plr, info);
-        return ApplyRadius(basePos, radius, stack, fireIndex);
     }
     #endregion
 
-    #region 获取基础位置
-    private static Vector2 GetBasePos(SpawnPointData spawn, NPC npc, Player plr, UpdateProjInfo info, SpawnProjInfo state, int groupIndex, bool isUpdate)
+    #region 设置弹幕更新
+    private static void SetupUpdate(int projId, NPC npc, SpawnProjData proj, int groupIndex, int fireIndex)
     {
-        if (isUpdate && info != null)
-            return info.LastPos;
-
-        if (state != null && state.LastGroupPos.ContainsKey(groupIndex - 1) && groupIndex > 0)
-            return state.LastGroupPos[groupIndex - 1];
-
-        return npc.Center;
-    } 
+        if (proj.UpdateProj != null && proj.UpdateProj.Count > 0)
+        {
+            UpdateState[projId] = new UpdateProjInfo(projId, npc.whoAmI, proj.Type, groupIndex, fireIndex);
+            UpdateTimes[projId] = DateTime.UtcNow;
+        }
+    }
     #endregion
 
-    #region 应用生成点配置（选择模式）
-    private static Vector2 ApplySpawnSetting(SpawnPointData spawn, Vector2 curPos, NPC npc, Player plr, UpdateProjInfo info)
+    #region 位置计算
+    private static Vector2 GetSpawnPos(int spawnType, NPC npc, Player plr, UpdateProjInfo info, SpawnProjInfo state, int groupIndex, int fireIndex, float radius, int stack, bool isUpdate)
     {
-        if (spawn == null) return curPos;
+        if (npc == null) return Vector2.Zero;
 
-        Vector2 newPos = curPos;
-        bool hasPlr = plr != null && plr.active;
+        Vector2 basePos = Vector2.Zero;
 
-        switch (spawn.Type)
+        // 根据生成点类型确定基础位置
+        switch (spawnType)
         {
-            case 0: newPos = npc.Center; break;
-            case 1: newPos = hasPlr ? plr.Center : npc.Center; break;
-            case 2: newPos = spawn.Position; break;
-            case 3: newPos = npc.Center + spawn.Offset; break;
-            case 4: newPos = (hasPlr ? plr.Center : npc.Center) + spawn.Offset; break;
-            case 5: if (info != null) newPos = info.LastPos; break;
+            case 0: // 怪物中心
+                basePos = npc.Center;
+                break;
+            case 1: // 玩家中心
+                basePos = (plr != null && plr.active) ? plr.Center : npc.Center;
+                break;
+            case 2: // 上次更新位置
+                basePos = isUpdate && info != null
+                    ? info.LastPos
+                    : (state != null && state.LastGroupPos.ContainsKey(groupIndex - 1) && groupIndex > 0
+                        ? state.LastGroupPos[groupIndex - 1]
+                        : npc.Center);
+                break;
+            default:
+                basePos = npc.Center;
+                break;
         }
 
-        if (spawn.Offset != Vector2.Zero && spawn.Type != 3 && spawn.Type != 4)
-            newPos += spawn.Offset;
+        return ApplyRadius(basePos, radius, stack, fireIndex);
+    }
 
-        return newPos;
-    } 
-    #endregion
-
-    #region 应用半径偏移
     private static Vector2 ApplyRadius(Vector2 pos, float radius, int stack, int fireIndex)
     {
         if (radius == 0 || stack <= 1) return pos;
@@ -538,58 +364,35 @@ internal class MyProjectile
                         (Math.Abs(radius) * 16) * Math.Sign(radius);
 
         return pos + offset;
-    } 
-    #endregion
-
-    #region 计算方向
-    private static Vector2 GetDir(SpawnPointData spawn, NPC npc, Player plr, Vector2 spawnPos, int fireIndex, int stack, float angle, float rotate)
-    {
-        Vector2 dir;
-
-        if (spawn.UseNpcDir && npc != null)
-        {
-            // 使用NPC朝向
-            dir = new Vector2(npc.direction, 0);
-            if (dir == Vector2.Zero) dir = plr.Center - spawnPos;
-        }
-        else
-        {
-            // 根据射向模式计算方向
-            dir = GetAimDirection(spawn, npc, plr, spawnPos);
-        }
-
-        if (dir == Vector2.Zero)
-            dir = plr.Center - spawnPos;
-        else
-            dir = dir.SafeNormalize(Vector2.Zero);
-
-        return ApplyAngle(dir, angle, rotate, stack, fireIndex);
     }
     #endregion
 
-    #region 计算射向方向
-    private static Vector2 GetAimDirection(SpawnPointData spawn, NPC npc, Player plr, Vector2 spawnPos)
+    #region 计算方向
+    private static Vector2 GetDir(int aimMode, Vector2 fixedDir, NPC npc, Player plr, Vector2 pos, int fireIndex, int stack)
     {
-        if (spawn == null) return plr.Center - spawnPos;
+        Vector2 dir = Vector2.Zero;
 
-        switch (spawn.AimMode)
+        switch (aimMode)
         {
             case 0: // 射向玩家
-                if (plr != null && plr.active)
-                    return plr.Center - spawnPos;
+                if (plr != null && plr.active && plr.Center != pos)
+                    dir = Vector2.Normalize(plr.Center - pos);
                 break;
-            case 1: // 射向NPC
-                return npc.Center - spawnPos;
+            case 1: // 射向怪物
+                if (npc.Center != pos)
+                    dir = Vector2.Normalize(npc.Center - pos);
+                break;
             case 2: // 固定方向
-                return spawn.FixedDir;
+                dir = Vector2.Normalize(fixedDir);
+                break;
         }
 
-        // 默认方向：射向玩家
-        return plr.Center - spawnPos;
-    } 
-    #endregion
+        if (dir == Vector2.Zero)
+            dir = new Vector2(1, 0); // 默认方向
 
-    #region 应用角度和旋转
+        return dir;
+    }
+
     private static Vector2 ApplyAngle(Vector2 dir, float angle, float rotate, int stack, int fireIndex)
     {
         Vector2 result = dir;
@@ -606,7 +409,7 @@ internal class MyProjectile
             result = result.RotatedBy(rotate * fireIndex);
 
         return result;
-    } 
+    }
     #endregion
 
     #region 弹幕更新组处理方法
@@ -627,10 +430,7 @@ internal class MyProjectile
             if (info.whoAmI != npc.whoAmI || info.GroupIndex != GroupIndex) continue;
 
             var proj = Main.projectile[i];
-            if (proj == null || !proj.active)
-            {
-                continue;
-            }
+            if (proj == null || !proj.active) continue;
 
             if (UpdateTimes.ContainsKey(i) &&
                 (DateTime.UtcNow - UpdateTimes[i]).TotalMilliseconds >= projData.UpdateTime)
@@ -645,41 +445,32 @@ internal class MyProjectile
     #region 计算速度
     private static Vector2 GetVel(SpawnProjData proj, Vector2 dir, int fireIndex)
     {
-        float decay = GetDecay(proj, fireIndex);
-        return dir * (proj.Velocity * decay);
+        float decay = GetDecay(proj.decay, proj.DecayMultiplier, proj.decayForStack, fireIndex, proj.stack);
+        Vector2 baseVel = dir * (proj.Velocity * decay);
+
+        // 如果是四周汇聚模式，不应用额外的角度和旋转
+        if (proj.AimMode == 3)
+            return baseVel;
+
+        return ApplyAngle(baseVel, proj.Angle, proj.Rotate, proj.stack, fireIndex);
     }
 
     private static Vector2 GetUpdateVel(UpdateProjData update, Projectile proj, SpawnProjData projData, UpdateProjInfo info, NPC npc, Player plr, ref List<int> updateList)
     {
-        float decay = GetDecay(update, info.FireIndex, projData.stack);
+        float decay = GetDecay(update.decay, update.DecayMultiplier, update.decayForStack, info.FireIndex, projData.stack);
         float speed = update.Velocity != 0 ? update.Velocity * decay : proj.velocity.Length();
 
-        Vector2 vel = proj.velocity.SafeNormalize(Vector2.Zero) * speed;
+        Vector2 vel = Vector2.Normalize(proj.velocity) * speed;
 
-        // 如果设置了新的生成点配置，重新计算方向
-        if (update.SpawnPoint != null && update.SpawnPoint.Count > 0)
+        // 重新计算方向（如果更新配置中指定了新的方向）
+        if (update.AimMode != -1) // -1 表示保持原方向
         {
-            int spawnIndex = info.SpawnIndex % update.SpawnPoint.Count;
-            SpawnPointData spawnConfig = update.SpawnPoint[spawnIndex];
-
-            Vector2 newDir;
-
-            if (spawnConfig.UseNpcDir && npc != null)
-            {
-                // 使用NPC朝向
-                newDir = new Vector2(npc.direction, 0);
-                if (newDir == Vector2.Zero) newDir = new Vector2(1, 0);
-            }
-            else
-            {
-                // 根据射向模式计算方向
-                newDir = GetAimDirection(spawnConfig, npc, plr, proj.Center);
-            }
-
+            Vector2 newDir = GetDir(update.AimMode, update.FixedDir, npc, plr, proj.Center, info.FireIndex, projData.stack);
             if (newDir != Vector2.Zero)
             {
-                vel = newDir.SafeNormalize(Vector2.Zero) * speed;
-                Add(updateList, proj.whoAmI);
+                vel = Vector2.Normalize(newDir) * speed;
+                if (!updateList.Contains(info.Index))
+                    updateList.Add(info.Index);
             }
         }
 
@@ -693,24 +484,28 @@ internal class MyProjectile
                 if (update.PredictTime > 0)
                     targetPos += target.velocity * update.PredictTime * 60f;
 
-                Vector2 dir = targetPos - proj.Center;
-                dir = dir.SafeNormalize(Vector2.Zero);
+                Vector2 desiredDir = Vector2.Normalize(targetPos - proj.Center);
+                Vector2 currentDir = Vector2.Normalize(proj.velocity);
 
-                float currAngle = (float)Math.Atan2(vel.Y, vel.X);
-                float targetAngle = (float)Math.Atan2(dir.Y, dir.X);
+                float currAngle = (float)Math.Atan2(currentDir.Y, currentDir.X);
+                float targetAngle = (float)Math.Atan2(desiredDir.Y, desiredDir.X);
+
                 float angleDiff = targetAngle - currAngle;
-
-                while (angleDiff > Math.PI) angleDiff -= (float)Math.PI * 2;
-                while (angleDiff < -Math.PI) angleDiff += (float)Math.PI * 2;
+                angleDiff = (float)Math.IEEERemainder(angleDiff, MathHelper.TwoPi);
 
                 float maxAngle = MathHelper.ToRadians(update.MaxHomingAngle);
                 angleDiff = MathHelper.Clamp(angleDiff, -maxAngle, maxAngle);
 
                 float newAngle = currAngle + angleDiff * update.HomingStrength;
                 vel = new Vector2((float)Math.Cos(newAngle), (float)Math.Sin(newAngle)) * vel.Length();
-                Add(updateList, proj.whoAmI);
+                if (!updateList.Contains(info.Index))
+                    updateList.Add(info.Index);
             }
         }
+
+        // 如果是四周汇聚模式，不应用额外的角度和旋转
+        if (update.AimMode == 3)
+            return vel;
 
         // 应用角度和旋转
         vel = ApplyAngle(vel, update.Angle, update.Rotate, projData.stack, info.FireIndex);
@@ -720,38 +515,20 @@ internal class MyProjectile
     #endregion
 
     #region 计算衰减
-    private static float GetDecay(SpawnProjData proj, int fireIndex)
+    private static float GetDecay(float decay, float decayMultiplier, bool decayForStack, int fireIndex, int stack)
     {
-        if (!proj.decayForStack)
-            return proj.decay * proj.DecayMultiplier;
+        if (!decayForStack)
+            return decay * decayMultiplier;
 
-        return 1.0f - fireIndex / (float)proj.stack * (proj.decay * proj.DecayMultiplier);
-    }
-
-    private static float GetDecay(UpdateProjData update, int fireIndex, int stack)
-    {
-        if (!update.decayForStack)
-            return update.decay * update.DecayMultiplier;
-
-        return 1.0f - fireIndex / (float)stack * (update.decay * update.DecayMultiplier);
-    } 
-    #endregion
-
-    #region 添加需要更新的弹幕索引到列表
-    private static void Add(List<int> UpList, int index)
-    {
-        if (!UpList.Contains(index))
-        {
-            UpList.Add(index);
-        }
+        return 1.0f - fireIndex / (float)stack * (decay * decayMultiplier);
     }
     #endregion
 
     #region 移动到下一个要发射的弹幕方法
     private static void Next(List<SpawnProjData> data, SpawnProjInfo state)
     {
-        // 确保当前索引的键存在
-        if (!state.SendStack.ContainsKey(state.Index)) state.SendStack[state.Index] = 0;
+        if (!state.SendStack.ContainsKey(state.Index)) 
+            state.SendStack[state.Index] = 0;
 
         if (state.SendStack[state.Index] >= data[state.Index].stack)
         {
@@ -762,26 +539,32 @@ internal class MyProjectile
             }
             state.SendStack[state.Index] = 0;
             state.SpawnCooldowns[state.Index] = 0f;
-            state.SpawnIndex[state.Index] = 0;
-            state.SendCooldowns[state.Index] = 0f;
-            state.SPCount++; //增加弹幕生成次数
+            state.SPCount++;
             state.ClearOld(state.Index);
         }
     }
     #endregion
 
+    #region 移动到下一个更新阶段方法
+    private static void NextUpdate(List<UpdateProjData> updates, UpdateProjInfo info)
+    {
+        // 进入下一阶段或循环到第一阶段
+        info.UpdateIndex++;
+        if (info.UpdateIndex >= updates.Count)
+        {
+            info.UpdateIndex = 0;
+        }
+        info.UpdateCooldowns = DateTime.UtcNow;
+    }
+    #endregion
+
     #region 记录当前弹幕组的结束位置 
-    private static void RecordEndPos(SpawnProjInfo state, SpawnProjData proj, NPC npc, Player plr)
+    private static void RecordPos(SpawnProjInfo state, SpawnProjData proj, NPC npc, Player plr)
     {
         if (state.SendStack.ContainsKey(state.Index) && state.SendStack[state.Index] > 0)
         {
             int lastIndex = state.SendStack[state.Index] - 1;
-            if (proj.SpawnPoint != null && proj.SpawnPoint.Count > 0)
-            {
-                int spawnIndex = state.SpawnIndex.ContainsKey(state.Index) ? state.SpawnIndex[state.Index] : 0;
-                SpawnPointData spawnConfig = proj.SpawnPoint[spawnIndex % proj.SpawnPoint.Count];
-                state.LastGroupPos[state.Index] = GetSpawnPos(spawnConfig, npc, plr, null, state, state.Index, lastIndex, proj.Radius, proj.stack, false);
-            }
+            state.LastGroupPos[state.Index] = GetSpawnPos(proj.SpawnPointType, npc, plr, null, state, state.Index, lastIndex, proj.Radius, proj.stack, false);
         }
     }
     #endregion
@@ -796,11 +579,11 @@ internal class MyProjectile
             case 2: return proj;
             default: return npc;
         }
-    } 
+    }
     #endregion
 
     #region 状态管理
-    public static Dictionary<int, SpawnProjInfo> States = new Dictionary<int, SpawnProjInfo>(); // 用于存储每个NPC的弹幕生成状态
+    public static Dictionary<int, SpawnProjInfo> States = new Dictionary<int, SpawnProjInfo>();
     public static SpawnProjInfo GetState(NPC npc)
     {
         if (npc == null || !npc.active)
@@ -846,10 +629,8 @@ internal class MyProjectile
         }
     }
 
-
     public static void PeriodicClear()
     {
-        // 清理无效弹幕
         for (int i = 0; i < Main.maxProjectiles; i++)
         {
             if (UpdateState[i] != null)
@@ -866,7 +647,6 @@ internal class MyProjectile
             }
         }
 
-        // 清理无效NPC状态
         var invalidNpcs = States.Keys
             .Where(id => id < 0 || id >= Main.maxNPCs || Main.npc[id] == null || !Main.npc[id].active)
             .ToList();

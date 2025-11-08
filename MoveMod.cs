@@ -8,7 +8,7 @@ namespace MonsterSpeed;
 // 移动模式参数统一封装类
 public class MoveModeData
 {
-    [JsonProperty("模式说明", Order = -1)]
+    [JsonProperty("行动模式说明", Order = -1)]
     public string Text = "0不启用, 1怪物停留原地, 2环绕模式(0顺时针、1逆时针、2根据交替间隔切换顺时针与逆时针), 3徘徊模式, 4突进模式, 5对视模式)";
     [JsonProperty("模式类型", Order = 0)]
     public MoveMode Mode { get; set; } = MoveMode.None;
@@ -35,6 +35,8 @@ public class MoveModeData
     public float WanderSpeed { get; set; } = 10f;
     [JsonProperty("徘徊间隔", Order = 22)]
     public int WanderChangeInterval { get; set; } = 120;
+    [JsonProperty("接近距离", Order = 23)]
+    public float WanderCloseDistance { get; set; } = 1f;
 
     // 突进模式参数
     [JsonProperty("突进速度", Order = 39)]
@@ -45,6 +47,10 @@ public class MoveModeData
     public int DashDuration { get; set; } = 20;
     [JsonProperty("突进冷却", Order = 42)]
     public int DashCooldown { get; set; } = 180;
+    [JsonProperty("后退距离", Order = 43)]
+    public float DashRetreatDistance { get; set; } = 2f;
+    [JsonProperty("后退速度系数", Order = 44)]
+    public float DashRetreatSpeedFactor { get; set; } = 0.3f;
 
     // 对视模式参数
     [JsonProperty("对视距离", Order = 50)]
@@ -55,7 +61,8 @@ public class MoveModeData
     public float FaceSpeed { get; set; } = 10f;
     [JsonProperty("对视平滑", Order = 53)]
     public float FaceSmooth { get; set; } = 0.1f;
-
+    [JsonProperty("换位概率", Order = 54)]
+    public int FaceSwitchChance { get; set; } = 4;
 }
 
 // 移动模式状态类
@@ -182,6 +189,8 @@ internal class MoveMod
 
         var data = Event.MoveData;
         var state = TState.MoveState;
+        
+        // 转换为像素距离
         float Radius = data.OrbitRadius * 16f;
         float Speed = data.OrbitSpeed;
         float MoveSpeed = data.OrbitMoveSpeed;
@@ -190,7 +199,7 @@ internal class MoveMod
         if (data.OrbitDir == OrbitDirection.Alternate)
         {
             state.OrbitAlternateTimer++;
-            if (state.OrbitAlternateTimer >= data.DirTimer) // 每n秒切换一次
+            if (state.OrbitAlternateTimer >= data.DirTimer)
             {
                 state.OrbitDir = state.OrbitDir == OrbitDirection.Clockwise
                     ? OrbitDirection.CounterClockwise
@@ -203,16 +212,12 @@ internal class MoveMod
             state.OrbitDir = data.OrbitDir;
         }
 
-        // 计算环绕位置
-        float Angle = state.OrbitAngle;
-        Vector2 orbitPos = tar.Center + new Vector2(
-            (float)Math.Cos(Angle) * Radius,
-            (float)Math.Sin(Angle) * Radius
-        );
+        // 使用Utils方法计算环绕位置 - 更简洁
+        Vector2 orbitPos = tar.Center + state.OrbitAngle.ToRotationVector2() * Radius;
 
-        // 计算理想的环绕方向
+        // 计算移动方向
         Vector2 orbitDir = (orbitPos - npc.Center).SafeNormalize(Vector2.UnitX);
-        Vector2 velocity = orbitDir * MoveSpeed; // 使用自定义移动速度
+        Vector2 velocity = orbitDir * MoveSpeed;
 
         // 平滑速度过渡
         state.SmoothVelocity = Vector2.Lerp(state.SmoothVelocity, velocity, data.SmoothFactor);
@@ -245,17 +250,15 @@ internal class MoveMod
 
         state.WanderTimer++;
 
-        // 定期更换目标点
+        // 定期更换目标点 - 使用Utils方法简化随机方向生成
         if (state.WanderTimer >= data.WanderChangeInterval ||
-            Vector2.Distance(npc.Center, state.WanderTarget) < 10f)
+            npc.Center.Distance(state.WanderTarget) < (data.WanderCloseDistance * 16f))
         {
-            // 在玩家周围随机位置生成新目标
-            float angle = (float)(Main.rand.NextDouble() * MathHelper.TwoPi);
-            float distance = (float)(Main.rand.NextDouble() * (data.WanderRadius * 0.5f) + (data.WanderRadius * 0.5f)) * 16f;
-            state.WanderTarget = tar.Center + new Vector2(
-                (float)Math.Cos(angle) * distance,
-                (float)Math.Sin(angle) * distance
-            );
+            // 使用Utils方法生成随机方向并计算目标位置
+            float minDistance = data.WanderRadius * 0.5f * 16f;
+            float maxDistance = data.WanderRadius * 16f;
+            float distance = minDistance + Main.rand.NextFloat() * (maxDistance - minDistance);
+            state.WanderTarget = tar.Center + Main.rand.NextVector2Unit() * distance;
             state.WanderTimer = 0;
         }
 
@@ -267,7 +270,7 @@ internal class MoveMod
     }
     #endregion
 
-    #region 突进模式（简化版：预备+冲刺+冷却）
+    #region 突进模式
     private static void DashMode(NPC npc, TimerData Event, TimerState TState, ref bool handled)
     {
         var data = Event.MoveData;
@@ -278,16 +281,24 @@ internal class MoveMod
         switch (state.DashState)
         {
             case DashState.Windup: // 预备阶段
+                // 在Windup阶段开始时记录起始位置
+                if (state.DashTimer == 1)
+                {
+                    state.DashStartPosition = npc.Center;
+                }
+
                 // 计算后退方向（与目标方向相反）
                 Vector2 retreatDir = (npc.Center - Main.player[npc.target].Center).SafeNormalize(Vector2.UnitX);
-                // 计算目标后退位置
-                Vector2 retreatTarget = state.DashStartPosition + retreatDir;
-                // 平滑后退移动
-                Vector2 retreatVelocity = (retreatTarget - npc.Center).SafeNormalize(Vector2.UnitX) * data.DashSpeed * 0.5f;
+                // 使用配置的后退距离（转换为像素）
+                float retreatDistance = data.DashRetreatDistance * 16f;
+                Vector2 retreatTarget = state.DashStartPosition + retreatDir * retreatDistance;
+                // 平滑后退移动，使用配置的后退速度系数
+                Vector2 retreatVelocity = (retreatTarget - npc.Center).SafeNormalize(Vector2.UnitX) * data.DashSpeed * data.DashRetreatSpeedFactor;
                 state.DashVelocity = Vector2.Lerp(state.DashVelocity, retreatVelocity, data.SmoothFactor);
                 // 应用后退速度
                 npc.velocity = state.DashVelocity;
                 handled = true;
+                
                 if (state.DashTimer >= data.DashWindup)
                 {
                     state.DashState = DashState.Dashing;
@@ -322,38 +333,39 @@ internal class MoveMod
                     // 重置状态，准备下一次突进
                     state.DashState = DashState.Windup;
                     state.DashTimer = 0;
+                    state.DashStartPosition = Vector2.Zero;
                 }
                 break;
         }
     }
     #endregion
 
-    #region 保持对视模式（八个方向）
-    private static void FaceTargetMode(NPC npc, TimerData Event, TimerState TSate)
+    #region 保持对视模式
+    private static void FaceTargetMode(NPC npc, TimerData Event, TimerState TState)
     {
         var tar = npc.GetTargetData(true);
         if (tar.Invalid) return;
 
         var data = Event.MoveData;
-        var state = TSate.MoveState;
+        var state = TState.MoveState;
 
-        // 计算目标位置（保持在对视距离的八个方向之一）
+        // 计算目标位置（保持在对视距离的八个方向之一），转换为像素距离
         Vector2 targetPos = FacePosition(tar.Center, state.FaceDirection, data.FaceDistance * 16f);
 
         // 平滑移动到目标位置，使用自定义速度
         Vector2 moveDir = (targetPos - npc.Center).SafeNormalize(Vector2.UnitX);
-        Vector2 tarVel = moveDir * data.FaceSpeed; // 使用自定义对视速度
+        Vector2 tarVel = moveDir * data.FaceSpeed;
         state.FaceVelocity = Vector2.Lerp(state.FaceVelocity, tarVel, data.FaceSmooth);
         npc.velocity = state.FaceVelocity;
 
         // 计算与目标位置的距离
-        float ToTarget = Vector2.Distance(npc.Center, targetPos);
+        float ToTarget = npc.Center.Distance(targetPos);
 
         // 如果接近目标位置，考虑切换方向
-        if (ToTarget >= (data.SwitchDistance * 16))
+        if (ToTarget <= (data.SwitchDistance * 16f))
         {
-            // 随机决定是否切换方向（25%概率）
-            if (Main.rand.Next(4) == 0)
+            // 使用配置的换位概率
+            if (Main.rand.Next(data.FaceSwitchChance) == 0)
             {
                 int oldDirection = state.FaceDirection;
                 int newDirection;
@@ -362,7 +374,6 @@ internal class MoveMod
                 do
                 {
                     newDirection = Main.rand.Next(0, 8);
-
                 } while (newDirection == oldDirection);
 
                 state.FaceDirection = newDirection;
@@ -370,11 +381,11 @@ internal class MoveMod
         }
     }
 
-    // 计算八个方向的位置
+    // 计算八个方向的位置 - 使用Utils方法简化
     private static Vector2 FacePosition(Vector2 Center, int direction, float distance)
     {
         float angle = direction * MathHelper.PiOver4; // 45度间隔
-        return Center + new Vector2((float)Math.Cos(angle) * distance,(float)Math.Sin(angle) * distance);
+        return Center + angle.ToRotationVector2() * distance;
     }
     #endregion
 }
