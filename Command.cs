@@ -63,9 +63,7 @@ internal class Command
             {
                 Commands.HandleCommand(args.Player, "/butcher");
 
-                MyProjectile.ClearAllStates();
-                MyMonster.ClearAllStates();
-                TimerEvents.ClearAllStates();
+                StateUtil.ClearAllStates();
 
                 Config.Dict.Clear();
 
@@ -281,7 +279,7 @@ internal class Command
                 return;
             }
 
-            var idx = TimerEvents.GetState(npc)!.Index;
+            var idx = StateUtil.GetState(npc)!.Index;
             if (idx < 0 || idx >= data.TimerEvent.Count)
             {
                 plr.SendErrorMessage($"BOSS '{name}' 的当前事件索引无效！");

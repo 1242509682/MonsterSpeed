@@ -66,51 +66,41 @@ public class BossAI
 internal class AISystem
 {
     #region 应用步进AI模式控制
-    // 新增：存储每个NPC的AI模式状态
-    private static Dictionary<string, AIState> AIPattern = new Dictionary<string, AIState>();
     public static void AIPairs(NPC npc, AIModes aiMode, string npcName, ref bool handled)
     {
         if (!aiMode.Enabled) return;
-        // 初始化或获取模式状态
-        if (!AIPattern.TryGetValue(npcName, out var state))
-        {
-            state = new AIState
-            {
-                Values = new Dictionary<int, float>(),
-                Directions = new Dictionary<int, int>(),
-                LocalValues = new Dictionary<int, float>(),
-                LocalDirections = new Dictionary<int, int>()
-            };
-            AIPattern[npcName] = state;
-        }
+
+        // 从NpcState获取AI状态
+        var state = StateUtil.GetState(npc);
+        if (state?.AIState == null) return;
 
         bool flag = false;
 
         // 处理固定AI
         if (aiMode.FixedAI != null && aiMode.FixedAI.Count > 0)
         {
-            FixedAI(npc, aiMode.FixedAI, state);
+            FixedAI(npc, aiMode.FixedAI, state.AIState);
             flag = true;
         }
 
         // 处理固定localAI
         if (aiMode.FixedLocalAI != null && aiMode.FixedLocalAI.Count > 0)
         {
-            FixedLocalAI(npc, aiMode.FixedLocalAI, state);
+            FixedLocalAI(npc, aiMode.FixedLocalAI, state.AIState);
             flag = true;
         }
 
         // 处理步进AI
         if (aiMode.StepAI != null && aiMode.StepAI.Count > 0)
         {
-            StepAI(npc, aiMode.StepAI, state, npcName, false);
+            StepAI(npc, aiMode.StepAI, state.AIState, npcName, false);
             flag = true;
         }
 
         // 处理步进localAI
         if (aiMode.StepLocalAI != null && aiMode.StepLocalAI.Count > 0)
         {
-            StepAI(npc, aiMode.StepLocalAI, state, npcName, true);
+            StepAI(npc, aiMode.StepLocalAI, state.AIState, npcName, true);
             flag = true;
         }
 
@@ -177,7 +167,8 @@ internal class AISystem
                 Dict[Index] = 1;
             }
 
-            float Value = state.Values[Index];
+            // 修复：使用正确的字典获取当前值
+            float Value = val[Index];  // 原来是 state.Values[Index]
             float newVal = Value;
 
             // 根据模式类型计算新值
@@ -210,9 +201,8 @@ internal class AISystem
                     }
                     break;
 
-                case 3: //  随机模式
-                    newVal = setting.Loop && random.NextDouble() < 0.1 ?
-                             setting.MinValue : (float)(random.NextDouble() * (setting.MaxValue - setting.MinValue) + setting.MinValue);
+                case 3: // 随机模式 - 修复：简化逻辑
+                    newVal = (float)(random.NextDouble() * (setting.MaxValue - setting.MinValue) + setting.MinValue);
                     break;
             }
 
@@ -242,60 +232,60 @@ internal class AISystem
         };
     }
 
-    public static string GetAiInfo(AIModes aiMode, string npcName)
+    public static string GetAiInfo(AIState state, AIModes aiMode, string npcName)
     {
+        if (state == null) return string.Empty;
+
         var info = new StringBuilder();
-        if (AIPattern.TryGetValue(npcName, out var state))
+
+        // 显示固定AI
+        if (aiMode.FixedAI != null && aiMode.FixedAI.Count > 0)
         {
-            // 显示固定AI
-            if (aiMode.FixedAI != null && aiMode.FixedAI.Count > 0)
+            info.Append("\n [固定] ");
+            foreach (var kvp in aiMode.FixedAI)
             {
-                info.Append("\n [固定] ");
-                foreach (var kvp in aiMode.FixedAI)
+                info.Append($" [ai{kvp.Key}] {kvp.Value:F1} ");
+            }
+        }
+
+        // 显示固定localAI
+        if (aiMode.FixedLocalAI != null && aiMode.FixedLocalAI.Count > 0)
+        {
+            info.Append("\n [固定] ");
+            foreach (var kvp in aiMode.FixedLocalAI)
+            {
+                info.Append($" [Lai{kvp.Key}] {kvp.Value:F1} ");
+            }
+        }
+
+        // 显示步进AI
+        if (aiMode.StepAI != null && aiMode.StepAI.Count > 0)
+        {
+            info.Append("\n [步进] ");
+            foreach (var kvp in aiMode.StepAI)
+            {
+                var aiIndex = kvp.Key;
+                var setting = kvp.Value;
+                if (state.Values.ContainsKey(aiIndex))
                 {
-                    info.Append($" [ai{kvp.Key}] {kvp.Value:F1} ");
+                    string modeName = GetModeName(setting.Type);
+                    info.Append($" [ai{aiIndex}] {state.Values[aiIndex]:F1}({modeName}) ");
                 }
             }
+        }
 
-            // 显示固定localAI
-            if (aiMode.FixedLocalAI != null && aiMode.FixedLocalAI.Count > 0)
+        // 显示步进localAI
+        if (aiMode.StepLocalAI != null && aiMode.StepLocalAI.Count > 0)
+        {
+            info.Append("\n [步进] ");
+            foreach (var kvp in aiMode.StepLocalAI)
             {
-                info.Append("\n [固定] ");
-                foreach (var kvp in aiMode.FixedLocalAI)
+                var aiIndex = kvp.Key;
+                var setting = kvp.Value;
+                if (state.LocalValues.ContainsKey(aiIndex))
                 {
-                    info.Append($" [Lai{kvp.Key}] {kvp.Value:F1} ");
-                }
-            }
-
-            // 显示步进AI
-            if (aiMode.StepAI != null && aiMode.StepAI.Count > 0)
-            {
-                info.Append("\n [步进] ");
-                foreach (var kvp in aiMode.StepAI)
-                {
-                    var aiIndex = kvp.Key;
-                    var setting = kvp.Value;
-                    if (state.Values.ContainsKey(aiIndex))
-                    {
-                        string modeName = GetModeName(setting.Type);
-                        info.Append($" [ai{aiIndex}] {state.Values[aiIndex]:F1}({modeName}) ");
-                    }
-                }
-            }
-
-            // 显示步进localAI
-            if (aiMode.StepLocalAI != null && aiMode.StepLocalAI.Count > 0)
-            {
-                info.Append("\n [步进] ");
-                foreach (var kvp in aiMode.StepLocalAI)
-                {
-                    var aiIndex = kvp.Key;
-                    var setting = kvp.Value;
-                    if (state.LocalValues.ContainsKey(aiIndex))
-                    {
-                        string modeName = GetModeName(setting.Type);
-                        info.Append($" [Lai{aiIndex}] {state.LocalValues[aiIndex]:F1}({modeName}) ");
-                    }
+                    string modeName = GetModeName(setting.Type);
+                    info.Append($" [Lai{aiIndex}] {state.LocalValues[aiIndex]:F1}({modeName}) ");
                 }
             }
         }

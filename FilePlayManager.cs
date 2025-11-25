@@ -41,7 +41,7 @@ public class FilePlayState
 internal class FilePlayManager
 {
     #region 处理文件播放
-    public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, TimerState state, ref bool handled)
+    public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, NpcState state, ref bool handled)
     {
         var fs = state.FileState;
         var Event = fs.Events[fs.EventIndex];
@@ -73,7 +73,7 @@ internal class FilePlayManager
         bool loop = false;
         if (!fs.NoCond) // 只有非强制播放时才检查条件
         {
-            Conditions.Condition(npc, mess, data, Event, ref all, ref loop);
+            Conditions.Condition(npc, mess, data, Event.Condition, ref all, ref loop);
         }
 
         // 显示冷却文本
@@ -86,6 +86,12 @@ internal class FilePlayManager
             // 检查事件冷却
             if ((DateTime.UtcNow - fs.EventTimer).TotalSeconds >= ActiveTime)
             {
+                // 新增：执行指示物修改
+                if (Event.MarkerMods != null && Event.MarkerMods.Count > 0)
+                {
+                    MarkerUtil.SetMarkers(state, Event.MarkerMods, ref Main.rand, npc);
+                }
+
                 UpdateFilePlay(npc, state); // 更新文件播放进度
                 if (!state.FileState.Playing) // 如果文件播放已完成，返回
                 {
@@ -96,7 +102,7 @@ internal class FilePlayManager
             else
             {
                 // 冷却时间未到，但如果条件满足仍然执行事件
-                StartEvent(data, npc, Event, mess, ref handled);
+                StartEvent(data, npc, Event, mess,state, ref handled);
             }
 
             // 显示状态（包含剩余时间）
@@ -106,8 +112,8 @@ internal class FilePlayManager
             if (!state.PauseState.Paused)
             {
                 // 获取召怪和弹发数量用于广播显示
-                int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
-                int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
+                int spCount = state?.SPCount ?? 0;
+                int snCount = state?.SNCount ?? 0;
                 mess.Append($" 血量:[c/A2E4DB:{(int)(npc.life / (float)npc.lifeMax * 100)}%]" +
                             $" 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
             }
@@ -117,23 +123,40 @@ internal class FilePlayManager
             // 显示状态（包含剩余时间）
             mess.Append($"{Info}");
 
+            // 新增：显示关键指示物
+            if (state?.Markers != null && state.Markers.Count > 0)
+            {
+                mess.Append($" [文件指示物] ");
+                int count = 0;
+                foreach (var marker in state.Markers)
+                {
+                    if (count >= 3) break; // 最多显示3个关键指示物
+                    if (marker.Key.StartsWith("file_") || marker.Key.StartsWith("step_"))
+                    {
+                        mess.Append($"{marker.Key}:{marker.Value} ");
+                        count++;
+                    }
+                }
+                if (count > 0) mess.Append("\n");
+            }
+
             // 不是暂停状态时显示血量和召怪弹发数量
-            if (!state.PauseState.Paused)
+            if (!state!.PauseState.Paused)
             {
                 // 获取召怪和弹发数量用于广播显示
-                int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
-                int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
+                int spCount = state?.SPCount ?? 0;
+                int snCount = state?.SNCount ?? 0;
                 mess.Append($" 血量:[c/A2E4DB:{(int)(npc.life / (float)npc.lifeMax * 100)}%]" +
                             $" 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
             }
 
             mess.Append($" [c/FF6B6B:文件事件条件未满足]\n");
 
-            UpdateFilePlay(npc, state);  // 更新文件播放进度
+            UpdateFilePlay(npc, state!);  // 更新文件播放进度
             fs.EventTimer = DateTime.UtcNow; // 重置计时器，等待下一次检查
 
             // 如果文件播放已完成，前进到下一个主事件
-            if (!state.FileState.Playing)
+            if (!state!.FileState.Playing)
             {
                 NextEvent(data, data.TimerEvent[state.Index].NextAddTimer, npc, state);
             }
@@ -142,7 +165,7 @@ internal class FilePlayManager
     #endregion
 
     #region 更新文件播放进度
-    public static void UpdateFilePlay(NPC npc, TimerState state)
+    public static void UpdateFilePlay(NPC npc, NpcState state)
     {
         var fs = state.FileState;
 
@@ -227,7 +250,7 @@ internal class FilePlayManager
     #endregion
 
     #region 更新文件播放次数
-    public static void UpdateFilePlayCount(TimerState state, List<int> fileList)
+    public static void UpdateFilePlayCount(NpcState state, List<int> fileList)
     {
         if (state.PlayCounts == null)
         {
@@ -265,7 +288,7 @@ internal class FilePlayManager
     #endregion
 
     #region 开始文件播放
-    public static void StartFilePlay(string npcName, List<int> fileList, int playCount, bool noCond, bool byFile, TimerState state)
+    public static void StartFilePlay(string npcName, List<int> fileList, int playCount, bool noCond, bool byFile, NpcState state)
     {
         try
         {

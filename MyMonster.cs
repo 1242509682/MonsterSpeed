@@ -1,5 +1,4 @@
 ﻿using Microsoft.Xna.Framework;
-using MonsterSpeed.Progress;
 using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
@@ -19,24 +18,20 @@ public class SpawnNpcData
     public float Interval = 300;
     [JsonProperty("以玩家为中心", Order = 5)]
     public bool TarCenter = false;
-}
 
-// 怪物生成状态类
-public class MonsterSpawnState
-{
-    public int SNCount = 0; //用于追踪该NPC的怪物生成次数
-    public Dictionary<int, float> SpawnTimer = new Dictionary<int, float>(); //用于追踪该NPC生成随从NPC冷却时间
+    [JsonProperty("指示物修改", Order = 11)]
+    public Dictionary<string, string[]> MarkerMods { get; set; } = new Dictionary<string, string[]>();
 }
 
 internal class MyMonster
 {
-    #region 召唤怪物方法
+    #region 召唤怪物方法（增强指示物支持）
     public static void SpawnMonsters(List<SpawnNpcData> SpawnNpc, NPC npc)
     {
         if (SpawnNpc == null || SpawnNpc.Count == 0) return;
 
         // 获取NPC的状态
-        var state = GetState(npc);
+        var state = StateUtil.GetState(npc);
         if (state == null) return;
 
         var flag = false;
@@ -81,6 +76,12 @@ internal class MyMonster
                         state.SpawnTimer[id] = mos.Interval;
                         Stack++;
                         flag = true;
+
+                        // 新增：应用指示物修改
+                        if (mos.MarkerMods != null && mos.MarkerMods.Count > 0)
+                        {
+                            MarkerUtil.SetMarkers(state, mos.MarkerMods, ref Main.rand, npc);
+                        }
                     }
                 }
                 else
@@ -95,47 +96,6 @@ internal class MyMonster
         {
             state.SNCount++; //增加该NPC的怪物生成次数
         }
-    }
-    #endregion
-
-    #region 状态管理
-    private static Dictionary<int, MonsterSpawnState> NPCStates = new Dictionary<int, MonsterSpawnState>(); // 存储每个NPC的状态
-
-    /// <summary>
-    /// 获取或创建NPC的状态
-    /// </summary>
-    /// <param name="npc">NPC实例</param>
-    /// <returns>状态对象</returns>
-    public static MonsterSpawnState? GetState(NPC npc)
-    {
-        if (npc == null || !npc.active)
-            return new MonsterSpawnState();
-
-        if (!NPCStates.ContainsKey(npc.whoAmI))
-        {
-            NPCStates[npc.whoAmI] = new MonsterSpawnState();
-        }
-        return NPCStates[npc.whoAmI];
-    }
-
-    /// <summary>
-    /// 清理NPC的状态
-    /// </summary>
-    /// <param name="npc">NPC实例</param>
-    public static void ClearState(NPC npc)
-    {
-        if (npc != null && NPCStates.ContainsKey(npc.whoAmI))
-        {
-            NPCStates.Remove(npc.whoAmI);
-        }
-    }
-
-    /// <summary>
-    /// 清理所有状态（用于重置）
-    /// </summary>
-    public static void ClearAllStates()
-    {
-        NPCStates.Clear();
     }
     #endregion
 }

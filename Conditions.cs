@@ -1,292 +1,504 @@
 ﻿using System.Text;
 using Microsoft.Xna.Framework;
-using MonsterSpeed.Progress;
 using Newtonsoft.Json;
 using Terraria;
 using Terraria.ID;
 using TShockAPI;
+using Terraria.GameContent.Events;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.TimerEvents;
 
 namespace MonsterSpeed;
 
-//触发条件数据结构
+// 统一的条件数据结构
 public class Conditions
 {
-    [JsonProperty("血量范围", Order = -22)]
+    // 基础条件
+    [JsonProperty("BOSS血量范围", Order = -22)]
     public string NpcLift { get; set; } = "0,100";
-    [JsonProperty("进度限制", Order = -21)]
-    public ProgressType Progress { get; set; } = (ProgressType)(-1);
-    [JsonProperty("玩家生命", Order = -20)]
+    [JsonProperty("游戏进度条件", Order = -21)]
+    public List<string> Progress { get; set; } = new List<string>();
+    [JsonProperty("目标玩家生命值", Order = -20)]
     public int PlayerLife { get; set; } = -1;
-    [JsonProperty("玩家防御", Order = -19)]
+    [JsonProperty("目标玩家防御力", Order = -19)]
     public int PlrDefense { get; set; } = -1;
-    [JsonProperty("玩家武器", Order = -18)]
+    [JsonProperty("目标玩家武器类型", Order = -18)]
     public string WeaponName { get; set; } = "无";
-    [JsonProperty("召怪次数", Order = -17)]
+    [JsonProperty("召唤怪物次数", Order = -17)]
     public int MonsterCount { get; set; } = -1;
-    [JsonProperty("弹发次数", Order = -16)]
+    [JsonProperty("发射弹幕次数", Order = -16)]
     public int ProjectileCount { get; set; } = -1;
-    [JsonProperty("死亡次数", Order = -15)]
+    [JsonProperty("怪物死亡次数", Order = -15)]
     public int DeadCount { get; set; } = -1;
-    [JsonProperty("距离条件", Order = -14)]
+    [JsonProperty("与目标玩家距离", Order = -14)]
     public float Range { get; set; } = -1;
-    [JsonProperty("速度条件", Order = -13)]
+    [JsonProperty("怪物移动速度", Order = -13)]
     public float Speed { get; set; } = -1;
-    [JsonProperty("AI条件", Order = -12)]
+    [JsonProperty("AI状态条件", Order = -12)]
     public Dictionary<int, string[]> AIPairs { get; set; } = new Dictionary<int, string[]>();
-
-    [JsonProperty("时间范围", Order = -11)]
+    [JsonProperty("时间范围条件", Order = -11)]
     public string Timer { get; set; } = "0,0";
-    [JsonProperty("执行次数", Order = -10)]
+    [JsonProperty("事件执行次数", Order = -10)]
     public Dictionary<int, int> ExecuteCount { get; set; } = new Dictionary<int, int>();
-    [JsonProperty("累计播放次数", Order = -9)] // 新增：所有文件累计播放次数
+    [JsonProperty("累计播放次数", Order = -9)]
     public int TotalPlayCount { get; set; } = -1;
-    [JsonProperty("指定文件播放次数", Order = -8)] // 新增：指定文件播放次数
-    public Dictionary<int, int> FilePlayCount { get; set; } = new Dictionary<int, int>();   
+    [JsonProperty("文件播放次数", Order = -8)]
+    public Dictionary<int, int> FilePlayCount { get; set; } = new Dictionary<int, int>();
 
-    #region 触发条件
-    internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, TimerData Event, ref bool all, ref bool loop)
+    [JsonProperty("指示物条件", Order = 90)]
+    public Dictionary<string, string[]> MarkerConds { get; set; } = new Dictionary<string, string[]>();
+
+    [JsonProperty("范围内玩家检查", Order = 100)]
+    public RangePlayerCondition RangePlayers { get; set; } = new RangePlayerCondition();
+    [JsonProperty("范围内怪物检查", Order = 110)]
+    public RangeMonsterCondition RangeMonsters { get; set; } = new RangeMonsterCondition();
+    [JsonProperty("范围内弹幕检查", Order = 120)]
+    public RangeProjectileCondition RangeProjectiles { get; set; } = new RangeProjectileCondition();
+
+
+    #region 增强条件子类
+    public class RangePlayerCondition
+    {
+        [JsonProperty("范围格数")]
+        public string Range { get; set; } = "0,0";
+        [JsonProperty("需要玩家数量")]
+        public int MatchCnt { get; set; } = 0;
+        [JsonProperty("玩家生命值")]
+        public int HP { get; set; } = -1;
+        [JsonProperty("玩家生命百分比")]
+        public int HPRatio { get; set; } = -1;
+        [JsonProperty("需要Buff列表")]
+        public int[] Buffs { get; set; } = new int[0];
+    }
+
+    public class RangeMonsterCondition
+    {
+        [JsonProperty("怪物标志")]
+        public string Flag { get; set; } = "";
+        [JsonProperty("怪物ID")]
+        public int MstID { get; set; } = 0;
+        [JsonProperty("范围格数")]
+        public int Range { get; set; } = 0;
+        [JsonProperty("需要怪物数量")]
+        public int MatchCnt { get; set; } = 0;
+        [JsonProperty("怪物血量百分比")]
+        public int HPRatio { get; set; } = 0;
+    }
+
+    public class RangeProjectileCondition
+    {
+        [JsonProperty("弹幕标志")]
+        public string Flag { get; set; } = "";
+        [JsonProperty("弹幕ID")]
+        public int ProjID { get; set; } = 0;
+        [JsonProperty("范围格数")]
+        public int Range { get; set; } = 0;
+        [JsonProperty("需要弹幕数量")]
+        public int MatchCnt { get; set; } = 0;
+        [JsonProperty("是否全局弹幕")]
+        public bool IsGlobal { get; set; } = false;
+    }
+    #endregion
+
+    #region 触发条件主入口
+    internal static void Condition(NpcData data, NPC npc, Conditions Cond, ref bool allow)
+    {
+        var mess = new StringBuilder();
+        var loop = false;
+
+        Condition(npc, mess, data, Cond, ref allow, ref loop);
+    }
+
+    internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, Conditions Cond, ref bool allow, ref bool loop)
     {
         if (data is null) return;
-        var Condition = Event.Condition;
-        if (Condition != null)
-        {
-            // 生命条件
-            var life = (int)(npc.life / (float)npc.lifeMax * 100);
-            var LC = LifeCondition(life, Condition);
-            if (!LC && Condition.NpcLift != "0,100")
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 血量条件未满足: 血量 {life}% < {Condition.NpcLift} \n");
-            }
+        if (Cond is null) return;
 
-            // 武器条件
-            Player plr = Main.player[npc.target];
-            if (plr is null || !plr.active || plr.dead) return;
-            var WC = Condition.WeaponName == GetPlayerWeapon(plr);
-            if (Condition.WeaponName != "无" && !WC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {Condition.WeaponName}\n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
+        bool allConditionsMet = true;
 
-            // 进度条件
-            var PC = ProgressChecker.IsProgress(Condition.Progress);
-            if (Condition.Progress != (ProgressType)(-1) && !PC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 进度条件未满足: 当前进度不符合 {Condition.Progress.ToString()}\n");
-            }
+        // 基础条件检查
+        allConditionsMet &= CheckBasicConditions(npc, data, Cond, mess);
+        
+        // 增强条件检查（不重复的）
+        allConditionsMet &= CheckEnhancedConditions(npc, Cond, mess);
 
-            // 召怪条件
-            int snCount = MyMonster.GetState(npc)?.SNCount ?? 0;
-            var MC = snCount >= Condition.MonsterCount;
-            if (Condition.MonsterCount != -1 && !MC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 召怪条件未满足: 当前召怪次数 {snCount} < {Condition.MonsterCount}\n");
-            }
-
-            // 弹发条件
-            int spCount = MyProjectile.GetState(npc)?.SPCount ?? 0;
-            var PrC = spCount >= Condition.ProjectileCount;
-            if (Condition.ProjectileCount != -1 && !PrC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 弹发条件未满足: 当前生成弹幕次数 {spCount} < {Condition.ProjectileCount}\n");
-            }
-
-            // 死亡次数条件
-            var DC = data.DeadCount >= Condition.DeadCount;
-            if (Condition.DeadCount != -1 && !DC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 死次条件未满足: 当前死亡次数 {data.DeadCount} < {Condition.DeadCount}\n");
-            }
-
-            // 距离条件
-            var range = Vector2.Distance(Main.player[npc.target].Center, npc.Center);
-            var RC = range >= Condition.Range * 16;
-            if (Condition.Range != -1 && !RC)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 距离条件未满足: 玩家距离 {range} < {Condition.Range} 格\n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
-
-            //速度条件
-            var absX = Math.Abs(npc.velocity.X);
-            var absY = Math.Abs(npc.velocity.Y);
-            var SP = absX >= Condition.Speed || absY >= Condition.Speed;
-            if (Condition.Speed != -1 && !SP)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {Condition.Speed}\n");
-            }
-
-            // 玩家生命条件
-            var PL = plr.statLife <= Condition.PlayerLife;
-            if (Condition.PlayerLife != -1 && !PL)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {Condition.PlayerLife} \n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
-
-            // 玩家防御条件
-            var DE = plr.statDefense <= Condition.PlrDefense;
-            if (Condition.PlrDefense != -1 && !DE)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {Condition.PlrDefense} \n");
-                MonsterSpeed.AutoTar(npc, data); //自动转换仇恨目标
-            }
-
-            // AI条件
-            if (Condition.AIPairs != null && Condition.AIPairs.Count > 0)
-            {
-                AICondition(npc, mess, ref all, ref loop, Condition);
-            }
-
-            // 时间范围条件
-            var TC = TimerCondition(npc, data, Condition, mess);
-            if (!TC && Condition.Timer != "0,0")
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 时间条件未满足: 当前时间不在 {Condition.Timer} 秒范围内\n");
-            }
-
-            // 执行次数条件
-            var EC = ExecuteCountCondition(npc, Condition, mess);
-            if (!EC && Condition.ExecuteCount.Count > 0)
-            {
-                all = false;
-                loop = true;
-            }
-
-            // 累计播放次数条件 - 新增
-            var TPC = TotalPlayCountCondition(npc, Condition, mess);
-            if (!TPC && Condition.TotalPlayCount != -1)
-            {
-                all = false;
-                loop = true;
-                mess.Append($" 累计播放次数条件未满足: 当前累计播放 {GetTotalPlayCount(npc)} 次 < 需要 {Condition.TotalPlayCount} 次\n");
-            }
-
-            // 指定文件播放次数条件 - 新增
-            var FPC = FilePlayCountCondition(npc, Condition, mess);
-            if (!FPC && Condition.FilePlayCount.Count > 0)
-            {
-                all = false;
-                loop = true;
-            }
-        }
+        allow = allConditionsMet;
+        loop = !allConditionsMet;
     }
     #endregion
 
-    #region 生命条件
+    #region 基础条件检查
+    private static bool CheckBasicConditions(NPC npc, NpcData data, Conditions Cond, StringBuilder mess)
+    {
+        bool allMet = true;
+
+        // 新增：指示物条件检查
+        if (Cond.MarkerConds != null && Cond.MarkerConds.Count > 0)
+        {
+            if (!MarkerUtil.CheckMarkers(StateUtil.GetState(npc), Cond.MarkerConds, npc))
+            {
+                allMet = false;
+                mess.Append(" 指示物条件未满足\n");
+            }
+        }
+
+        // 生命条件
+        var life = (int)PxUtil.GetLifeRatio(npc);
+        var LC = LifeCondition(life, Cond);
+        if (!LC && Cond.NpcLift != "0,100")
+        {
+            allMet = false;
+            mess.Append($" 血量条件未满足: 血量 {life}% 不在范围 {Cond.NpcLift}%\n");
+        }
+
+        // 武器条件
+        Player plr = PxUtil.GetValidTarget(npc);
+        if (plr is null) 
+        {
+            return false;
+        }
+        
+        var WC = Cond.WeaponName == GetPlayerWeapon(plr);
+        if (Cond.WeaponName != "无" && !WC)
+        {
+            allMet = false;
+            mess.Append($" 武器条件未满足: 玩家武器 {GetPlayerWeapon(plr)} 不是 {Cond.WeaponName}\n");
+            MonsterSpeed.AutoTar(npc, data);
+        }
+
+        // 进度条件
+        var PC = CheckGroup(plr, Cond.Progress);
+        if (!PC)
+        {
+            allMet = false;
+            mess.Append($" 进度条件未满足: 当前进度不符合 {string.Join(",", Cond.Progress)}\n");
+        }
+
+        var state = StateUtil.GetState(npc);
+        
+        // 数量条件检查
+        if (!CheckCountConditions(npc, state, data, Cond, mess))
+        {
+            allMet = false;
+        }
+
+        // 距离条件 - 只检查与目标玩家的距离
+        if (Cond.Range != -1 && !PxUtil.InRangeTiles(plr.Center, npc.Center, Cond.Range))
+        {
+            allMet = false;
+            float currentRange = PxUtil.ToTiles(Vector2.Distance(plr.Center, npc.Center));
+            mess.Append($" 距离条件未满足: 玩家距离 {currentRange:F1} < {Cond.Range} 格\n");
+            MonsterSpeed.AutoTar(npc, data);
+        }
+
+        // 速度条件
+        var absX = Math.Abs(npc.velocity.X);
+        var absY = Math.Abs(npc.velocity.Y);
+        var SP = absX >= Cond.Speed || absY >= Cond.Speed;
+        if (Cond.Speed != -1 && !SP)
+        {
+            allMet = false;
+            mess.Append($" 速度条件未满足: x{npc.velocity.X:F0} y{npc.velocity.Y:F0} 速度 < {Cond.Speed}\n");
+        }
+
+        // 玩家生命条件 - 只检查目标玩家
+        if (Cond.PlayerLife != -1 && !PxUtil.CheckHPCondition(plr, Cond.PlayerLife, -1))
+        {
+            allMet = false;
+            mess.Append($" 生命条件未满足: 玩家生命 {plr.statLife} > {Cond.PlayerLife} \n");
+            MonsterSpeed.AutoTar(npc, data);
+        }
+
+        // 玩家防御条件
+        var DE = plr.statDefense <= Cond.PlrDefense;
+        if (Cond.PlrDefense != -1 && !DE)
+        {
+            allMet = false;
+            mess.Append($" 防御条件未满足: 玩家防御 {plr.statDefense} > {Cond.PlrDefense} \n");
+            MonsterSpeed.AutoTar(npc, data);
+        }
+
+        // AI条件
+        if (Cond.AIPairs != null && Cond.AIPairs.Count > 0)
+        {
+            if (!AICondition(npc, mess, Cond))
+            {
+                allMet = false;
+            }
+        }
+
+        // 时间范围条件
+        var TC = TimerCondition(npc, data, Cond, mess);
+        if (!TC && Cond.Timer != "0,0")
+        {
+            allMet = false;
+            mess.Append($" 时间条件未满足: 当前时间不在 {Cond.Timer} 秒范围内\n");
+        }
+
+        // 执行次数条件
+        var EC = ExecuteCountCondition(npc, Cond, mess);
+        if (!EC && Cond.ExecuteCount.Count > 0)
+        {
+            allMet = false;
+        }
+
+        // 累计播放次数条件
+        var TPC = TotalPlayCountCondition(npc, Cond, mess);
+        if (!TPC && Cond.TotalPlayCount != -1)
+        {
+            allMet = false;
+        }
+
+        // 指定文件播放次数条件
+        var FPC = FilePlayCountCondition(npc, Cond, mess);
+        if (!FPC && Cond.FilePlayCount.Count > 0)
+        {
+            allMet = false;
+        }
+
+        return allMet;
+    }
+    #endregion
+
+    #region 增强条件检查
+    private static bool CheckEnhancedConditions(NPC npc, Conditions Cond, StringBuilder mess)
+    {
+        bool allMet = true;
+
+        var Result = PxUtil.ParseRange(Cond.RangePlayers.Range, s => int.Parse(s.Trim()));
+
+        // 玩家增强：范围内玩家计数
+        if (Cond.RangePlayers.MatchCnt != 0 && Result.max > 0)
+        {
+            allMet &= CheckPlrRangeCondition(npc, Cond.RangePlayers, mess);
+        }
+
+        // 怪物增强：范围内怪物计数
+        if (Cond.RangeMonsters.MatchCnt != 0)
+        {
+            allMet &= CheckMstRangeCondition(npc, Cond.RangeMonsters, mess);
+        }
+
+        // 弹幕增强：范围内弹幕计数
+        if (Cond.RangeProjectiles.MatchCnt != 0)
+        {
+            allMet &= CheckProjRangeCondition(npc, Cond.RangeProjectiles, mess);
+        }
+
+        return allMet;
+    }
+
+    #region 玩家范围计数（增强功能）
+    private static bool CheckPlrRangeCondition(NPC npc, RangePlayerCondition cond, StringBuilder mess)
+    {
+        if (cond.MatchCnt == 0) return true;
+
+        // 解析范围字符串
+        var Result = PxUtil.ParseRange(cond.Range, s => int.Parse(s.Trim()));
+        if (!Result.success)
+        {
+            mess.Append($" 玩家范围条件格式错误: {cond.Range}\n");
+            return false;
+        }
+
+        int rangeMin = Result.min;
+        int rangeMax = Result.max;
+
+        if (rangeMax <= 0) return true;
+
+        int cnt = 0;
+        float rangeToPx = PxUtil.ToPx(rangeMax);
+        float rangeFromPx = PxUtil.ToPx(rangeMin);
+
+        foreach (TSPlayer plr in TShock.Players)
+        {
+            if (!PxUtil.IsValidPlr(plr))
+                continue;
+
+            // 检查Buff条件
+            if (cond.Buffs.Length > 0 && !cond.Buffs.All(b => plr.TPlayer.buffType.Contains(b)))
+                continue;
+
+            // 检查生命条件（增强功能特有的）
+            if (!PxUtil.CheckHPCondition(plr, cond.HP, cond.HPRatio))
+                continue;
+
+            var distSq = Vector2.DistanceSquared(npc.Center, plr.TPlayer.Center);
+            bool inRange = rangeMin > 0 ?
+                distSq > rangeFromPx * rangeFromPx && distSq <= rangeToPx * rangeToPx :
+                distSq <= rangeToPx * rangeToPx;
+
+            if (inRange) cnt++;
+        }
+
+        return PxUtil.CheckCountCondition(cond.MatchCnt, cnt, "范围内玩家", mess);
+    }
+    #endregion
+
+    #region 怪物范围计数（增强功能）
+    private static bool CheckMstRangeCondition(NPC npc, RangeMonsterCondition cond, StringBuilder mess)
+    {
+        if (cond.MatchCnt == 0) return true;
+
+        int cnt = CountRangeMsts(npc, cond);
+        return PxUtil.CheckCountCondition(cond.MatchCnt, cnt, "范围内怪物", mess);
+    }
+
+    private static int CountRangeMsts(NPC npc, RangeMonsterCondition cond)
+    {
+        int cnt = 0;
+        float rangePx = PxUtil.ToPx(cond.Range);
+
+        for (int i = 0; i < Main.maxNPCs; i++)
+        {
+            var mst = Main.npc[i];
+            if (!PxUtil.IsValidMst(mst, npc)) continue;
+            if (cond.MstID != 0 && mst.netID != cond.MstID) continue;
+            if (cond.Range > 0 && !PxUtil.InRange(npc.Center, mst.Center, rangePx)) continue;
+            if (!CheckMstHP(mst, cond.HPRatio)) continue;
+            if (!CheckMstFlag(mst, cond.Flag)) continue;
+
+            cnt++;
+        }
+        return cnt;
+    }
+
+    private static bool CheckMstHP(NPC mst, int hpRatio)
+    {
+        if (hpRatio == 0) return true;
+
+        float currentRatio = PxUtil.GetLifeRatio(mst);
+        return hpRatio > 0 ? currentRatio >= hpRatio : currentRatio < Math.Abs(hpRatio);
+    }
+
+    private static bool CheckMstFlag(NPC mst, string flag)
+    {
+        return string.IsNullOrEmpty(flag) ||
+               (MonsterSpeed.Config!.Dict!.ContainsKey(mst.FullName) &&
+                MonsterSpeed.Config.Dict[mst.FullName].Flag == flag);
+    }
+    #endregion
+
+    #region 弹幕范围计数（增强功能）
+    private static bool CheckProjRangeCondition(NPC npc, RangeProjectileCondition cond, StringBuilder mess)
+    {
+        if (cond.MatchCnt == 0) return true;
+
+        int cnt = CountRangeProjs(npc, cond);
+        return PxUtil.CheckCountCondition(cond.MatchCnt, cnt, "范围内弹幕", mess);
+    }
+
+    private static int CountRangeProjs(NPC npc, RangeProjectileCondition cond)
+    {
+        int cnt = 0;
+        float rangePx = PxUtil.ToPx(cond.Range);
+
+        for (int i = 0; i < Main.maxProjectiles; i++)
+        {
+            var proj = Main.projectile[i];
+            if (!IsValidProj(proj, npc, cond)) continue;
+            if (cond.ProjID != 0 && proj.type != cond.ProjID) continue;
+            if (cond.Range > 0 && !PxUtil.InRange(npc.Center, proj.Center, rangePx)) continue;
+
+            cnt++;
+        }
+        return cnt;
+    }
+
+    private static bool IsValidProj(Projectile proj, NPC npc, RangeProjectileCondition cond)
+    {
+        if (!PxUtil.IsValidProj(proj))
+            return false;
+
+        if (cond.IsGlobal && MyProjectile.UpdateState[proj.whoAmI]?.whoAmI != npc.whoAmI)
+            return false;
+
+        return string.IsNullOrEmpty(cond.Flag) ||
+               MyProjectile.UpdateState[proj.whoAmI]?.Notes == cond.Flag;
+    }
+    #endregion
+    #endregion
+
+    #region 共用辅助方法
+    private static bool CheckCountConditions(NPC npc, NpcState state, NpcData data, Conditions Cond, StringBuilder mess)
+    {
+        bool allMet = true;
+
+        // 召怪条件
+        int snCount = state?.SNCount ?? 0;
+        if (!PxUtil.CheckCountCondition(Cond.MonsterCount, snCount, "召怪", mess))
+        {
+            allMet = false;
+        }
+
+        // 弹发条件
+        int spCount = state?.SPCount ?? 0;
+        if (!PxUtil.CheckCountCondition(Cond.ProjectileCount, spCount, "弹发", mess))
+        {
+            allMet = false;
+        }
+
+        // 死亡次数条件
+        if (!PxUtil.CheckCountCondition(Cond.DeadCount, data.DeadCount, "死亡", mess))
+        {
+            allMet = false;
+        }
+
+        return allMet;
+    }
+
     private static bool LifeCondition(int life, Conditions? cycle)
     {
-        var flag = true;
         if (cycle == null) return false;
-        var result = CheckLife(cycle.NpcLift);
-        if (result.success && result.min != -1 && result.max != -1)
-        {
-            if (life < result.min || life > result.max)
-            {
-                flag = false;
-            }
-        }
-        if (result.min == -1 || result.max == -1)
-        {
-            flag = false;
-        }
+        
+        var result = PxUtil.ParseRange(cycle.NpcLift, s => int.Parse(s.Trim()));
+        if (!result.success) return false;
 
-        return flag;
+        return life >= result.min && life <= result.max;
     }
-    #endregion
 
-    #region 解析生命条件的方法
-    private static (bool success, int min, int max) CheckLife(string condition)
-    {
-        var parts = condition.Split(',');
-        if (parts.Length != 2 || !int.TryParse(parts[0].Trim(), out int min) || !int.TryParse(parts[1].Trim(), out int max))
-        {
-            // 解析失败，返回错误标志
-            return (false, -1, -1);
-        }
-
-        // 确保min <= max
-        return (true, Math.Min(min, max), Math.Max(min, max));
-    }
-    #endregion
-
-    #region 获取玩家当前武器类型的逻辑
     public static string GetPlayerWeapon(Player plr)
     {
         var Held = plr.HeldItem;
         if (Held == null || Held.type == 0) return "无";
 
-        // 检查近战武器
         if (Held.melee && Held.maxStack == 1 && Held.damage > 0 && Held.ammo == 0 &&
             Held.pick < 1 && Held.hammer < 1 && Held.axe < 1) return "近战";
 
-        // 检查远程武器
         if (Held.ranged && Held.maxStack == 1 &&
             Held.damage > 0 && Held.ammo == 0 && !Held.consumable) return "远程";
 
-        // 检查魔法武器
         if (Held.magic && Held.maxStack == 1 &&
             Held.damage > 0 && Held.ammo == 0) return "魔法";
 
-        // 检查召唤鞭子
         if (ItemID.Sets.SummonerWeaponThatScalesWithAttackSpeed[Held.type]) return "召唤";
 
-        // 检查悠悠球
         if (ItemID.Sets.Yoyo[Held.type]) return "悠悠球";
 
-        // 检查投掷物
         if (Held.maxStack == 9999 && Held.damage > 0 &&
             Held.ammo == 0 && Held.ranged && Held.consumable ||
             ItemID.Sets.ItemsThatCountAsBombsForDemolitionistToSpawn[Held.type]) return "投掷物";
 
-        return "未知"; // 默认未知
+        return "未知";
     }
-    #endregion
 
-    #region AI条件解析（支持：= != > < >= <=）写法
-    private static void AICondition(NPC npc, StringBuilder mess, ref bool all, ref bool loop, Conditions Condition)
+    private static bool AICondition(NPC npc, StringBuilder mess, Conditions Condition)
     {
+        bool allMet = true;
+
         foreach (var ai in Condition.AIPairs)
         {
-            // 检查 TR_AI 键是否合法（只能是 0,1,2,3）
             if (ai.Key < 0 || ai.Key > 3)
             {
-                all = false;
-                loop = true;
+                allMet = false;
                 mess.Append($" AI条件格式错误: 键必须是 0~3，当前键为 '{ai.Key}'\n");
                 continue;
             }
 
             string[] expressions = ai.Value;
-
             if (expressions == null || expressions.Length == 0)
             {
-                all = false;
-                loop = true;
+                allMet = false;
                 mess.Append($" AI条件格式错误: 值为空或未定义 (键: AI[{ai.Key}])\n");
                 continue;
             }
@@ -296,304 +508,638 @@ public class Conditions
             foreach (string Raw in expressions)
             {
                 string? expr = Raw?.Trim();
-
                 if (string.IsNullOrWhiteSpace(expr))
                 {
-                    all = false;
-                    loop = true;
+                    allMet = false;
                     mess.Append($" AI条件格式错误: 表达式为空 (键: AI[{ai.Key}])\n");
                     continue;
                 }
 
-                bool Met = false;
-
-                switch (expr.Substring(0, 1))
-                {
-                    case "=":
-                        if (expr.Length > 1 && expr[1] == '=')
-                        {
-                            // == 等于
-                            if (float.TryParse(expr.Substring(2), out float eqVal))
-                            {
-                                Met = npcAIValue == eqVal;
-                            }
-                            else
-                            {
-                                all = false;
-                                loop = true;
-                                mess.Append($" AI条件格式错误: 无效的等值判断 '{expr}' (键: AI[{ai.Key}])\n");
-                            }
-                        }
-                        else
-                        {
-                            // = 等于
-                            if (float.TryParse(expr.Substring(1), out float eqVal))
-                            {
-                                Met = npcAIValue == eqVal;
-                            }
-                            else
-                            {
-                                all = false;
-                                loop = true;
-                                mess.Append($" AI条件格式错误: 无效的等值判断 '{expr}' (键: AI[{ai.Key}])\n");
-                            }
-                        }
-                        break;
-
-                    case "!":
-                        if (expr.Length > 1 && expr[1] == '=')
-                        {
-                            // != 不等于
-                            if (float.TryParse(expr.Substring(2), out float neqVal))
-                            {
-                                Met = npcAIValue != neqVal;
-                            }
-                            else
-                            {
-                                all = false;
-                                loop = true;
-                                mess.Append($" AI条件格式错误: 无效的不等值判断 '{expr}' (键: AI[{ai.Key}])\n");
-                            }
-                        }
-                        else
-                        {
-                            all = false;
-                            loop = true;
-                            mess.Append($" AI条件格式错误: 无法识别的操作符 '{expr}' (键: AI[{ai.Key}])\n");
-                        }
-                        break;
-
-                    case ">":
-                        if (expr.Length > 1 && expr[1] == '=')
-                        {
-                            // >= 大于等于
-                            if (float.TryParse(expr.Substring(2), out float geVal))
-                            {
-                                Met = npcAIValue >= geVal;
-                            }
-                            else
-                            {
-                                all = false;
-                                loop = true;
-                                mess.Append($" AI条件格式错误: 无效的大于等于判断 '{expr}' (键: AI[{ai.Key}])\n");
-                            }
-                        }
-                        else
-                        {
-                            // > 大于
-                            if (float.TryParse(expr.Substring(1), out float gtVal))
-                            {
-                                Met = npcAIValue > gtVal;
-                            }
-                            else
-                            {
-                                all = false;
-                                loop = true;
-                                mess.Append($" AI条件格式错误: 无效的大于判断 '{expr}' (键: AI[{ai.Key}])\n");
-                            }
-                        }
-                        break;
-
-                    case "<":
-                        if (expr.Length > 1 && expr[1] == '=')
-                        {
-                            // <= 小于等于
-                            if (float.TryParse(expr.Substring(2), out float leVal))
-                            {
-                                Met = npcAIValue <= leVal;
-                            }
-                            else
-                            {
-                                all = false;
-                                loop = true;
-                                mess.Append($" AI条件格式错误: 无效的小于等于判断 '{expr}' (键: AI[{ai.Key}])\n");
-                            }
-                        }
-                        else
-                        {
-                            // < 小于
-                            if (float.TryParse(expr.Substring(1), out float ltVal))
-                            {
-                                Met = npcAIValue < ltVal;
-                            }
-                            else
-                            {
-                                all = false;
-                                loop = true;
-                                mess.Append($" AI条件格式错误: 无效的小于判断 '{expr}' (键: AI[{ai.Key}])\n");
-                            }
-                        }
-                        break;
-
-                    default:
-                        // 默认尝试解析为数字进行等于判断
-                        if (float.TryParse(expr, out float exactVal))
-                        {
-                            Met = npcAIValue == exactVal;
-                        }
-                        else
-                        {
-                            all = false;
-                            loop = true;
-                            mess.Append($" AI条件格式错误: 无法识别的操作符或无效的值 '{expr}' (键: AI[{ai.Key}])\n");
-                        }
-                        break;
-                }
-
+                bool Met = ParseAIExpression(expr, npcAIValue);
+                
                 if (!Met)
                 {
-                    all = false;
-                    loop = true;
+                    allMet = false;
                     mess.Append($" AI条件未满足: AI[{ai.Key}] {expr} 不成立 (当前值: {npcAIValue:F2})\n");
                 }
             }
         }
-    }
-    #endregion
 
-    #region 时间范围条件
+        return allMet;
+    }
+
+    private static bool ParseAIExpression(string expr, float npcAIValue)
+    {
+        if (expr.StartsWith("=="))
+        {
+            return float.TryParse(expr.Substring(2), out float eqVal) && npcAIValue == eqVal;
+        }
+        else if (expr.StartsWith("!="))
+        {
+            return float.TryParse(expr.Substring(2), out float neqVal) && npcAIValue != neqVal;
+        }
+        else if (expr.StartsWith(">="))
+        {
+            return float.TryParse(expr.Substring(2), out float geVal) && npcAIValue >= geVal;
+        }
+        else if (expr.StartsWith("<="))
+        {
+            return float.TryParse(expr.Substring(2), out float leVal) && npcAIValue <= leVal;
+        }
+        else if (expr.StartsWith(">"))
+        {
+            return float.TryParse(expr.Substring(1), out float gtVal) && npcAIValue > gtVal;
+        }
+        else if (expr.StartsWith("<"))
+        {
+            return float.TryParse(expr.Substring(1), out float ltVal) && npcAIValue < ltVal;
+        }
+        else if (expr.StartsWith("="))
+        {
+            return float.TryParse(expr.Substring(1), out float eqVal) && npcAIValue == eqVal;
+        }
+        else
+        {
+            return float.TryParse(expr, out float exactVal) && npcAIValue == exactVal;
+        }
+    }
+
     private static bool TimerCondition(NPC npc, NpcData data, Conditions Condition, StringBuilder mess)
     {
         if (Condition.Timer == "0,0") return true;
-
-        var result = CheckTimer(Condition.Timer);
+    
+        var result = PxUtil.ParseRange(Condition.Timer, s => double.Parse(s.Trim()));
         if (!result.success)
         {
             mess.Append($" 时间条件格式错误: {Condition.Timer}\n");
             return false;
         }
-
-        var state = GetState(npc);
+    
+        var state = StateUtil.GetState(npc);
         if (state == null) return false;
-
-        // 计算当前事件已经运行的时间
-        double elapsed = (DateTime.UtcNow - state.UpdateTimer).TotalSeconds;
-        double Time = data.ActiveTime - elapsed; // 剩余时间
-        double actual = data.ActiveTime - Time; // 已过时间
-
-        // 检查是否在指定的时间范围内
-        bool inRange = actual >= result.min && actual <= result.max;
-
+    
+        double elapsed = (DateTime.UtcNow - state.UpdateTime).TotalSeconds;
+        bool inRange = elapsed >= result.min && elapsed <= result.max;
+    
         return inRange;
     }
 
-    private static (bool success, double min, double max) CheckTimer(string condition)
-    {
-        var parts = condition.Split(',');
-        if (parts.Length != 2 || !double.TryParse(parts[0].Trim(), out double min) || !double.TryParse(parts[1].Trim(), out double max))
-        {
-            return (false, -1, -1);
-        }
-
-        return (true, Math.Min(min, max), Math.Max(min, max));
-    }
-    #endregion
-
-    #region 执行次数条件
     private static bool ExecuteCountCondition(NPC npc, Conditions Condition, StringBuilder mess)
     {
         if (Condition.ExecuteCount.Count == 0) return true;
 
-        var state = GetState(npc);
+        var state = StateUtil.GetState(npc);
         if (state == null) return false;
 
-        bool Met = true;
+        bool allMet = true;
 
         foreach (var kvp in Condition.ExecuteCount)
         {
             int Index = kvp.Key;
             int NeedCount = kvp.Value;
 
-            // 获取指定事件的执行次数
             int NewCount = GetEventExecuteCount(state, Index);
 
-            if (NewCount < NeedCount)
+            if (!PxUtil.CheckCountCondition(NeedCount, NewCount, $"事件[{Index}]执行", mess))
             {
-                Met = false;
-                mess.Append($" 执行次数条件未满足: 事件[{Index}] 当前执行 {NewCount} 次 < 需要 {NeedCount} 次\n");
+                allMet = false;
             }
         }
 
-        return Met;
+        return allMet;
     }
 
-    private static int GetEventExecuteCount(TimerState state, int eventIndex)
+    private static int GetEventExecuteCount(NpcState state, int eventIndex)
     {
-        // 从状态中获取指定事件的执行次数
-        if (state.EventStopCounts != null && state.EventStopCounts.ContainsKey(eventIndex))
+        if (state.EventCounts != null && state.EventCounts.ContainsKey(eventIndex))
         {
-            return state.EventStopCounts[eventIndex];
+            return state.EventCounts[eventIndex];
         }
         return 0;
     }
-    #endregion
 
-    #region 累计播放次数条件
     private static bool TotalPlayCountCondition(NPC npc, Conditions Condition, StringBuilder mess)
     {
         if (Condition.TotalPlayCount == -1) return true;
 
         int Total = GetTotalPlayCount(npc);
-        return Total >= Condition.TotalPlayCount;
-    }
+        return PxUtil.CheckCountCondition(Condition.TotalPlayCount, Total, "累计播放", mess);
+    } 
 
-    // 获取所有文件的累计播放次数
     private static int GetTotalPlayCount(NPC npc)
     {
-        var state = GetState(npc);
+        var state = StateUtil.GetState(npc);
         if (state == null) return 0;
 
-        // 计算所有事件的执行次数总和
         int total = 0;
-        if (state.EventStopCounts != null)
+        if (state.EventCounts != null)
         {
-            foreach (var count in state.EventStopCounts.Values)
+            foreach (var count in state.EventCounts.Values)
             {
                 total += count;
             }
         }
         return total;
     }
-    #endregion
 
-    #region 指定文件播放次数条件
     private static bool FilePlayCountCondition(NPC npc, Conditions Condition, StringBuilder mess)
     {
         if (Condition.FilePlayCount.Count == 0) return true;
 
-        var state = GetState(npc);
+        var state = StateUtil.GetState(npc);
         if (state == null) return false;
 
-        bool all = true;
+        bool allMet = true;
 
         foreach (var kvp in Condition.FilePlayCount)
         {
             int fileNumber = kvp.Key;
             int NeedCount = kvp.Value;
 
-            // 获取指定文件的播放次数
             int NewCount = GetFilePlayCount(state, fileNumber);
 
-            if (NewCount < NeedCount)
+            if (!PxUtil.CheckCountCondition(NeedCount, NewCount, $"文件{fileNumber}播放", mess))
             {
-                all = false;
-                mess.Append($" 文件播放次数条件未满足: 文件{fileNumber} 当前播放 {NewCount} 次 < 需要 {NeedCount} 次\n");
+                allMet = false;
             }
         }
 
-        return all;
+        return allMet;
     }
-    #endregion
 
-    #region 获取指定文件的播放次数
-    private static int GetFilePlayCount(TimerState state, int fileNumber)
+    private static int GetFilePlayCount(NpcState state, int fileNumber)
     {
-        // 从状态中获取指定文件的播放次数
         if (state.PlayCounts != null && state.PlayCounts.ContainsKey(fileNumber))
         {
             return state.PlayCounts[fileNumber];
         }
         return 0;
+    }
+    #endregion
+
+    #region 进度条件
+    // 检查条件组中的所有条件是否都满足
+    public static bool CheckGroup(Player p, List<string> conds)
+    {
+        foreach (var c in conds)
+        {
+            if (!CheckCond(p, c))
+                return false;
+        }
+        return true;
+    }
+
+    // 检查单个条件是否满足 - 直接匹配中文
+    public static bool CheckCond(Player p, string cond)
+    {
+        switch (cond)
+        {
+            case "0":
+            case "无":
+                return true;
+            case "1":
+            case "克眼":
+            case "克苏鲁之眼":
+                return NPC.downedBoss1;
+            case "2":
+            case "史莱姆王":
+            case "史王":
+                return NPC.downedSlimeKing;
+            case "3":
+            case "世吞":
+            case "黑长直":
+            case "世界吞噬者":
+            case "世界吞噬怪":
+                return NPC.downedBoss2 &&
+                       (IsDefeated(NPCID.EaterofWorldsHead) ||
+                        IsDefeated(NPCID.EaterofWorldsBody) ||
+                        IsDefeated(NPCID.EaterofWorldsTail));
+            case "4":
+            case "克脑":
+            case "脑子":
+            case "克苏鲁之脑":
+                return NPC.downedBoss2 && IsDefeated(NPCID.BrainofCthulhu);
+            case "5":
+            case "邪恶boss2":
+            case "世吞或克脑":
+            case "击败世吞克脑任意一个":
+                return NPC.downedBoss2;
+            case "6":
+            case "巨鹿":
+            case "鹿角怪":
+                return NPC.downedDeerclops;
+            case "7":
+            case "蜂王":
+                return NPC.downedQueenBee;
+            case "8":
+            case "骷髅王前":
+                return !NPC.downedBoss3;
+            case "9":
+            case "吴克":
+            case "骷髅王":
+            case "骷髅王后":
+                return NPC.downedBoss3;
+            case "10":
+            case "肉前":
+                return !Main.hardMode;
+            case "11":
+            case "困难模式":
+            case "肉山":
+            case "肉后":
+            case "血肉墙":
+                return Main.hardMode;
+            case "12":
+            case "毁灭者":
+            case "铁长直":
+                return NPC.downedMechBoss1;
+            case "13":
+            case "双子眼":
+            case "双子魔眼":
+                return NPC.downedMechBoss2;
+            case "14":
+            case "铁吴克":
+            case "机械吴克":
+            case "机械骷髅王":
+                return NPC.downedMechBoss3;
+            case "15":
+            case "世纪之花":
+            case "花后":
+            case "世花":
+                return NPC.downedPlantBoss;
+            case "16":
+            case "石后":
+            case "石巨人":
+                return NPC.downedGolemBoss;
+            case "17":
+            case "史后":
+            case "史莱姆皇后":
+                return NPC.downedQueenSlime;
+            case "18":
+            case "光之女皇":
+            case "光女":
+                return NPC.downedEmpressOfLight;
+            case "19":
+            case "猪鲨":
+            case "猪龙鱼公爵":
+                return NPC.downedFishron;
+            case "20":
+            case "拜月":
+            case "拜月教":
+            case "教徒":
+            case "拜月教邪教徒":
+                return NPC.downedAncientCultist;
+            case "21":
+            case "月总":
+            case "月亮领主":
+                return NPC.downedMoonlord;
+            case "22":
+            case "哀木":
+                return NPC.downedHalloweenTree;
+            case "23":
+            case "南瓜王":
+                return NPC.downedHalloweenKing;
+            case "24":
+            case "常绿尖叫怪":
+                return NPC.downedChristmasTree;
+            case "25":
+            case "冰雪女王":
+                return NPC.downedChristmasIceQueen;
+            case "26":
+            case "圣诞坦克":
+                return NPC.downedChristmasSantank;
+            case "27":
+            case "火星飞碟":
+                return NPC.downedMartians;
+            case "28":
+            case "小丑":
+                return NPC.downedClown;
+            case "29":
+            case "日耀柱":
+                return NPC.downedTowerSolar;
+            case "30":
+            case "星旋柱":
+                return NPC.downedTowerVortex;
+            case "31":
+            case "星云柱":
+                return NPC.downedTowerNebula;
+            case "32":
+            case "星尘柱":
+                return NPC.downedTowerStardust;
+            case "33":
+            case "一王后":
+            case "任意机械boss":
+                return NPC.downedMechBossAny;
+            case "34":
+            case "三王后":
+                return NPC.downedMechBoss1 && NPC.downedMechBoss2 && NPC.downedMechBoss3;
+            case "35":
+            case "一柱后":
+                return NPC.downedTowerNebula || NPC.downedTowerSolar || NPC.downedTowerStardust || NPC.downedTowerVortex;
+            case "36":
+            case "四柱后":
+                return NPC.downedTowerNebula && NPC.downedTowerSolar && NPC.downedTowerStardust && NPC.downedTowerVortex;
+            case "37":
+            case "哥布林入侵":
+                return NPC.downedGoblins;
+            case "38":
+            case "海盗入侵":
+                return NPC.downedPirates;
+            case "39":
+            case "霜月":
+                return NPC.downedFrost;
+            case "40":
+            case "血月":
+                return Main.bloodMoon;
+            case "41":
+            case "雨天":
+                return Main.raining;
+            case "42":
+            case "白天":
+                return Main.dayTime;
+            case "43":
+            case "晚上":
+                return !Main.dayTime;
+            case "44":
+            case "大风天":
+                return Main.IsItAHappyWindyDay;
+            case "45":
+            case "万圣节":
+                return Main.halloween;
+            case "46":
+            case "圣诞节":
+                return Main.xMas;
+            case "47":
+            case "派对":
+                return BirthdayParty.PartyIsUp;
+            case "48":
+            case "旧日一":
+            case "黑暗法师":
+            case "撒旦一":
+                return DD2Event._downedDarkMageT1;
+            case "49":
+            case "旧日二":
+            case "巨魔":
+            case "食人魔":
+            case "撒旦二":
+                return DD2Event._downedOgreT2;
+            case "50":
+            case "旧日三":
+            case "贝蒂斯":
+            case "双足翼龙":
+            case "撒旦三":
+                return DD2Event._spawnedBetsyT3;
+            case "51":
+            case "2020":
+            case "醉酒":
+            case "醉酒种子":
+            case "醉酒世界":
+                return Main.drunkWorld;
+            case "52":
+            case "2021":
+            case "十周年":
+            case "十周年种子":
+                return Main.tenthAnniversaryWorld;
+            case "53":
+            case "ftw":
+            case "真实世界":
+            case "真实世界种子":
+                return Main.getGoodWorld;
+            case "54":
+            case "ntb":
+            case "蜜蜂世界":
+            case "蜜蜂世界种子":
+                return Main.notTheBeesWorld;
+            case "55":
+            case "dst":
+            case "饥荒":
+            case "永恒领域":
+                return Main.dontStarveWorld;
+            case "56":
+            case "remix":
+            case "颠倒":
+            case "颠倒世界":
+            case "颠倒种子":
+                return Main.remixWorld;
+            case "57":
+            case "noTrap":
+            case "陷阱种子":
+            case "陷阱世界":
+                return Main.noTrapsWorld;
+            case "58":
+            case "天顶":
+            case "天顶种子":
+            case "缝合种子":
+            case "天顶世界":
+            case "缝合世界":
+                return Main.zenithWorld;
+            case "59":
+            case "森林":
+                return p.ShoppingZone_Forest;
+            case "60":
+            case "丛林":
+                return p.ZoneJungle;
+            case "61":
+            case "沙漠":
+                return p.ZoneDesert;
+            case "62":
+            case "雪原":
+                return p.ZoneSnow;
+            case "63":
+            case "洞穴":
+                return p.ZoneRockLayerHeight;
+            case "64":
+            case "海洋":
+                return p.ZoneBeach;
+            case "65":
+            case "地表":
+                return (p.position.Y / 16) <= Main.worldSurface;
+            case "66":
+            case "太空":
+                return (p.position.Y / 16) <= (Main.worldSurface * 0.35);
+            case "67":
+            case "地狱":
+                return (p.position.Y / 16) >= Main.UnderworldLayer;
+            case "68":
+            case "神圣":
+                return p.ZoneHallow;
+            case "69":
+            case "蘑菇":
+                return p.ZoneGlowshroom;
+            case "70":
+            case "腐化":
+            case "腐化地":
+            case "腐化环境":
+                return p.ZoneCorrupt;
+            case "71":
+            case "猩红":
+            case "猩红地":
+            case "猩红环境":
+                return p.ZoneCrimson;
+            case "72":
+            case "邪恶":
+            case "邪恶环境":
+                return p.ZoneCrimson || p.ZoneCorrupt;
+            case "73":
+            case "地牢":
+                return p.ZoneDungeon;
+            case "74":
+            case "墓地":
+                return p.ZoneGraveyard;
+            case "75":
+            case "蜂巢":
+                return p.ZoneHive;
+            case "76":
+            case "神庙":
+                return p.ZoneLihzhardTemple;
+            case "77":
+            case "沙尘暴":
+                return p.ZoneSandstorm;
+            case "78":
+            case "天空":
+                return p.ZoneSkyHeight;
+            case "79":
+            case "满月":
+                return Main.moonPhase == 0;
+            case "80":
+            case "亏凸月":
+                return Main.moonPhase == 1;
+            case "81":
+            case "下弦月":
+                return Main.moonPhase == 2;
+            case "82":
+            case "残月":
+                return Main.moonPhase == 3;
+            case "83":
+            case "新月":
+                return Main.moonPhase == 4;
+            case "84":
+            case "娥眉月":
+                return Main.moonPhase == 5;
+            case "85":
+            case "上弦月":
+                return Main.moonPhase == 6;
+            case "86":
+            case "盈凸月":
+                return Main.moonPhase == 7;
+            default:
+                TShock.Log.ConsoleWarn($"[怪物加速] 未知条件: {cond}");
+                return false;
+        }
+    }
+
+    // 条件分组数据 - 同条件不同名称用括号显示
+    public static readonly Dictionary<string, List<string>> ConditionGroups = new Dictionary<string, List<string>>
+    {
+        // Boss相关条件
+        ["克苏鲁之眼"] = new List<string> { "1", "克眼", "克苏鲁之眼" },
+        ["史莱姆王"] = new List<string> { "2", "史莱姆王", "史王" },
+        ["克苏鲁之脑"] = new List<string> { "4", "克脑", "脑子", "克苏鲁之脑" },
+        ["世界吞噬者"] = new List<string> { "3", "世吞", "黑长直", "世界吞噬者", "世界吞噬怪" },
+        ["邪恶boss2"] = new List<string> { "5", "邪恶boss2", "世吞或克脑", "击败世吞克脑任意一个" },
+        ["巨鹿"] = new List<string> { "6", "巨鹿", "鹿角怪" },
+        ["蜂王"] = new List<string> { "7", "蜂王" },
+        ["骷髅王前"] = new List<string> { "8", "骷髅王前" },
+        ["骷髅王"] = new List<string> { "9", "吴克", "骷髅王", "骷髅王后" },
+        ["肉前"] = new List<string> { "10", "肉前" },
+        ["血肉墙"] = new List<string> { "11", "困难模式", "肉山", "肉后", "血肉墙" },
+        ["毁灭者"] = new List<string> { "12", "毁灭者", "铁长直" },
+        ["双子魔眼"] = new List<string> { "13", "双子眼", "双子魔眼" },
+        ["机械骷髅王"] = new List<string> { "14", "铁吴克", "机械吴克", "机械骷髅王" },
+        ["世纪之花"] = new List<string> { "15", "世纪之花", "花后", "世花" },
+        ["石巨人"] = new List<string> { "16", "石后", "石巨人" },
+        ["史莱姆皇后"] = new List<string> { "17", "史后", "史莱姆皇后" },
+        ["光之女皇"] = new List<string> { "18", "光之女皇", "光女" },
+        ["猪龙鱼公爵"] = new List<string> { "19", "猪鲨", "猪龙鱼公爵" },
+        ["拜月教邪教徒"] = new List<string> { "20", "拜月", "拜月教", "教徒", "拜月教邪教徒" },
+        ["月亮领主"] = new List<string> { "21", "月总", "月亮领主" },
+        ["哀木"] = new List<string> { "22", "哀木" },
+        ["南瓜王"] = new List<string> { "23", "南瓜王" },
+        ["常绿尖叫怪"] = new List<string> { "24", "常绿尖叫怪" },
+        ["冰雪女王"] = new List<string> { "25", "冰雪女王" },
+        ["圣诞坦克"] = new List<string> { "26", "圣诞坦克" },
+
+        // 事件相关条件
+        ["火星飞碟"] = new List<string> { "27", "火星飞碟" },
+        ["小丑"] = new List<string> { "28", "小丑" },
+        ["哥布林入侵"] = new List<string> { "37", "哥布林入侵" },
+        ["海盗入侵"] = new List<string> { "38", "海盗入侵" },
+        ["霜月"] = new List<string> { "39", "霜月" },
+
+        // 四柱相关
+        ["日耀柱"] = new List<string> { "29", "日耀柱" },
+        ["星旋柱"] = new List<string> { "30", "星旋柱" },
+        ["星云柱"] = new List<string> { "31", "星云柱" },
+        ["星尘柱"] = new List<string> { "32", "星尘柱" },
+        ["一王后"] = new List<string> { "33", "一王后", "任意机械boss" },
+        ["三王后"] = new List<string> { "34", "三王后" },
+        ["一柱后"] = new List<string> { "35", "一柱后" },
+        ["四柱后"] = new List<string> { "36", "四柱后" },
+
+        // 天气时间条件
+        ["血月"] = new List<string> { "40", "血月" },
+        ["雨天"] = new List<string> { "41", "雨天" },
+        ["白天"] = new List<string> { "42", "白天" },
+        ["晚上"] = new List<string> { "43", "晚上" },
+        ["大风天"] = new List<string> { "44", "大风天" },
+
+        // 季节事件
+        ["万圣节"] = new List<string> { "45", "万圣节" },
+        ["圣诞节"] = new List<string> { "46", "圣诞节" },
+        ["派对"] = new List<string> { "47", "派对" },
+
+        // 撒旦军队事件
+        ["黑暗法师"] = new List<string> { "48", "旧日一", "黑暗法师", "撒旦一" },
+        ["食人魔"] = new List<string> { "49", "旧日二", "巨魔", "食人魔", "撒旦二" },
+        ["双足翼龙"] = new List<string> { "50", "旧日三", "贝蒂斯", "双足翼龙", "撒旦三" },
+
+        // 特殊世界种子
+        ["醉酒世界"] = new List<string> { "51", "2020", "醉酒", "醉酒种子", "醉酒世界" },
+        ["十周年世界"] = new List<string> { "52", "2021", "十周年", "十周年种子", "十周年世界" },
+        ["for the worthy"] = new List<string> { "53", "ftw", "真实世界", "真实世界种子", "for the worthy" },
+        ["not the bees"] = new List<string> { "54", "ntb", "蜜蜂世界", "蜜蜂世界种子", "not the bees" },
+        ["饥荒"] = new List<string> { "55", "dst", "饥荒", "永恒领域" },
+        ["颠倒世界"] = new List<string> { "56", "remix", "颠倒", "颠倒世界", "颠倒种子" },
+        ["陷阱世界"] = new List<string> { "57", "noTrap", "陷阱种子", "陷阱世界" },
+        ["天顶世界"] = new List<string> { "58", "天顶", "天顶种子", "缝合种子", "天顶世界", "缝合世界" },
+
+        // 生物群落
+        ["森林"] = new List<string> { "59", "森林" },
+        ["丛林"] = new List<string> { "60", "丛林" },
+        ["沙漠"] = new List<string> { "61", "沙漠" },
+        ["雪原"] = new List<string> { "62", "雪原" },
+        ["洞穴"] = new List<string> { "63", "洞穴" },
+        ["海洋"] = new List<string> { "64", "海洋" },
+        ["地表"] = new List<string> { "65", "地表" },
+        ["太空"] = new List<string> { "66", "太空" },
+        ["地狱"] = new List<string> { "67", "地狱" },
+        ["神圣"] = new List<string> { "68", "神圣" },
+        ["蘑菇"] = new List<string> { "69", "蘑菇" },
+        ["腐化"] = new List<string> { "70", "腐化", "腐化地", "腐化环境" },
+        ["猩红"] = new List<string> { "71", "猩红", "猩红地", "猩红环境" },
+        ["邪恶"] = new List<string> { "72", "邪恶", "邪恶环境" },
+        ["地牢"] = new List<string> { "73", "地牢" },
+        ["墓地"] = new List<string> { "74", "墓地" },
+        ["蜂巢"] = new List<string> { "75", "蜂巢" },
+        ["神庙"] = new List<string> { "76", "神庙" },
+        ["沙尘暴"] = new List<string> { "77", "沙尘暴" },
+        ["天空"] = new List<string> { "78", "天空" },
+
+        // 月相
+        ["满月"] = new List<string> { "79", "满月" },
+        ["亏凸月"] = new List<string> { "80", "亏凸月" },
+        ["下弦月"] = new List<string> { "81", "下弦月" },
+        ["残月"] = new List<string> { "82", "残月" },
+        ["新月"] = new List<string> { "83", "新月" },
+        ["娥眉月"] = new List<string> { "84", "娥眉月" },
+        ["上弦月"] = new List<string> { "85", "上弦月" },
+        ["盈凸月"] = new List<string> { "86", "盈凸月" }
+    };
+
+    // 是否解锁怪物图鉴以达到解锁物品掉落的程度（用于独立判断克脑、世吞）
+    private static bool IsDefeated(int type)
+    {
+        var unlockState = Main.BestiaryDB.FindEntryByNPCID(type).UIInfoProvider.GetEntryUICollectionInfo().UnlockState;
+        return unlockState == Terraria.GameContent.Bestiary.BestiaryEntryUnlockState.CanShowDropsWithDropRates_4;
     }
     #endregion
 }

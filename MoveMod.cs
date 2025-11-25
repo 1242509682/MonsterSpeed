@@ -9,12 +9,19 @@ namespace MonsterSpeed;
 public class MoveModeData
 {
     [JsonProperty("行动模式说明", Order = -1)]
-    public string Text = "0不启用, 1怪物停留原地, 2环绕模式(0顺时针、1逆时针、2根据交替间隔切换顺时针与逆时针), 3徘徊模式, 4突进模式, 5对视模式)";
+    public string Text = "0不启用, 1怪物停留原地, 2环绕模式(0顺时针、1逆时针、2根据交替间隔切换顺时针与逆时针), 3徘徊模式, 4突进模式, 5对视模式,目标锁定:仅对2-5有效)";
     [JsonProperty("模式类型", Order = 0)]
     public MoveMode Mode { get; set; } = MoveMode.None;
 
     [JsonProperty("平滑系数", Order = 1)]
     public float SmoothFactor { get; set; } = 0.15f;
+
+    [JsonProperty("指示物修改", Order = 3)]
+    public Dictionary<string, string[]> MarkerMods { get; set; } = new Dictionary<string, string[]>();
+
+    // 新增：目标锁定参数
+    [JsonProperty("目标锁定", Order = 5)]
+    public TarLockParams LockParams { get; set; } = new TarLockParams();
 
     // 环绕模式参数
     [JsonProperty("环绕方向", Order = 8)]
@@ -63,6 +70,7 @@ public class MoveModeData
     public float FaceSmooth { get; set; } = 0.1f;
     [JsonProperty("换位概率", Order = 54)]
     public int FaceSwitchChance { get; set; } = 4;
+
 }
 
 // 移动模式状态类
@@ -131,12 +139,31 @@ public enum DashState
 
 internal class MoveMod
 {
+    #region 目标获取方法（集成锁定模式）
+    private static Vector2 GetTargetPosition(NPC npc, MoveModeData data)
+    {
+        // 如果配置了锁定模式，使用锁定目标
+        if (data.LockParams != null && data.LockParams.LockRange > 0)
+        {
+            var lockTars = TarLockUtil.GetLockTars(npc, data.LockParams);
+            if (lockTars.Count > 0)
+            {
+                return TarLockUtil.GetTargetPosition(lockTars[0], npc, data.LockParams);
+            }
+        }
+
+        // 否则使用默认目标
+        var defaultTar = npc.GetTargetData(true);
+        return defaultTar.Invalid ? npc.Center : defaultTar.Center;
+    }
+    #endregion
+
     #region 处理移动模式管理
     public static void HandleMoveMode(NPC npc, TimerData Event, StringBuilder mess, ref bool handled)
     {
         if (Event.MoveData == null || Event.MoveData.Mode == MoveMode.None) return;
 
-        var state = TimerEvents.GetState(npc);
+        var state = StateUtil.GetState(npc);
         if (state == null) return;
 
         switch (Event.MoveData.Mode)
@@ -166,11 +193,17 @@ internal class MoveMod
                 handled = true;
                 break;
         }
+
+        // 应用移动模式的指示物修改
+        if (Event.MoveData.MarkerMods != null && Event.MoveData.MarkerMods.Count > 0)
+        {
+            MarkerUtil.SetMarkers(state, Event.MoveData.MarkerMods, ref Main.rand, npc);
+        }
     }
     #endregion
 
     #region 停留原地模式
-    private static void StayMode(NPC npc, TimerData Event, TimerState state)
+    private static void StayMode(NPC npc, TimerData Event, NpcState state)
     {
         // 平滑减速到停止
         npc.velocity = Vector2.Lerp(npc.velocity, Vector2.Zero, Event.MoveData.SmoothFactor);
@@ -181,21 +214,21 @@ internal class MoveMod
     }
     #endregion
 
-    #region 环绕模式
-    private static void OrbitMode(NPC npc, TimerData Event, TimerState TState)
+    #region 环绕模式（集成锁定）
+    private static void OrbitMode(NPC npc, TimerData Event, NpcState TState)
     {
-        var tar = npc.GetTargetData(true);
-        if (tar.Invalid) return;
-
         var data = Event.MoveData;
         var state = TState.MoveState;
-        
+
+        // 使用锁定目标或默认目标
+        Vector2 targetPos = GetTargetPosition(npc, data);
+
         // 转换为像素距离
         float Radius = data.OrbitRadius * 16f;
         float Speed = data.OrbitSpeed;
         float MoveSpeed = data.OrbitMoveSpeed;
 
-        // 处理交替方向
+        // 处理交替方向（保持不变）
         if (data.OrbitDir == OrbitDirection.Alternate)
         {
             state.OrbitAlternateTimer++;
@@ -212,8 +245,8 @@ internal class MoveMod
             state.OrbitDir = data.OrbitDir;
         }
 
-        // 使用Utils方法计算环绕位置 - 更简洁
-        Vector2 orbitPos = tar.Center + state.OrbitAngle.ToRotationVector2() * Radius;
+        // 使用Utils方法计算环绕位置
+        Vector2 orbitPos = targetPos + state.OrbitAngle.ToRotationVector2() * Radius;
 
         // 计算移动方向
         Vector2 orbitDir = (orbitPos - npc.Center).SafeNormalize(Vector2.UnitX);
@@ -239,26 +272,25 @@ internal class MoveMod
     }
     #endregion
 
-    #region 随机徘徊模式
-    private static void WanderMode(NPC npc, TimerData Event, TimerState TState)
+    #region 随机徘徊模式（集成锁定）
+    private static void WanderMode(NPC npc, TimerData Event, NpcState TState)
     {
-        var tar = npc.GetTargetData(true);
-        if (tar.Invalid) return;
-
         var data = Event.MoveData;
         var state = TState.MoveState;
 
+        // 使用锁定目标或默认目标
+        Vector2 targetPos = GetTargetPosition(npc, data);
+
         state.WanderTimer++;
 
-        // 定期更换目标点 - 使用Utils方法简化随机方向生成
+        // 定期更换目标点
         if (state.WanderTimer >= data.WanderChangeInterval ||
             npc.Center.Distance(state.WanderTarget) < (data.WanderCloseDistance * 16f))
         {
-            // 使用Utils方法生成随机方向并计算目标位置
             float minDistance = data.WanderRadius * 0.5f * 16f;
             float maxDistance = data.WanderRadius * 16f;
             float distance = minDistance + Main.rand.NextFloat() * (maxDistance - minDistance);
-            state.WanderTarget = tar.Center + Main.rand.NextVector2Unit() * distance;
+            state.WanderTarget = targetPos + Main.rand.NextVector2Unit() * distance;
             state.WanderTimer = 0;
         }
 
@@ -270,13 +302,16 @@ internal class MoveMod
     }
     #endregion
 
-    #region 突进模式
-    private static void DashMode(NPC npc, TimerData Event, TimerState TState, ref bool handled)
+    #region 突进模式（集成锁定）
+    private static void DashMode(NPC npc, TimerData Event, NpcState TState, ref bool handled)
     {
         var data = Event.MoveData;
         var state = TState.MoveState;
 
         state.DashTimer++;
+
+        // 使用锁定目标或默认目标
+        Vector2 targetPos = GetTargetPosition(npc, data);
 
         switch (state.DashState)
         {
@@ -288,7 +323,7 @@ internal class MoveMod
                 }
 
                 // 计算后退方向（与目标方向相反）
-                Vector2 retreatDir = (npc.Center - Main.player[npc.target].Center).SafeNormalize(Vector2.UnitX);
+                Vector2 retreatDir = (npc.Center - targetPos).SafeNormalize(Vector2.UnitX);
                 // 使用配置的后退距离（转换为像素）
                 float retreatDistance = data.DashRetreatDistance * 16f;
                 Vector2 retreatTarget = state.DashStartPosition + retreatDir * retreatDistance;
@@ -298,13 +333,13 @@ internal class MoveMod
                 // 应用后退速度
                 npc.velocity = state.DashVelocity;
                 handled = true;
-                
+
                 if (state.DashTimer >= data.DashWindup)
                 {
                     state.DashState = DashState.Dashing;
                     state.DashTimer = 0;
-                    // 计算突进方向
-                    state.DashDirection = (Main.player[npc.target].Center - npc.Center).SafeNormalize(Vector2.UnitX);
+                    // 计算突进方向（朝向目标）
+                    state.DashDirection = (targetPos - npc.Center).SafeNormalize(Vector2.UnitX);
                 }
                 break;
 
@@ -340,26 +375,26 @@ internal class MoveMod
     }
     #endregion
 
-    #region 保持对视模式
-    private static void FaceTargetMode(NPC npc, TimerData Event, TimerState TState)
+    #region 保持对视模式（集成锁定）
+    private static void FaceTargetMode(NPC npc, TimerData Event, NpcState TState)
     {
-        var tar = npc.GetTargetData(true);
-        if (tar.Invalid) return;
-
         var data = Event.MoveData;
         var state = TState.MoveState;
 
+        // 使用锁定目标或默认目标
+        Vector2 targetPos = GetTargetPosition(npc, data);
+
         // 计算目标位置（保持在对视距离的八个方向之一），转换为像素距离
-        Vector2 targetPos = FacePosition(tar.Center, state.FaceDirection, data.FaceDistance * 16f);
+        Vector2 facePos = FacePosition(targetPos, state.FaceDirection, data.FaceDistance * 16f);
 
         // 平滑移动到目标位置，使用自定义速度
-        Vector2 moveDir = (targetPos - npc.Center).SafeNormalize(Vector2.UnitX);
+        Vector2 moveDir = (facePos - npc.Center).SafeNormalize(Vector2.UnitX);
         Vector2 tarVel = moveDir * data.FaceSpeed;
         state.FaceVelocity = Vector2.Lerp(state.FaceVelocity, tarVel, data.FaceSmooth);
         npc.velocity = state.FaceVelocity;
 
         // 计算与目标位置的距离
-        float ToTarget = npc.Center.Distance(targetPos);
+        float ToTarget = npc.Center.Distance(facePos);
 
         // 如果接近目标位置，考虑切换方向
         if (ToTarget <= (data.SwitchDistance * 16f))
@@ -381,7 +416,7 @@ internal class MoveMod
         }
     }
 
-    // 计算八个方向的位置 - 使用Utils方法简化
+    // 计算八个方向的位置（保持不变）
     private static Vector2 FacePosition(Vector2 Center, int direction, float distance)
     {
         float angle = direction * MathHelper.PiOver4; // 45度间隔

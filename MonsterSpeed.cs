@@ -6,7 +6,6 @@ using Terraria.DataStructures;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
-using static MonoMod.InlineRT.MonoModRule;
 using static MonsterSpeed.Configuration;
 
 namespace MonsterSpeed;
@@ -17,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 3, 1);
+    public override Version Version => new Version(1, 3, 4);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -82,16 +81,16 @@ public class MonsterSpeed : TerrariaPlugin
             Config.Dict[npc.FullName] = nd;
             Config.Write();
 
-            var state = TimerEvents.GetState(npc);
+            var state = StateUtil.GetState(npc);
             if (state != null)
             {
                 state.Index = 0;
                 state.FileState = new FilePlayState();
                 state.PauseState = new PauseState();
-                state.UpdateTimer = DateTime.UtcNow;
+                state.UpdateTime = DateTime.UtcNow;
                 state.LastTextTime = DateTime.UtcNow;
                 state.MoveState = new MoveModeState();
-                state.EventStopCounts = new Dictionary<int, int>();
+                state.EventCounts = new Dictionary<int, int>();
                 state.PlayCounts = new Dictionary<int, int>();
             }
         }
@@ -136,12 +135,7 @@ public class MonsterSpeed : TerrariaPlugin
         }
 
         // 清理MyProjectile中的状态
-        MyProjectile.ClearUpdateState(args.npc);
-        MyProjectile.ClearState(args.npc);
-        // 清理MyMonster中的状态
-        MyMonster.ClearState(args.npc);
-        // 清理TimerEvents中的状态
-        TimerEvents.ClearStates(args.npc);
+        StateUtil.ClearState(args.npc);
         // 清理传送和回血记录
         Teleport.Remove(args.npc.whoAmI);
         HealTimes.Remove(args.npc.whoAmI);
@@ -177,8 +171,9 @@ public class MonsterSpeed : TerrariaPlugin
             AutoHeal(npc, data);
         }
 
+        var state = StateUtil.GetState(npc);
         var handled = false;
-        TimerEvents.TimerEvent(npc, mess, data, ref handled); //时间事件
+        TimerEvents.TimerEvent(npc, mess, data, state, ref handled); //时间事件
 
         TrackMode(npc, data); //超距离追击
 
@@ -197,7 +192,7 @@ public class MonsterSpeed : TerrariaPlugin
     {
         if (data == null || !data.AutoTrack) return;
 
-        var tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
+        NPCAimedTarget tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
         var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
         var range = Vector2.Distance(tar.Center, npc.Center);
 
@@ -340,7 +335,22 @@ public class MonsterSpeed : TerrariaPlugin
         if (Config.Monitorinterval > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
         {
             // 使用新的状态管理方法获取当前事件索引
-            var state = TimerEvents.GetState(npc);
+            var state = StateUtil.GetState(npc);
+
+            // 新增：显示关键指示物
+            if (state?.Markers != null && state.Markers.Count > 0)
+            {
+                mess.Append($" [指示物] ");
+                int count = 0;
+                foreach (var marker in state.Markers)
+                {
+                    if (count >= 5) break; // 最多显示5个
+                    mess.Append($"{marker.Key}:{marker.Value} ");
+                    count++;
+                }
+                mess.Append("\n");
+            }
+
             string aiInfo = "";
             if (data.TimerEvent != null && data.TimerEvent.Count > 0)
             {
@@ -350,7 +360,7 @@ public class MonsterSpeed : TerrariaPlugin
                     var evt = data.TimerEvent[idx];
                     if (evt?.AIMode != null && evt.AIMode.Enabled)
                     {
-                        aiInfo = AISystem.GetAiInfo(evt.AIMode, npc.FullName);
+                        aiInfo = AISystem.GetAiInfo(state.AIState,evt.AIMode, npc.FullName);
                     }
                 }
             }
