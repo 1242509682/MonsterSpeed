@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using Terraria;
 using System.Text;
+using static MonoMod.InlineRT.MonoModRule;
 
 namespace MonsterSpeed;
 
@@ -10,14 +11,15 @@ public class MoveModeData
 {
     [JsonProperty("行动模式说明", Order = -1)]
     public string Text = "0不启用, 1怪物停留原地, 2环绕模式(0顺时针、1逆时针、2根据交替间隔切换顺时针与逆时针), 3徘徊模式, 4突进模式, 5对视模式,目标锁定:仅对2-5有效)";
+
     [JsonProperty("模式类型", Order = 0)]
     public MoveMode Mode { get; set; } = MoveMode.None;
 
+    [JsonProperty("行动条件", Order = 0)]
+    public string Condition { get; set; } = "默认配置";
+
     [JsonProperty("平滑系数", Order = 1)]
     public float SmoothFactor { get; set; } = 0.15f;
-
-    [JsonProperty("指示物修改", Order = 3)]
-    public Dictionary<string, string[]> MarkerMods { get; set; } = new Dictionary<string, string[]>();
 
     // 新增：目标锁定参数
     [JsonProperty("目标锁定", Order = 5)]
@@ -159,12 +161,26 @@ internal class MoveMod
     #endregion
 
     #region 处理移动模式管理
-    public static void HandleMoveMode(NPC npc, TimerData Event, StringBuilder mess, ref bool handled)
+    public static void HandleMoveMode(NPC npc, Configuration.NpcData data, TimerData Event, StringBuilder mess, ref bool handled)
     {
         if (Event.MoveData == null || Event.MoveData.Mode == MoveMode.None) return;
 
         var state = StateUtil.GetState(npc);
         if (state == null) return;
+
+        // 条件检查
+        if (!string.IsNullOrEmpty(Event.MoveData.Condition))
+        {
+            bool all = true;
+            bool loop = false;
+            var cond = CondFileManager.GetCondData(Event.MoveData.Condition);
+            Conditions.Condition(npc, new StringBuilder(), data, cond, ref all, ref loop);
+
+            if (!all)
+            {
+                return;
+            }
+        }
 
         switch (Event.MoveData.Mode)
         {
@@ -192,12 +208,6 @@ internal class MoveMod
                 mess.Append($"{Tool.TextGradient(" 行动模式:对视\n")}");
                 handled = true;
                 break;
-        }
-
-        // 应用移动模式的指示物修改
-        if (Event.MoveData.MarkerMods != null && Event.MoveData.MarkerMods.Count > 0)
-        {
-            MarkerUtil.SetMarkers(state, Event.MoveData.MarkerMods, ref Main.rand, npc);
         }
     }
     #endregion

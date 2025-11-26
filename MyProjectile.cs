@@ -20,7 +20,7 @@ public class SpawnProjData
     [JsonProperty("持续时间/帧", Order = 3)]
     public int Life = 120;
     [JsonProperty("射弹条件", Order = 4)]
-    public Conditions EnhConds { get; set; } = new();
+    public string Condition { get; set; } = "默认配置";
     [JsonProperty("伤害", Order = 5)]
     public int Damage = 30;
     [JsonProperty("击退", Order = 6)]
@@ -42,15 +42,13 @@ public class SpawnProjData
     [JsonProperty("复杂模式", Order = 50)]
     public CplxProjParams CplxParams { get; set; } = new();
     [JsonProperty("目标锁定", Order = 60)]
-    public TarLockParams LockParams { get; set; } = new();
-    [JsonProperty("指示物修改", Order = 72)]
-    public Dictionary<string, string[]> MarkerMods { get; set; } = new();
+    public TarLockParams LockParams { get; set; }
     [JsonProperty("指示物注入AI", Order = 73)]
     public Dictionary<int, string> MarkerToAI { get; set; } = new();
     [JsonProperty("更新间隔/毫秒", Order = 80)]
     public double UpdateTime = 500f;
     [JsonProperty("更新弹幕", Order = 81)]
-    public List<UpdateProjData> UpdateProj { get; set; } = new();
+    public List<string> UpdateProj { get; set; } = new List<string>();
     [JsonProperty("弹幕AI", Order = 82)]
     public Dictionary<int, float> AI { get; set; } = new();
 
@@ -117,7 +115,7 @@ public class SpawnProjData
     private Vector2 ApplyRadiusOffset(Vector2 basePos, NpcState state)
     {
         var radiusPx = PxUtil.ToPx(Radius);
-        var angle = state.SendStack[state.Index] / (float)(Stack - 1) * MathHelper.TwoPi;
+        var angle = state.SendStack[state.ProjIndex] / (float)(Stack - 1) * MathHelper.TwoPi;
         var offset = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * radiusPx;
 
         return basePos + offset;
@@ -136,7 +134,7 @@ public class UpdateProjData
     [JsonProperty("延长持续时间", Order = 0)]
     public int ExtraTime = 0;
     [JsonProperty("更新条件", Order = 1)]
-    public Conditions Condition { get; set; } = new Conditions() { NpcLift = "0,100" };
+    public string Condition { get; set; } = "默认配置";
     [JsonProperty("速度", Order = 2)]
     public float Velocity = 0f;
     [JsonProperty("速度向量XY/格", Order = 3)]
@@ -256,7 +254,6 @@ public class UpdateProjData
 // 用于存储更新弹幕的信息
 public class UpdateProjInfo
 {
-    // 指示物
     public string Notes { get; set; }
     // 弹幕索引
     public int Index { get; set; }
@@ -290,24 +287,32 @@ internal class MyProjectile
         var tar = npc.GetTargetData(true);
         var state = StateUtil.GetState(npc);
 
-        if (state == null || state.Index >= SpawnProj.Count) return;
+        if (state == null || state.ProjIndex >= SpawnProj.Count) return;
 
-        var proj = SpawnProj[state.Index];
+        var proj = SpawnProj[state.ProjIndex];
 
         // 条件检查
-        if (!CheckConditions(npc, proj, state))
+        if (!string.IsNullOrEmpty(proj.Condition))
         {
-            NextProj(SpawnProj, state);
-            return;
+            bool all = true;
+            bool loop = false;
+            var cond = CondFileManager.GetCondData(proj.Condition);
+            Conditions.Condition(npc, new StringBuilder(), data, cond, ref all, ref loop);
+
+            if (!all)
+            {
+                NextProj(SpawnProj, state);
+                return;
+            }
         }
 
         // 初始化状态
-        InitProjState(state, state.Index);
+        InitProjState(state, state.ProjIndex);
 
         // 冷却检查
-        if (state.EachCDs[state.Index] > 0f)
+        if (state.EachCDs[state.ProjIndex] > 0f)
         {
-            state.EachCDs[state.Index] -= 1f;
+            state.EachCDs[state.ProjIndex] -= 1f;
             UpdateAllProjs(data, npc, SpawnProj);
             return;
         }
@@ -316,11 +321,11 @@ internal class MyProjectile
         GenerateProj(proj, npc, tar, state);
 
         // 更新状态
-        state.EachCDs[state.Index] = proj.Interval;
-        state.SendStack[state.Index]++;
+        state.EachCDs[state.ProjIndex] = proj.Interval;
+        state.SendStack[state.ProjIndex]++;
 
         // 检查是否切换到下一个弹幕组
-        if (state.SendStack[state.Index] >= proj.Stack)
+        if (state.SendStack[state.ProjIndex] >= proj.Stack)
         {
             NextProj(SpawnProj, state);
         }
@@ -336,9 +341,9 @@ internal class MyProjectile
         if (npc == null || SpawnProj == null || UpdateState == null) return;
 
         var state = StateUtil.GetState(npc);
-        if (state == null || state.Index >= SpawnProj.Count) return;
+        if (state == null || state.ProjIndex >= SpawnProj.Count) return;
 
-        var proj = SpawnProj[state.Index];
+        var proj = SpawnProj[state.ProjIndex];
         if (proj?.UpdateProj == null || proj.UpdateProj.Count == 0) return;
 
         for (var i = 0; i < UpdateState.Length; i++)
@@ -369,35 +374,17 @@ internal class MyProjectile
             if (UpdateTimer.ContainsKey(upState.Index) &&
                 (DateTime.UtcNow - UpdateTimer[upState.Index]).TotalMilliseconds >= proj.UpdateTime)
             {
-                UpdateSingleProj(data, proj, proj.UpdateProj, npc, NewProj.type, state);
+                UpdateSingleProj(data, proj, npc, NewProj.type, state);
                 UpdateTimer[upState.Index] = DateTime.UtcNow;
             }
         }
     }
     #endregion
 
-    #region 条件检查（统一使用 Conditions）
-    private static bool CheckConditions(NPC npc, SpawnProjData proj, NpcState state)
-    {
-        if (npc == null || proj == null || state == null) return false;
-
-        if (proj.EnhConds != null)
-        {
-            bool all = true;
-            bool loop = false;
-            Conditions.Condition(npc, new StringBuilder(), null, proj.EnhConds, ref all, ref loop);
-
-            if (!all) return false;
-        }
-
-        return true;
-    }
-    #endregion
-
     #region 初始化弹幕状态
     private static void InitProjState(NpcState state, int index)
     {
-        if (!state.SendStack.TryGetValue(index,out var _))
+        if (!state.SendStack.TryGetValue(index, out var _))
             state.SendStack[index] = 0;
 
         if (!state.EachCDs.TryGetValue(index, out var _))
@@ -430,15 +417,9 @@ internal class MyProjectile
         }
 
         // 生成复杂弹幕
-        if (proj.CplxParams != null && proj.CplxParams.Mode > 0)
+        if (proj.CplxParams != null)
         {
             CplxProjGen.SpawnCplxProj(proj, npc, finalPos, finalVel);
-        }
-
-        // 应用指示物修改
-        if (proj.MarkerMods != null && proj.MarkerMods.Count > 0)
-        {
-            MarkerUtil.SetMarkers(state, proj.MarkerMods, ref Main.rand, npc);
         }
 
         state.SPCount++;
@@ -448,6 +429,10 @@ internal class MyProjectile
     #region 计算基础速度
     private static Vector2 CalcBaseVelocity(SpawnProjData proj, NPC npc, NPCAimedTarget tar, Player plr, NpcState state)
     {
+        // 基础模式
+        var dict = tar.Center - npc.Center;
+        if (proj.LockParams is null)  return dict.SafeNormalize(Vector2.Zero) * proj.Velocity;
+
         // 目标锁定模式
         if (proj.LockParams.LockRange > 0)
         {
@@ -463,8 +448,6 @@ internal class MyProjectile
             return Vector2.Zero;
         }
 
-        // 基础模式
-        var dict = tar.Center - npc.Center;
         return dict.SafeNormalize(Vector2.Zero) * proj.Velocity;
     }
     #endregion
@@ -475,7 +458,7 @@ internal class MyProjectile
         if (proj.Radius == 0) return basePos;
 
         var radiusPx = PxUtil.ToPx(proj.Radius);
-        var angle = state.SendStack[state.Index] / (float)(proj.Stack - 1) * MathHelper.TwoPi;
+        var angle = state.SendStack[state.ProjIndex] / (float)(proj.Stack - 1) * MathHelper.TwoPi;
         var offset = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * radiusPx;
 
         return basePos + offset;
@@ -494,13 +477,13 @@ internal class MyProjectile
         {
             var angleRange = proj.Angle * Math.PI / 180;
             var angleStep = angleRange * 2 / (proj.Stack - 1);
-            totalAngle += (float)((state.SendStack[state.Index] - (proj.Stack - 1) / 2.0f) * angleStep);
+            totalAngle += (float)((state.SendStack[state.ProjIndex] - (proj.Stack - 1) / 2.0f) * angleStep);
         }
 
         // 旋转偏移
         if (proj.Rotate != 0)
         {
-            totalAngle += proj.Rotate * state.SendStack[state.Index] * MathHelper.Pi / 180f;
+            totalAngle += proj.Rotate * state.SendStack[state.ProjIndex] * MathHelper.Pi / 180f;
         }
 
         return baseVel.RotatedBy(totalAngle);
@@ -558,9 +541,24 @@ internal class MyProjectile
     #region 更新单个弹幕
     public static Dictionary<int, DateTime> UpdateTimer = new(); //用于追踪更新弹幕的时间
     public static UpdateProjInfo[] UpdateState { get; set; } = new UpdateProjInfo[Main.maxProjectiles];
-    private static void UpdateSingleProj(NpcData data, SpawnProjData proj, List<UpdateProjData> Update, NPC npc, int type, NpcState state)
+    private static void UpdateSingleProj(NpcData data, SpawnProjData proj, NPC npc, int type, NpcState state)
     {
-        if (Update == null || Update.Count <= 0) return;
+        // 从文件加载更新弹幕配置
+        var Update = new List<UpdateProjData>();
+
+        if (proj.UpdateProj != null && proj.UpdateProj.Count > 0)
+        {
+            foreach (var File in proj.UpdateProj)
+            {
+                var fileUpdates = UpProjFileManager.GetData(File);
+                if (fileUpdates != null && fileUpdates.Count > 0)
+                {
+                    Update.AddRange(fileUpdates);
+                }
+            }
+        }
+
+        if (Update.Count <= 0) return;
 
         var UpList = new List<int>();
 
@@ -603,17 +601,19 @@ internal class MyProjectile
                 return;
             }
 
-
             // 条件检查
-            var allow = true;
-            Conditions.Condition(data, npc, up.Condition, ref allow);
-
-            if (!allow) return;
-
-            // 新增：应用指示物修改
-            if (up.MarkerMods != null && up.MarkerMods.Count > 0)
+            if (!string.IsNullOrEmpty(up.Condition))
             {
-                MarkerUtil.SetMarkers(state, up.MarkerMods, ref Main.rand, npc);
+                bool all = true;
+                bool loop = false;
+                var cond = CondFileManager.GetCondData(up.Condition);
+                Conditions.Condition(npc, new StringBuilder(), data, cond, ref all, ref loop);
+                if (!all)
+                {
+                    upInfo.UpdateIndex++; // 移动到下一个阶段
+                    upInfo.StageStartTime = DateTime.UtcNow; // 重置阶段开始时间
+                    return;
+                }
             }
 
             // 新增：应用指示物注入AI
@@ -712,7 +712,7 @@ internal class MyProjectile
             {
                 // 应用速度注入到指定的AI索引
                 up.ApplySpeedToAI(NewProj, newVel, UpList, upInfo.Index);
-                
+
                 // 设置新的速度向量
                 Vector2 speedVec = up.GetSpeedToAIVector();
                 if (speedVec != Vector2.Zero)
@@ -834,9 +834,9 @@ internal class MyProjectile
     #region 切换到下一个弹幕
     private static void NextProj(List<SpawnProjData> data, NpcState state)
     {
-        state.Index = (state.Index + 1) % data.Count;
-        state.SendStack[state.Index] = 0;
-        state.EachCDs[state.Index] = 0f;
+        state.ProjIndex = (state.ProjIndex + 1) % data.Count;
+        state.SendStack[state.ProjIndex] = 0;
+        state.EachCDs[state.ProjIndex] = 0f;
     }
     #endregion
 }

@@ -5,16 +5,21 @@ namespace MonsterSpeed;
 #region NPC状态管理（统一）
 public class NpcState
 {
-    // 基础状态
-    public int Index { get; set; } = 0;
-    public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
-    public DateTime LastTextTime { get; set; } = DateTime.UtcNow;
+    // 时间事件基础状态
+    public int EventIndex { get; set; } = 0; // 时间事件索引
+    public DateTime CooldownTime { get; set; } = DateTime.UtcNow;   // 时间事件冷却时间
+    public DateTime LastTextTime { get; set; } = DateTime.UtcNow;   // 时间事件冷却倒计时（悬浮文本）
 
     // 计数状态
     public int SPCount { get; set; } = 0;  // 弹幕计数
     public int SNCount { get; set; } = 0;  // 怪物计数
+    public int Struck { get; set; } = 0;    // 受击计数
+    public int KillPlay { get; set; } = 0;   // 击杀计数
+    public int ActiveTime { get; set; } = 0; // 存活时间计数
+    public int ProjIndex { get; set; } = 0; // 弹幕索引号
+
     public Dictionary<int, int> EventCounts { get; set; } = new();
-    public Dictionary<int, int> PlayCounts { get; set; } = new();
+    public Dictionary<string, int> PlayCounts { get; set; } = new();
     public Dictionary<int, float> SpawnTimer = new Dictionary<int, float>(); //用于追踪该NPC生成随从NPC冷却时间
 
     // 弹幕状态
@@ -30,11 +35,14 @@ public class NpcState
     public FilePlayState FileState { get; set; } = new();
     public PauseState PauseState { get; set; } = new();
     public MoveModeState MoveState { get; set; } = new();
+
+    // 新增：独立播放器状态（短变量名）
+    public Dictionary<string, IndieState> IndieStates { get; set; } = new();
 }
 
 public static class StateUtil
 {
-    private static readonly Dictionary<int, NpcState> NpcStates = new();
+    public static readonly Dictionary<int, NpcState> NpcStates = new();
 
     #region 获取NPC状态
     public static NpcState GetState(NPC npc)
@@ -63,8 +71,7 @@ public static class StateUtil
         if (npc != null)
         {
             NpcStates.Remove(npc.whoAmI);
-            // 同时清理弹幕更新计时器
-            MyProjectile.UpdateTimer.Remove(npc.whoAmI);
+            MyProjectile.UpdateTimer.Remove(npc.whoAmI);  // 同时清理弹幕更新计时器
         }
     }
     #endregion

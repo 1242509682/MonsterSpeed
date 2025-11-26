@@ -4,26 +4,31 @@ using Terraria;
 
 namespace MonsterSpeed;
 
-// 复杂弹幕参数
+// 复杂弹幕参数 - 修改为独立的布尔模式
 public class CplxProjParams
 {
-    [JsonProperty("发射模式", Order = 99)]
-    public int Mode { get; set; } = 0;
-    [JsonProperty("圆形数量", Order = 100)]
+    [JsonProperty("启用圆形分布", Order = 99)]
+    public bool RadialEnabled { get; set; } = false;
+    [JsonProperty("启用角度分散", Order = 100)]
+    public bool AngularEnabled { get; set; } = false;
+    [JsonProperty("启用位置偏移", Order = 101)]
+    public bool OffsetEnabled { get; set; } = false;
+
+    [JsonProperty("圆形数量", Order = 102)]
     public int RadialCnt { get; set; } = 0;
-    [JsonProperty("圆形角度", Order = 101)]
+    [JsonProperty("圆形角度", Order = 103)]
     public int RadialAng { get; set; } = 0;
-    [JsonProperty("圆形半径格数", Order = 102)]
+    [JsonProperty("圆形半径格数", Order = 104)]
     public int RadialR { get; set; } = 0;
-    [JsonProperty("圆形起始角", Order = 103)]
+    [JsonProperty("圆形起始角", Order = 105)]
     public int StartAng { get; set; } = 0;
-    [JsonProperty("角度数量", Order = 104)]
+    [JsonProperty("角度数量", Order = 106)]
     public int AngCnt { get; set; } = 0;
-    [JsonProperty("角度分散", Order = 105)]
+    [JsonProperty("角度分散", Order = 107)]
     public float AngDisp { get; set; } = 0f;
-    [JsonProperty("偏移数量", Order = 106)]
+    [JsonProperty("偏移数量", Order = 108)]
     public int OffsetCnt { get; set; } = 0;
-    [JsonProperty("偏移量XY/格", Order = 107)]
+    [JsonProperty("偏移量XY/格", Order = 109)]
     public string Offset { get; set; } = "0,0";
 }
 
@@ -33,28 +38,31 @@ public static class CplxProjGen
     #region 生成复杂弹幕
     public static int SpawnCplxProj(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
     {
-        if (proj.CplxParams == null || proj.CplxParams.Mode == 0)
+        if (proj.CplxParams == null ||
+            (!proj.CplxParams.RadialEnabled && !proj.CplxParams.AngularEnabled && !proj.CplxParams.OffsetEnabled))
             return 0;
 
-        // 条件检查
-        
+        int Count = 0;
 
-        int spawnedCount = 0;
-        
-        switch (proj.CplxParams.Mode)
+        // 应用圆形分布模式
+        if (proj.CplxParams.RadialEnabled)
         {
-            case 1: // 圆形分布
-                spawnedCount = SpawnRadial(proj, npc, basePos, baseVel);
-                break;
-            case 2: // 角度分散
-                spawnedCount = SpawnAngular(proj, npc, basePos, baseVel);
-                break;
-            case 3: // 位置偏移
-                spawnedCount = SpawnOffset(proj, npc, basePos, baseVel);
-                break;
+            Count += SpawnRadial(proj, npc, basePos, baseVel);
         }
 
-        return spawnedCount;
+        // 应用角度分散模式
+        if (proj.CplxParams.AngularEnabled)
+        {
+            Count += SpawnAngular(proj, npc, basePos, baseVel);
+        }
+
+        // 应用位置偏移模式
+        if (proj.CplxParams.OffsetEnabled)
+        {
+            Count += SpawnOffset(proj, npc, basePos, baseVel);
+        }
+
+        return Count;
     }
     #endregion
 
@@ -62,14 +70,17 @@ public static class CplxProjGen
     private static int SpawnRadial(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
     {
         var param = proj.CplxParams;
-        if (param.RadialCnt <= 0 || param.RadialR <= 0) 
+        // 修改：使用SpawnProjData的Stack作为数量
+        int radialCount = proj.Stack > 0 ? proj.Stack : param.RadialCnt;
+        if (radialCount <= 0 || param.RadialR <= 0)
             return 0;
 
-        int spawnedCount = 0;
+        int Count = 0;
         float radiusPixels = PxUtil.ToPx(param.RadialR);
+        double angleStep = 360.0 / radialCount; // 自动计算角度步长
         double currentAngle = param.StartAng;
 
-        for (int i = 0; i < param.RadialCnt; i++)
+        for (int i = 0; i < radialCount; i++)
         {
             // 计算圆形分布坐标
             Vector2 offset = CalculateCircularOffset(currentAngle, radiusPixels);
@@ -77,12 +88,12 @@ public static class CplxProjGen
 
             // 生成弹幕
             if (CreateComplexProjectile(proj, npc, position, baseVel))
-                spawnedCount++;
+                Count++;
 
-            currentAngle += param.RadialAng;
+            currentAngle += angleStep;
         }
 
-        return spawnedCount;
+        return Count;
     }
     #endregion
 
@@ -90,28 +101,30 @@ public static class CplxProjGen
     private static int SpawnAngular(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
     {
         var param = proj.CplxParams;
-        if (param.AngCnt <= 0 || param.AngDisp == 0f) 
+        // 修改：使用SpawnProjData的Stack作为数量
+        int angularCount = proj.Stack > 0 ? proj.Stack : param.AngCnt;
+        if (angularCount <= 0 || param.AngDisp == 0f)
             return 0;
 
-        int spawnedCount = 0;
-        
+        int Count = 0;
+
         // 计算基础角度（从速度向量获取）
         double baseAngle = Math.Atan2(baseVel.Y, baseVel.X) * (180.0 / Math.PI);
-        double currentAngle = baseAngle - ((param.AngCnt - 1) * param.AngDisp / 2);
+        double currentAngle = baseAngle - ((angularCount - 1) * param.AngDisp / 2);
 
-        for (int i = 0; i < param.AngCnt; i++)
+        for (int i = 0; i < angularCount; i++)
         {
             // 计算角度分散速度
             Vector2 velocity = CalculateVelocityFromAngle(currentAngle, baseVel.Length());
 
             // 生成弹幕
             if (CreateComplexProjectile(proj, npc, basePos, velocity))
-                spawnedCount++;
+                Count++;
 
             currentAngle += param.AngDisp;
         }
 
-        return spawnedCount;
+        return Count;
     }
     #endregion
 
@@ -119,14 +132,16 @@ public static class CplxProjGen
     private static int SpawnOffset(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
     {
         var param = proj.CplxParams;
-        if (param.OffsetCnt <= 0 || string.IsNullOrWhiteSpace(param.Offset))
+        // 修改：使用SpawnProjData的Stack作为数量
+        int offsetCount = proj.Stack > 0 ? proj.Stack : param.OffsetCnt;
+        if (offsetCount <= 0 || string.IsNullOrWhiteSpace(param.Offset))
             return 0;
 
         int SpCount = 0;
         Vector2 currPos = basePos;
         Vector2 pixelOff = GetOffsetVector(param);
 
-        for (int i = 0; i < param.OffsetCnt; i++)
+        for (int i = 0; i < offsetCount; i++)
         {
             // 生成弹幕
             if (CreateComplexProjectile(proj, npc, currPos, baseVel))
@@ -177,7 +192,7 @@ public static class CplxProjGen
     }
     #endregion
 
-    #region 创建复杂弹幕（支持锁定）- 保留原有逻辑
+    #region 创建复杂弹幕（支持锁定）
     private static bool CreateComplexProjectile(SpawnProjData proj, NPC npc, Vector2 pos, Vector2 baseVel)
     {
         Vector2 finalVel = baseVel;
@@ -227,29 +242,22 @@ public static class CplxProjGen
         if (param == null)
             return false;
 
-        if (param.Mode < 0 || param.Mode > 3)
-            return false;
-
         // 模式特定验证
-        switch (param.Mode)
+        if (param.RadialEnabled)
         {
-            case 1: // 圆形
-                if (param.RadialCnt < 1 || param.RadialR < 0)
-                    return false;
-                break;
-            case 2: // 角度
-                if (param.AngCnt < 1)
-                    return false;
-                break;
-            case 3: // 偏移
-                if (param.OffsetCnt < 1 || string.IsNullOrWhiteSpace(param.Offset))
-                    return false;
+            if (param.RadialR < 0)
+                return false;
+        }
 
-                // 验证偏移字符串格式
-                var Result = PxUtil.ParseFloatRange(param.Offset);
-                if (!Result.success)
-                    return false;
-                break;
+        if (param.OffsetEnabled)
+        {
+            if (string.IsNullOrWhiteSpace(param.Offset))
+                return false;
+
+            // 验证偏移字符串格式
+            var Result = PxUtil.ParseFloatRange(param.Offset);
+            if (!Result.success)
+                return false;
         }
 
         return true;

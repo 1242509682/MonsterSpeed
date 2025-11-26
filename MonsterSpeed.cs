@@ -16,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 4);
+    public override Version Version => new Version(1, 3, 5);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -28,8 +28,17 @@ public class MonsterSpeed : TerrariaPlugin
 
     public override void Initialize()
     {
+        if (!Directory.Exists(Paths))
+        {
+            Directory.CreateDirectory(Paths);
+        }
+
         LoadConfig();
+        CondFileManager.Init(); // 新增：初始化触发条件文件系统
+        ProjFileManager.Init(); // 新增：初始化弹幕文件系统
+        UpProjFileManager.Init(); // 新增：初始化更新弹幕文件系统
         GeneralHooks.ReloadEvent += ReloadConfig;
+        GetDataHandlers.KillMe += KillMe!;
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
         ServerApi.Hooks.NpcStrike.Register(this, this.OnNpcStrike);
         ServerApi.Hooks.NpcAIUpdate.Register(this, this.OnNpcAiUpdate);
@@ -41,6 +50,7 @@ public class MonsterSpeed : TerrariaPlugin
         if (disposing)
         {
             GeneralHooks.ReloadEvent -= ReloadConfig;
+            GetDataHandlers.KillMe -= KillMe!;
             ServerApi.Hooks.NpcKilled.Deregister(this, this.OnNPCKilled);
             ServerApi.Hooks.NpcStrike.Deregister(this, this.OnNpcStrike);
             ServerApi.Hooks.NpcAIUpdate.Deregister(this, this.OnNpcAiUpdate);
@@ -69,30 +79,42 @@ public class MonsterSpeed : TerrariaPlugin
     {
         var npc = args.Npc;
         if (!Config.Enabled || npc == null ||
-            !Config.NpcList.Contains(npc.netID))
+            !npc.active || npc.friendly ||
+             npc.netID == 488 ||
+            !Config.NpcList.Contains(npc.netID) ||
+             Config.NpcDatas is null)
         {
             return;
         }
 
-        var newNpc = !Config.Dict!.ContainsKey(npc.FullName);
-        if (newNpc)
+        // 修改：检查是否已存在该怪物的配置
+        bool hasConfig = Config.NpcDatas.Any(npcData => npcData.Type.Contains(npc.netID));
+
+        if (!hasConfig)
         {
             NpcData nd = NewData();
-            Config.Dict[npc.FullName] = nd;
+            nd.Type = new List<int> { npc.netID }; // 设置怪物ID
+            nd.Flag = npc.FullName; // 使用怪物全名作为标志
+            Config.NpcDatas.Add(nd);
             Config.Write();
 
-            var state = StateUtil.GetState(npc);
-            if (state != null)
-            {
-                state.Index = 0;
-                state.FileState = new FilePlayState();
-                state.PauseState = new PauseState();
-                state.UpdateTime = DateTime.UtcNow;
-                state.LastTextTime = DateTime.UtcNow;
-                state.MoveState = new MoveModeState();
-                state.EventCounts = new Dictionary<int, int>();
-                state.PlayCounts = new Dictionary<int, int>();
-            }
+            var s = StateUtil.GetState(npc);
+            s.EventIndex = 0;
+            s.ProjIndex = 0;
+            s.Struck = 0;
+            s.KillPlay = 0;
+            s.ActiveTime = 0;
+            s.FileState = new FilePlayState();
+            s.PauseState = new PauseState();
+            s.CooldownTime = DateTime.UtcNow;
+            s.LastTextTime = DateTime.UtcNow;
+            s.MoveState = new MoveModeState();
+            s.EventCounts = new Dictionary<int, int>();
+            s.PlayCounts = new Dictionary<string, int>();
+        }
+        else if (StateUtil.NpcStates.ContainsKey(npc.whoAmI))
+        {
+            StateUtil.GetState(npc).Struck++;
         }
     }
     #endregion
@@ -109,14 +131,18 @@ public class MonsterSpeed : TerrariaPlugin
             TrackStopRange = 25,
             ActiveTime = 5f,
             TextInterval = 1000f,
+            IndiePlayers = new List<IndiePlay>()
+            {
+                new IndiePlay()
+                {
+                    Cond = "默认配置"
+                }
+            },
             TimerEvent = new List<TimerData>()
             {
                 new TimerData()
                 {
-                    Condition = new Conditions()
-                    {
-                        NpcLift = "0,100"
-                    }
+                    Condition = "默认配置"
                 }
             },
         };
@@ -140,8 +166,15 @@ public class MonsterSpeed : TerrariaPlugin
         Teleport.Remove(args.npc.whoAmI);
         HealTimes.Remove(args.npc.whoAmI);
 
-        // 更新配置数据
-        Config.Dict!.TryGetValue(args.npc.FullName, out var data);
+        // 新增：清理独立播放器相关状态
+        var state = StateUtil.GetState(args.npc);
+        if (state?.IndieStates != null)
+        {
+            state.IndieStates.Clear();
+        }
+
+        // 修改：更新配置数据 - 查找对应的NpcData
+        var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(args.npc.netID));
         if (data != null)
         {
             data.DeadCount += 1;
@@ -150,13 +183,41 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
+    #region 击杀玩家事件
+    private void KillMe(object? sender, GetDataHandlers.KillMeEventArgs e)
+    {
+        var plr = e.Player;
+        if (e.Handled || plr == null || e.Pvp) return;
+
+        e.PlayerDeathReason.TryGetCausingEntity(out var entity);
+
+        if (entity is NPC npc)
+        {
+            if (npc is null || !npc.active || !Config.NpcList.Contains(npc.netID))
+            {
+                return;
+            }
+
+            var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(npc.netID));
+            if (data != null)
+            {
+                var state = StateUtil.GetState(npc);
+                state.KillPlay++;
+            }
+
+            TShock.Utils.Broadcast($"怪物 whoAmI : {npc.whoAmI} - {npc.FullName}", 255, 255, 255);
+        }
+    }
+    #endregion
+
     #region 怪物加速核心方法
     private static DateTime BroadcastTime = DateTime.UtcNow; // 跟踪最后一次广播时间
+    private static long Timer = 0; // 跟踪最后一次广播时间
     private void OnNpcAiUpdate(NpcAiUpdateEventArgs args)
     {
         var mess = new StringBuilder(); //用于存储广播内容
         var npc = args.Npc;
-        Config.Dict!.TryGetValue(npc.FullName, out var data);
+        var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(npc.netID));
 
         if (npc == null || data == null || !Config.Enabled || !npc.active ||
             npc.townNPC || npc.SpawnedFromStatue || npc.netID == 488 ||
@@ -171,17 +232,22 @@ public class MonsterSpeed : TerrariaPlugin
             AutoHeal(npc, data);
         }
 
-        var state = StateUtil.GetState(npc);
+        #region 怪物活跃秒数统计
+        Timer++;
+        if (Timer >= 60)
+        {
+            StateUtil.GetState(npc).ActiveTime++;
+        }
+        Timer = 0;
+        #endregion
+
         var handled = false;
-        TimerEvents.TimerEvent(npc, mess, data, state, ref handled); //时间事件
+        TimerEvents.TimerEvent(npc, mess, data, ref handled); //时间事件
+        IndieManager.HandleAll(npc, mess, data, StateUtil.GetState(npc), ref handled); // 新增：独立文件播放器（并行处理）
 
         TrackMode(npc, data); //超距离追击
-
         npc.netUpdate = true;
-
-        //监控广播
-        Broadcast(mess, npc, data);
-
+        Broadcast(mess, npc, data); //监控广播
         args.Handled = handled;
     }
     #endregion
@@ -271,7 +337,7 @@ public class MonsterSpeed : TerrariaPlugin
         // 在目标周围随机寻找安全位置
         for (int i = 0; i < 5; i++)
         {
-            Vector2 testPos = Center + new Vector2(Main.rand.Next(-80, 81),Main.rand.Next(-80, 81));
+            Vector2 testPos = Center + new Vector2(Main.rand.Next(-80, 81), Main.rand.Next(-80, 81));
 
             // 简单的位置有效性检查
             Tile tile = (Tile)Framing.GetTileSafely((int)testPos.X / 16, (int)testPos.Y / 16);
@@ -282,7 +348,7 @@ public class MonsterSpeed : TerrariaPlugin
         }
 
         // 没找到安全位置就传送到追击停止范围
-        return new Vector2 (Center.X + TrackStopRange, Center.Y + TrackStopRange); 
+        return new Vector2(Center.X + TrackStopRange, Center.Y + TrackStopRange);
     }
     #endregion
 
@@ -354,13 +420,13 @@ public class MonsterSpeed : TerrariaPlugin
             string aiInfo = "";
             if (data.TimerEvent != null && data.TimerEvent.Count > 0)
             {
-                var idx = state!.Index;
+                var idx = state!.EventIndex;
                 if (idx >= 0 && idx < data.TimerEvent.Count)
                 {
                     var evt = data.TimerEvent[idx];
                     if (evt?.AIMode != null && evt.AIMode.Enabled)
                     {
-                        aiInfo = AISystem.GetAiInfo(state.AIState,evt.AIMode, npc.FullName);
+                        aiInfo = AISystem.GetAiInfo(state.AIState, evt.AIMode, npc.FullName);
                     }
                 }
             }
@@ -389,6 +455,6 @@ public class MonsterSpeed : TerrariaPlugin
             TSPlayer.All.SendMessage($"{mess}", 170, 170, 170);
             BroadcastTime = DateTime.UtcNow;
         }
-    } 
+    }
     #endregion
 }

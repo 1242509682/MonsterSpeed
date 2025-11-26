@@ -4,6 +4,7 @@ using Terraria;
 using TShockAPI;
 using Microsoft.Xna.Framework;
 using static MonsterSpeed.MonsterSpeed;
+using static MonsterSpeed.Configuration;
 
 namespace MonsterSpeed;
 
@@ -13,78 +14,89 @@ internal class Command
     {
         if (args.Parameters.Count == 0)
         {
-            args.Player.SendMessage("《怪物加速》\n" +
-                "/mos hide —— 显示与隐藏多余配置项\n" +
-                "/mos all [-f] —— 导出所有BOSS时间事件(-f覆盖)\n" +
-                "/mos now —— 导出当前BOSS当前事件\n" +
-                "/mos list —— 列出时间事件文件夹中的文件\n" +
-                "/mos clear —— 清空时间事件文件夹\n" +
-                "/mos reset —— 清空主配置数据(保留参考)\n" +
-                "/reload —— 重载配置文件", 240, 250, 150);
+            Help(args);
             return;
         }
 
-        if (args.Parameters.Count >= 1 && Config.Dict != null)
+        if (args.Parameters.Count >= 1 && Config.NpcDatas != null)
         {
-            if (args.Parameters[0].ToLower() == "hide")
+            var subCmd = args.Parameters[0].ToLower();
+
+            switch (subCmd)
             {
-                Config.HideConfig = !Config.HideConfig;
-                Config.Write();
-                args.Player.SendSuccessMessage($"已切换多余配置项显示状态为: {(Config.HideConfig ? "隐藏" : "显示")}。");
-                return;
-            }
+                case "hd":
+                case "hide":
+                    Config.HideConfig = !Config.HideConfig;
+                    Config.Write();
+                    args.Player.SendSuccessMessage($"已切换多余配置项显示状态为: {(Config.HideConfig ? "隐藏" : "显示")}。");
+                    break;
 
-            if (args.Parameters[0].ToLower() == "all")
-            {
-                bool overwrite = args.Parameters.Contains("-f");
-                ExportTimerEvents(args, overwrite);
-                return;
-            }
+                case "all":
+                    bool overwrite = args.Parameters.Contains("-f");
+                    ExportTimerEvents(args, overwrite);
+                    break;
 
-            if (args.Parameters[0].ToLower() == "now")
-            {
-                ExportCurrentBossEvent(args);
-                return;
-            }
+                case "now":
+                    ExportCurrentBossEvent(args);
+                    break;
 
-            if (args.Parameters[0].ToLower() == "list")
-            {
-                ListTimerEvents(args);
-                return;
-            }
+                case "ls":
+                case "list":
+                    ListTimerEvents(args);
+                    break;
 
-            if (args.Parameters[0].ToLower() == "clear")
-            {
-                ClearTimerEvents(args);
-                return;
-            }
+                case "cl":
+                case "clear":
+                    ClearTimerEvents(args);
+                    break;
 
-            if (args.Parameters[0].ToLower() == "reset")
-            {
-                Commands.HandleCommand(args.Player, "/butcher");
+                case "rs":
+                case "reset":
+                    Commands.HandleCommand(args.Player, "/butcher");
 
-                StateUtil.ClearAllStates();
+                    StateUtil.ClearAllStates();
 
-                Config.Dict.Clear();
+                    Config.NpcDatas.Clear();
 
-                var newNpc = !Config.Dict!.ContainsKey(Lang.GetNPCNameValue(Terraria.ID.NPCID.EyeofCthulhu));
-                if (newNpc)
-                {
-                    var nd = NewData();
-                    Config.Dict[Lang.GetNPCNameValue(4)] = nd;
-                }
+                    // 修改：检查是否存在克眼配置，不存在则添加
+                    bool hasEyeOfCthulhu = Config.NpcDatas.Any(npcData => npcData.Type.Contains(4));
+                    if (!hasEyeOfCthulhu)
+                    {
+                        var nd = NewData();
+                        nd.Type = new List<int>() { 4 }; // 克眼ID
+                        nd.Flag = "克苏鲁之眼";
+                        Config.NpcDatas.Add(nd);
+                    }
 
-                Config.Write();
-                args.Player.SendSuccessMessage($"已清理《怪物加速》的怪物数据(自动击杀当前存在敌对怪物)");
-                return;
+                    Config.Write();
+                    args.Player.SendSuccessMessage($"已清理《怪物加速》的怪物数据(自动击杀当前存在敌对怪物)");
+                    break;
+
+                default:
+                    Help(args);
+                    break;
             }
         }
     }
 
+    #region 菜单指令
+    private static void Help(CommandArgs args)
+    {
+        args.Player.SendMessage("《怪物加速》\n" +
+            "/mos hd —— 显示与隐藏多余配置项\n" +
+            "/mos all [-f] —— 导出所有BOSS时间事件(-f覆盖)\n" +
+            "/mos now —— 导出当前BOSS当前事件\n" +
+            "/mos ls —— 列出时间事件文件夹中的文件\n" +
+            "/mos cl —— 清空时间事件文件夹\n" +
+            "/mos rs —— 清空主配置数据(保留参考)\n" +
+            "/reload —— 重载配置文件", 240, 250, 150);
+    }
+    #endregion
+
     #region 列出时间事件文件夹文件指令
     public static void ListTimerEvents(CommandArgs args)
     {
-        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
+        var dir = Path.Combine(Paths, "时间事件");
 
         if (!Directory.Exists(dir))
         {
@@ -140,7 +152,7 @@ internal class Command
     #region 导出时间事件指令
     public static void ExportTimerEvents(CommandArgs args, bool overwrite = false)
     {
-        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
+        var dir = Path.Combine(Paths, "时间事件");
         if (!Directory.Exists(dir))
         {
             Directory.CreateDirectory(dir);
@@ -167,16 +179,18 @@ internal class Command
         int cnt = 0;
         var allEvents = new List<(string name, int idx, TimerData data)>();
 
-        foreach (var kvp in Config.Dict!)
+        // 修改：遍历List<NpcData>而不是字典
+        foreach (var npcData in Config.NpcDatas)
         {
-            var name = kvp.Key;
-            var data = kvp.Value;
+            var name = string.IsNullOrEmpty(npcData.Flag) ?
+                      $"怪物{npcData.Type.FirstOrDefault()}" :
+                      npcData.Flag;
 
-            if (data.TimerEvent != null && data.TimerEvent.Count > 0)
+            if (npcData.TimerEvent != null && npcData.TimerEvent.Count > 0)
             {
-                for (int i = 0; i < data.TimerEvent.Count; i++)
+                for (int i = 0; i < npcData.TimerEvent.Count; i++)
                 {
-                    allEvents.Add((name, i + 1, data.TimerEvent[i]));
+                    allEvents.Add((name, i + 1, npcData.TimerEvent[i]));
                 }
             }
         }
@@ -239,7 +253,7 @@ internal class Command
     public static void ExportCurrentBossEvent(CommandArgs args)
     {
         var plr = args.Player;
-        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
+        var dir = Path.Combine(Paths, "时间事件");
         if (!Directory.Exists(dir))
         {
             Directory.CreateDirectory(dir);
@@ -260,33 +274,33 @@ internal class Command
 
             var npc = near.OrderBy(n => Vector2.Distance(plr.TPlayer.position, n.position)).First();
 
-            var entry = Config.Dict!.FirstOrDefault(kvp =>
-                kvp.Key.Contains(npc.FullName, StringComparison.OrdinalIgnoreCase) ||
-                npc.FullName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase));
+            // 修改：通过怪物ID查找对应的NpcData
+            var npcData = Config.NpcDatas.FirstOrDefault(nd => nd.Type.Contains(npc.type));
 
-            if (entry.Equals(default(KeyValuePair<string, Configuration.NpcData>)))
+            if (npcData == null)
             {
                 plr.SendErrorMessage($"未找到BOSS '{npc.FullName}' 的配置数据！");
                 return;
             }
 
-            var name = entry.Key;
-            var data = entry.Value;
+            var name = string.IsNullOrEmpty(npcData.Flag) ?
+                      $"怪物{npcData.Type.FirstOrDefault()}" :
+                      npcData.Flag;
 
-            if (data.TimerEvent == null || data.TimerEvent.Count == 0)
+            if (npcData.TimerEvent == null || npcData.TimerEvent.Count == 0)
             {
                 plr.SendErrorMessage($"BOSS '{name}' 没有时间事件配置！");
                 return;
             }
 
-            var idx = StateUtil.GetState(npc)!.Index;
-            if (idx < 0 || idx >= data.TimerEvent.Count)
+            var idx = StateUtil.GetState(npc)!.EventIndex;
+            if (idx < 0 || idx >= npcData.TimerEvent.Count)
             {
                 plr.SendErrorMessage($"BOSS '{name}' 的当前事件索引无效！");
                 return;
             }
 
-            var evt = data.TimerEvent[idx];
+            var evt = npcData.TimerEvent[idx];
             var evtIdx = idx + 1;
 
             var existing = Directory.GetFiles(dir, "*.json");
@@ -317,7 +331,7 @@ internal class Command
             File.WriteAllText(path, json, Encoding.UTF8);
 
             plr.SendSuccessMessage($"成功导出BOSS '{name}' 的当前事件到: {fileName}");
-            plr.SendInfoMessage($"事件索引: {evtIdx}/{data.TimerEvent.Count}，文件序号: {num}");
+            plr.SendInfoMessage($"事件索引: {evtIdx}/{npcData.TimerEvent.Count}，文件序号: {num}");
         }
         catch (Exception ex)
         {
@@ -330,7 +344,7 @@ internal class Command
     #region 清空时间事件文件夹指令
     public static void ClearTimerEvents(CommandArgs args)
     {
-        var dir = Path.Combine("tshock", "怪物加速_时间事件集");
+        var dir = Path.Combine(Paths, "时间事件");
 
         if (!Directory.Exists(dir))
         {

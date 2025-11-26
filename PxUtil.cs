@@ -72,7 +72,6 @@ public static class PxUtil
     #endregion
 
     #region 范围检查
-    
     // 检查两点是否在指定像素范围内
     public static bool InRange(Vector2 from, Vector2 to, float rangePx) => 
         Vector2.DistanceSquared(from, to) <= rangePx * rangePx;
@@ -84,7 +83,6 @@ public static class PxUtil
     // 使用平方距离检查范围（避免开方运算）
     public static bool InRangeSquared(Vector2 from, Vector2 to, float rangePx) => 
         Vector2.DistanceSquared(from, to) <= rangePx * rangePx;
-    
     #endregion
 
     #region 方向计算
@@ -124,7 +122,6 @@ public static class PxUtil
     #endregion
 
     #region 生命值计算
-    
     // 获取NPC生命值百分比
     public static float GetLifeRatio(NPC npc)
     {
@@ -138,7 +135,6 @@ public static class PxUtil
         if (plr?.active != true || plr.statLifeMax2 <= 0) return 0f;
         return MathHelper.Clamp(plr.statLife * 100f / plr.statLifeMax2, 0f, 100f);
     }
-    
     #endregion
 
     #region 向量和位置工具

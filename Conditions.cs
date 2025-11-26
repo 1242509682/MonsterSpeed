@@ -14,6 +14,8 @@ namespace MonsterSpeed;
 public class Conditions
 {
     // 基础条件
+    [JsonProperty("查标志", Order = -23)]
+    public string CheckFlag { get; set; } = "";
     [JsonProperty("BOSS血量范围", Order = -22)]
     public string NpcLift { get; set; } = "0,100";
     [JsonProperty("游戏进度条件", Order = -21)]
@@ -25,11 +27,11 @@ public class Conditions
     [JsonProperty("目标玩家武器类型", Order = -18)]
     public string WeaponName { get; set; } = "无";
     [JsonProperty("召唤怪物次数", Order = -17)]
-    public int MonsterCount { get; set; } = -1;
+    public int MonsterCount { get; set; } = 0;
     [JsonProperty("发射弹幕次数", Order = -16)]
-    public int ProjectileCount { get; set; } = -1;
+    public int ProjectileCount { get; set; } = 0;
     [JsonProperty("怪物死亡次数", Order = -15)]
-    public int DeadCount { get; set; } = -1;
+    public int DeadCount { get; set; } = 0;
     [JsonProperty("与目标玩家距离", Order = -14)]
     public float Range { get; set; } = -1;
     [JsonProperty("怪物移动速度", Order = -13)]
@@ -43,7 +45,7 @@ public class Conditions
     [JsonProperty("累计播放次数", Order = -9)]
     public int TotalPlayCount { get; set; } = -1;
     [JsonProperty("文件播放次数", Order = -8)]
-    public Dictionary<int, int> FilePlayCount { get; set; } = new Dictionary<int, int>();
+    public Dictionary<string, int> FilePlayCount { get; set; } = new Dictionary<string, int>();
 
     [JsonProperty("指示物条件", Order = 90)]
     public Dictionary<string, string[]> MarkerConds { get; set; } = new Dictionary<string, string[]>();
@@ -54,7 +56,6 @@ public class Conditions
     public RangeMonsterCondition RangeMonsters { get; set; } = new RangeMonsterCondition();
     [JsonProperty("范围内弹幕检查", Order = 120)]
     public RangeProjectileCondition RangeProjectiles { get; set; } = new RangeProjectileCondition();
-
 
     #region 增强条件子类
     public class RangePlayerCondition
@@ -132,6 +133,17 @@ public class Conditions
     {
         bool allMet = true;
 
+        // 新增：标志条件检查
+        if (!string.IsNullOrEmpty(Cond.CheckFlag))
+        {
+            bool flagMet = data.Flag == Cond.CheckFlag;
+            if (!flagMet)
+            {
+                allMet = false;
+                mess.Append($" 标志条件未满足: 需要标志 '{Cond.CheckFlag}'，当前标志 '{data.Flag}'\n");
+            }
+        }
+
         // 新增：指示物条件检查
         if (Cond.MarkerConds != null && Cond.MarkerConds.Count > 0)
         {
@@ -145,7 +157,7 @@ public class Conditions
         // 生命条件
         var life = (int)PxUtil.GetLifeRatio(npc);
         var LC = LifeCondition(life, Cond);
-        if (!LC && Cond.NpcLift != "0,100")
+        if (!LC && Cond.NpcLift != "0,0")
         {
             allMet = false;
             mess.Append($" 血量条件未满足: 血量 {life}% 不在范围 {Cond.NpcLift}%\n");
@@ -373,9 +385,23 @@ public class Conditions
 
     private static bool CheckMstFlag(NPC mst, string flag)
     {
-        return string.IsNullOrEmpty(flag) ||
-               (MonsterSpeed.Config!.Dict!.ContainsKey(mst.FullName) &&
-                MonsterSpeed.Config.Dict[mst.FullName].Flag == flag);
+        // 如果flag为空，直接返回true（表示不需要检查标志）
+        if (string.IsNullOrEmpty(flag))
+            return true;
+
+        // 在NpcDatas列表中查找匹配的配置
+        if (MonsterSpeed.Config?.NpcDatas != null)
+        {
+            // 查找包含当前怪物ID且标志匹配的配置
+            var matchedData = MonsterSpeed.Config.NpcDatas.FirstOrDefault(data =>
+                data.Type != null &&
+                data.Type.Contains(mst.netID) &&
+                data.Flag == flag);
+
+            return matchedData != null;
+        }
+
+        return false;
     }
     #endregion
 
@@ -417,6 +443,7 @@ public class Conditions
                MyProjectile.UpdateState[proj.whoAmI]?.Notes == cond.Flag;
     }
     #endregion
+
     #endregion
 
     #region 共用辅助方法
@@ -472,8 +499,6 @@ public class Conditions
             Held.damage > 0 && Held.ammo == 0) return "魔法";
 
         if (ItemID.Sets.SummonerWeaponThatScalesWithAttackSpeed[Held.type]) return "召唤";
-
-        if (ItemID.Sets.Yoyo[Held.type]) return "悠悠球";
 
         if (Held.maxStack == 9999 && Held.damage > 0 &&
             Held.ammo == 0 && Held.ranged && Held.consumable ||
@@ -578,7 +603,7 @@ public class Conditions
         var state = StateUtil.GetState(npc);
         if (state == null) return false;
     
-        double elapsed = (DateTime.UtcNow - state.UpdateTime).TotalSeconds;
+        double elapsed = (DateTime.UtcNow - state.CooldownTime).TotalSeconds;
         bool inRange = elapsed >= result.min && elapsed <= result.max;
     
         return inRange;
@@ -653,12 +678,12 @@ public class Conditions
 
         foreach (var kvp in Condition.FilePlayCount)
         {
-            int fileNumber = kvp.Key;
+            string fileName = kvp.Key;
             int NeedCount = kvp.Value;
 
-            int NewCount = GetFilePlayCount(state, fileNumber);
+            int NewCount = GetFilePlayCount(state, fileName);
 
-            if (!PxUtil.CheckCountCondition(NeedCount, NewCount, $"文件{fileNumber}播放", mess))
+            if (!PxUtil.CheckCountCondition(NeedCount, NewCount, $"文件{fileName}播放", mess))
             {
                 allMet = false;
             }
@@ -667,11 +692,11 @@ public class Conditions
         return allMet;
     }
 
-    private static int GetFilePlayCount(NpcState state, int fileNumber)
+    private static int GetFilePlayCount(NpcState state, string fileName)
     {
-        if (state.PlayCounts != null && state.PlayCounts.ContainsKey(fileNumber))
+        if (state.PlayCounts != null && state.PlayCounts.ContainsKey(fileName))
         {
-            return state.PlayCounts[fileNumber];
+            return state.PlayCounts[fileName];
         }
         return 0;
     }
@@ -1027,113 +1052,6 @@ public class Conditions
         }
     }
 
-    // 条件分组数据 - 同条件不同名称用括号显示
-    public static readonly Dictionary<string, List<string>> ConditionGroups = new Dictionary<string, List<string>>
-    {
-        // Boss相关条件
-        ["克苏鲁之眼"] = new List<string> { "1", "克眼", "克苏鲁之眼" },
-        ["史莱姆王"] = new List<string> { "2", "史莱姆王", "史王" },
-        ["克苏鲁之脑"] = new List<string> { "4", "克脑", "脑子", "克苏鲁之脑" },
-        ["世界吞噬者"] = new List<string> { "3", "世吞", "黑长直", "世界吞噬者", "世界吞噬怪" },
-        ["邪恶boss2"] = new List<string> { "5", "邪恶boss2", "世吞或克脑", "击败世吞克脑任意一个" },
-        ["巨鹿"] = new List<string> { "6", "巨鹿", "鹿角怪" },
-        ["蜂王"] = new List<string> { "7", "蜂王" },
-        ["骷髅王前"] = new List<string> { "8", "骷髅王前" },
-        ["骷髅王"] = new List<string> { "9", "吴克", "骷髅王", "骷髅王后" },
-        ["肉前"] = new List<string> { "10", "肉前" },
-        ["血肉墙"] = new List<string> { "11", "困难模式", "肉山", "肉后", "血肉墙" },
-        ["毁灭者"] = new List<string> { "12", "毁灭者", "铁长直" },
-        ["双子魔眼"] = new List<string> { "13", "双子眼", "双子魔眼" },
-        ["机械骷髅王"] = new List<string> { "14", "铁吴克", "机械吴克", "机械骷髅王" },
-        ["世纪之花"] = new List<string> { "15", "世纪之花", "花后", "世花" },
-        ["石巨人"] = new List<string> { "16", "石后", "石巨人" },
-        ["史莱姆皇后"] = new List<string> { "17", "史后", "史莱姆皇后" },
-        ["光之女皇"] = new List<string> { "18", "光之女皇", "光女" },
-        ["猪龙鱼公爵"] = new List<string> { "19", "猪鲨", "猪龙鱼公爵" },
-        ["拜月教邪教徒"] = new List<string> { "20", "拜月", "拜月教", "教徒", "拜月教邪教徒" },
-        ["月亮领主"] = new List<string> { "21", "月总", "月亮领主" },
-        ["哀木"] = new List<string> { "22", "哀木" },
-        ["南瓜王"] = new List<string> { "23", "南瓜王" },
-        ["常绿尖叫怪"] = new List<string> { "24", "常绿尖叫怪" },
-        ["冰雪女王"] = new List<string> { "25", "冰雪女王" },
-        ["圣诞坦克"] = new List<string> { "26", "圣诞坦克" },
-
-        // 事件相关条件
-        ["火星飞碟"] = new List<string> { "27", "火星飞碟" },
-        ["小丑"] = new List<string> { "28", "小丑" },
-        ["哥布林入侵"] = new List<string> { "37", "哥布林入侵" },
-        ["海盗入侵"] = new List<string> { "38", "海盗入侵" },
-        ["霜月"] = new List<string> { "39", "霜月" },
-
-        // 四柱相关
-        ["日耀柱"] = new List<string> { "29", "日耀柱" },
-        ["星旋柱"] = new List<string> { "30", "星旋柱" },
-        ["星云柱"] = new List<string> { "31", "星云柱" },
-        ["星尘柱"] = new List<string> { "32", "星尘柱" },
-        ["一王后"] = new List<string> { "33", "一王后", "任意机械boss" },
-        ["三王后"] = new List<string> { "34", "三王后" },
-        ["一柱后"] = new List<string> { "35", "一柱后" },
-        ["四柱后"] = new List<string> { "36", "四柱后" },
-
-        // 天气时间条件
-        ["血月"] = new List<string> { "40", "血月" },
-        ["雨天"] = new List<string> { "41", "雨天" },
-        ["白天"] = new List<string> { "42", "白天" },
-        ["晚上"] = new List<string> { "43", "晚上" },
-        ["大风天"] = new List<string> { "44", "大风天" },
-
-        // 季节事件
-        ["万圣节"] = new List<string> { "45", "万圣节" },
-        ["圣诞节"] = new List<string> { "46", "圣诞节" },
-        ["派对"] = new List<string> { "47", "派对" },
-
-        // 撒旦军队事件
-        ["黑暗法师"] = new List<string> { "48", "旧日一", "黑暗法师", "撒旦一" },
-        ["食人魔"] = new List<string> { "49", "旧日二", "巨魔", "食人魔", "撒旦二" },
-        ["双足翼龙"] = new List<string> { "50", "旧日三", "贝蒂斯", "双足翼龙", "撒旦三" },
-
-        // 特殊世界种子
-        ["醉酒世界"] = new List<string> { "51", "2020", "醉酒", "醉酒种子", "醉酒世界" },
-        ["十周年世界"] = new List<string> { "52", "2021", "十周年", "十周年种子", "十周年世界" },
-        ["for the worthy"] = new List<string> { "53", "ftw", "真实世界", "真实世界种子", "for the worthy" },
-        ["not the bees"] = new List<string> { "54", "ntb", "蜜蜂世界", "蜜蜂世界种子", "not the bees" },
-        ["饥荒"] = new List<string> { "55", "dst", "饥荒", "永恒领域" },
-        ["颠倒世界"] = new List<string> { "56", "remix", "颠倒", "颠倒世界", "颠倒种子" },
-        ["陷阱世界"] = new List<string> { "57", "noTrap", "陷阱种子", "陷阱世界" },
-        ["天顶世界"] = new List<string> { "58", "天顶", "天顶种子", "缝合种子", "天顶世界", "缝合世界" },
-
-        // 生物群落
-        ["森林"] = new List<string> { "59", "森林" },
-        ["丛林"] = new List<string> { "60", "丛林" },
-        ["沙漠"] = new List<string> { "61", "沙漠" },
-        ["雪原"] = new List<string> { "62", "雪原" },
-        ["洞穴"] = new List<string> { "63", "洞穴" },
-        ["海洋"] = new List<string> { "64", "海洋" },
-        ["地表"] = new List<string> { "65", "地表" },
-        ["太空"] = new List<string> { "66", "太空" },
-        ["地狱"] = new List<string> { "67", "地狱" },
-        ["神圣"] = new List<string> { "68", "神圣" },
-        ["蘑菇"] = new List<string> { "69", "蘑菇" },
-        ["腐化"] = new List<string> { "70", "腐化", "腐化地", "腐化环境" },
-        ["猩红"] = new List<string> { "71", "猩红", "猩红地", "猩红环境" },
-        ["邪恶"] = new List<string> { "72", "邪恶", "邪恶环境" },
-        ["地牢"] = new List<string> { "73", "地牢" },
-        ["墓地"] = new List<string> { "74", "墓地" },
-        ["蜂巢"] = new List<string> { "75", "蜂巢" },
-        ["神庙"] = new List<string> { "76", "神庙" },
-        ["沙尘暴"] = new List<string> { "77", "沙尘暴" },
-        ["天空"] = new List<string> { "78", "天空" },
-
-        // 月相
-        ["满月"] = new List<string> { "79", "满月" },
-        ["亏凸月"] = new List<string> { "80", "亏凸月" },
-        ["下弦月"] = new List<string> { "81", "下弦月" },
-        ["残月"] = new List<string> { "82", "残月" },
-        ["新月"] = new List<string> { "83", "新月" },
-        ["娥眉月"] = new List<string> { "84", "娥眉月" },
-        ["上弦月"] = new List<string> { "85", "上弦月" },
-        ["盈凸月"] = new List<string> { "86", "盈凸月" }
-    };
 
     // 是否解锁怪物图鉴以达到解锁物品掉落的程度（用于独立判断克脑、世吞）
     private static bool IsDefeated(int type)

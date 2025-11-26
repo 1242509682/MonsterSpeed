@@ -168,7 +168,7 @@ internal class AISystem
             }
 
             // 修复：使用正确的字典获取当前值
-            float Value = val[Index];  // 原来是 state.Values[Index]
+            float Value = val[Index]; 
             float newVal = Value;
 
             // 根据模式类型计算新值

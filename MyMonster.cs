@@ -1,13 +1,17 @@
-﻿using Microsoft.Xna.Framework;
+﻿using System.Text;
+using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
+using static MonoMod.InlineRT.MonoModRule;
 
 namespace MonsterSpeed;
 
 //随从怪物结构
 public class SpawnNpcData
 {
+    [JsonProperty("召怪条件", Order = -1)]
+    public string Condition { get; set; } = "默认配置";
     [JsonProperty("怪物ID", Order = 0)]
     public List<int> NPCID = new List<int>();
     [JsonProperty("范围", Order = 1)]
@@ -18,17 +22,15 @@ public class SpawnNpcData
     public float Interval = 300;
     [JsonProperty("以玩家为中心", Order = 5)]
     public bool TarCenter = false;
-
-    [JsonProperty("指示物修改", Order = 11)]
-    public Dictionary<string, string[]> MarkerMods { get; set; } = new Dictionary<string, string[]>();
 }
 
 internal class MyMonster
 {
     #region 召唤怪物方法（增强指示物支持）
-    public static void SpawnMonsters(List<SpawnNpcData> SpawnNpc, NPC npc)
+    public static void SpawnMonsters(Configuration.NpcData data, List<SpawnNpcData> SpawnNpc, NPC npc)
     {
         if (SpawnNpc == null || SpawnNpc.Count == 0) return;
+
 
         // 获取NPC的状态
         var state = StateUtil.GetState(npc);
@@ -39,6 +41,20 @@ internal class MyMonster
         {
             //配置为空
             if (mos == null) continue;
+
+            // 条件检查
+            if (!string.IsNullOrEmpty(mos.Condition))
+            {
+                bool all = true;
+                bool loop = false;
+                var cond = CondFileManager.GetCondData(mos.Condition);
+                Conditions.Condition(npc, new StringBuilder(), data, cond, ref all, ref loop);
+
+                if (!all)
+                {
+                    return;
+                }
+            }
 
             foreach (var id in mos.NPCID)
             {
@@ -77,11 +93,6 @@ internal class MyMonster
                         Stack++;
                         flag = true;
 
-                        // 新增：应用指示物修改
-                        if (mos.MarkerMods != null && mos.MarkerMods.Count > 0)
-                        {
-                            MarkerUtil.SetMarkers(state, mos.MarkerMods, ref Main.rand, npc);
-                        }
                     }
                 }
                 else

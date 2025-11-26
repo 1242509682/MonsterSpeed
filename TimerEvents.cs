@@ -12,12 +12,14 @@ namespace MonsterSpeed;
 //时间事件数据结构
 public class TimerData
 {
-    [JsonProperty("下组事件延长秒数", Order = -105)]
+    [JsonProperty("触发条件", Order = -120)]
+    public string Condition { get; set; } = "默认配置";
+    [JsonProperty("下组事件延长秒数", Order = -106)]
     public int NextAddTimer { get; set; } = 0;
     [JsonProperty("修改防御", Order = -104)]
     public int Defense { get; set; } = 0;
     [JsonProperty("文件播放器", Order = -103)]
-    public List<int> FilePlayList { get; set; } = new List<int>();
+    public List<string> FilePlayList { get; set; } = new List<string>();
     [JsonProperty("播放次数", Order = -102)]
     public int PlayCount { get; set; } = 0;
     [JsonProperty("强制播放", Order = -101)]
@@ -28,20 +30,18 @@ public class TimerData
     public double PauseTime { get; set; }
     [JsonProperty("释放间隔", Order = -98)]
     public double ReleaseTime { get; set; }
-    [JsonProperty("触发条件", Order = -50)]
-    public Conditions Condition { get; set; } = new Conditions() { NpcLift = "0,100" };
     [JsonProperty("行动模式", Order = 1)]
-    public MoveModeData MoveData { get; set; } = new MoveModeData();
+    public MoveModeData MoveData { get; set; }
     [JsonProperty("AI赋值", Order = 50)]
-    public AIModes AIMode { get; set; } = new AIModes();
+    public AIModes AIMode { get; set; } 
     [JsonProperty("发射物品", Order = 51)]
     public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
-    [JsonProperty("指示物修改", Order = 52)]
+    [JsonProperty("指示物修改", Order = -105)]
     public Dictionary<string, string[]> MarkerMods { get; set; } = new Dictionary<string, string[]>();
     [JsonProperty("生成怪物", Order = 53)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
-    [JsonProperty("生成弹幕", Order = 54)]
-    public List<SpawnProjData> SendProj { get; set; } = new List<SpawnProjData>();
+    [JsonProperty("生成弹幕", Order = 55)]
+    public List<string> SendProj { get; set; } = new List<string>();
 }
 
 // 暂停状态类
@@ -55,11 +55,14 @@ public class PauseState
 internal class TimerEvents
 {
     #region 时间事件
-    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, NpcState state, ref bool handled)
+    public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, ref bool handled)
     {
         if (data?.TimerEvent == null || data.TimerEvent.Count <= 0) return;
 
-        var Event = data.TimerEvent[state!.Index];
+        var state = StateUtil.GetState(npc);
+        if (state is null) return;
+
+        var Event = data.TimerEvent[state!.EventIndex];
 
         // 文件播放器处理
         if (state.FileState.Playing)
@@ -76,7 +79,7 @@ internal class TimerEvents
             if (state.PauseState.Paused)
             {
                 // 但仍然检查事件冷却，允许NextEvent切换
-                if ((DateTime.UtcNow - state.UpdateTime).TotalSeconds >= data.ActiveTime)
+                if ((DateTime.UtcNow - state.CooldownTime).TotalSeconds >= data.ActiveTime)
                 {
                     // 强制播放文件检查（即使在暂停状态下也允许）
                     if (Event.FilePlayList != null && Event.FilePlayList.Count > 0 && Event.PlayCount != 0 && Event.NoCond)
@@ -97,24 +100,24 @@ internal class TimerEvents
         ShowCoolText(npc, data, state);
 
         // 事件冷却检查
-        if ((DateTime.UtcNow - state.UpdateTime) >= TimeSpan.FromSeconds(data.ActiveTime))
+        if ((DateTime.UtcNow - state.CooldownTime) >= TimeSpan.FromSeconds(data.ActiveTime))
         {
-            // 指示物条件检查
-            if (!CheckEventConditions(npc, data, Event, mess, state))
-            {
-                NextEvent(data, Event.NextAddTimer, npc, state);
-                return;
-            }
-
             // 启动文件播放器
             if (Event.FilePlayList != null && Event.FilePlayList.Count > 0 && Event.PlayCount != 0)
             {
                 // 检查条件是否满足
                 bool all = true;
                 bool loop = false;
-                if (!Event.NoCond) // 只有非强制播放时才检查条件
+                if (!string.IsNullOrEmpty(Event.Condition) && !Event.NoCond)
                 {
-                    Conditions.Condition(npc, mess, data, Event.Condition, ref all, ref loop);
+                    var cond = CondFileManager.GetCondData(Event.Condition);
+                    if (cond != null)
+                        Conditions.Condition(npc, mess, data, cond, ref all, ref loop);
+                    else
+                    {
+                        mess.Append($" 条件不存在: {Event.Condition}\n");
+                        all = false;
+                    }
                 }
 
                 // 强制播放 或 条件满足时启动文件播放器
@@ -139,7 +142,11 @@ internal class TimerEvents
         {
             var all = true;
             var loop = false;
-            Conditions.Condition(npc, mess, data, Event.Condition, ref all, ref loop);
+            if (!string.IsNullOrEmpty(Event.Condition))
+            {
+                var cond = CondFileManager.GetCondData(Event.Condition);
+                Conditions.Condition(npc, mess, data, cond, ref all, ref loop);
+            }
 
             if (data.Loop && loop)
             {
@@ -169,24 +176,6 @@ internal class TimerEvents
     }
     #endregion
 
-    #region 检查事件条件（集成指示物）
-    private static bool CheckEventConditions(NPC npc, NpcData data, TimerData evt, StringBuilder mess, NpcState state)
-    {
-        // 原有条件检查
-        bool all = true;
-        bool loop = false;
-        Conditions.Condition(npc, mess, data, evt.Condition, ref all, ref loop);
-
-        if (data.Loop && loop)
-            return false;
-
-        if (!all)
-            return false;
-
-        return true;
-    }
-    #endregion
-
     #region 非暂停模式下状态信息显示
     public static void AppendStatusInfo(NPC npc, StringBuilder mess, NpcData data, NpcState state, TimerData Event)
     {
@@ -211,7 +200,7 @@ internal class TimerEvents
             mess.Append("\n");
         }
 
-        mess.Append($" 顺序:[c/A2E4DB:{state!.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
+        mess.Append($" 顺序:[c/A2E4DB:{state!.EventIndex + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
     }
     #endregion
 
@@ -253,7 +242,7 @@ internal class TimerEvents
                 ShowCoolText(npc, data, state);
                 var remain = pause.Duration - elapsedSeconds;
                 var life = (int)(npc.life / (float)npc.lifeMax * 100);
-                mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 暂停剩余:[c/A2E4DB:{remain:F1}秒]\n");
+                mess.Append($" 顺序:[c/A2E4DB:{state.EventIndex + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 暂停剩余:[c/A2E4DB:{remain:F1}秒]\n");
 
                 // 暂停期间只允许强制播放文件，其他事件逻辑被阻止
                 // 但允许NextEvent切换（在TimerEvent中处理）
@@ -273,7 +262,7 @@ internal class TimerEvents
                 // 显示状态切换信息
                 ShowCoolText(npc, data, state);
                 var life = (int)(npc.life / (float)npc.lifeMax * 100);
-                mess.Append($" 顺序:[c/A2E4DB:{state.Index + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 释放结束，进入暂停\n");
+                mess.Append($" 顺序:[c/A2E4DB:{state.EventIndex + 1}/{data.TimerEvent.Count}] 血量:[c/A2E4DB:{life}%] 释放结束，进入暂停\n");
                 return;
             }
             // 释放状态下不返回，允许执行后续事件逻辑
@@ -285,13 +274,13 @@ internal class TimerEvents
     public static void NextEvent(NpcData data, int timer, NPC npc, NpcState state)
     {
         // 更新当前事件的执行次数
-        if (state.EventCounts.ContainsKey(state.Index))
+        if (state.EventCounts.ContainsKey(state.EventIndex))
         {
-            state.EventCounts[state.Index]++;
+            state.EventCounts[state.EventIndex]++;
         }
         else
         {
-            state.EventCounts[state.Index] = 1;
+            state.EventCounts[state.EventIndex] = 1;
         }
 
         // 重置状态
@@ -301,29 +290,10 @@ internal class TimerEvents
         state.LastTextTime = DateTime.UtcNow;
 
         // 移动到下一个事件
-        state.Index = (state.Index + 1) % data.TimerEvent.Count;
+        state.EventIndex = (state.EventIndex + 1) % data.TimerEvent.Count;
         var addTime = timer >= 0 ? timer : 0;
 
-        state.UpdateTime = DateTime.UtcNow.AddSeconds(addTime);
-    }
-    #endregion
-
-    #region 更新事件执行次数
-    private static void UpdateEventExecuteCount(NpcState state, int Index)
-    {
-        if (state.EventCounts == null)
-        {
-            state.EventCounts = new Dictionary<int, int>();
-        }
-
-        if (state.EventCounts.ContainsKey(Index))
-        {
-            state.EventCounts[Index]++;
-        }
-        else
-        {
-            state.EventCounts[Index] = 1;
-        }
+        state.CooldownTime = DateTime.UtcNow.AddSeconds(addTime);
     }
     #endregion
 
@@ -337,7 +307,7 @@ internal class TimerEvents
         }
 
         // 移动模式处理（新增）
-        HandleMoveMode(npc, Event, mess, ref handled);
+        HandleMoveMode(npc, data, Event, mess, ref handled);
 
         if (Event.ShootItemList != null)
         {
@@ -351,10 +321,31 @@ internal class TimerEvents
             AISystem.AIPairs(npc, Event.AIMode, npc.FullName, ref handled);
 
         if (Event.SpawnNPC != null && Event.SpawnNPC.Count > 0)
-            MyMonster.SpawnMonsters(Event.SpawnNPC, npc);
+            MyMonster.SpawnMonsters(data, Event.SpawnNPC, npc);
 
+        // 添加文件引用的弹幕
         if (Event.SendProj != null && Event.SendProj.Count > 0)
-            MyProjectile.SpawnProjectile(data, Event.SendProj, npc);
+        {
+            var allProj = new List<SpawnProjData>();
+
+            foreach (var proj in Event.SendProj)
+            {
+                var file = ProjFileManager.GetData(proj);
+                if (file != null && file.Count > 0)
+                {
+                    allProj.AddRange(file);
+                }
+                else
+                {
+                    mess.Append($" 弹幕文件不存在或为空: {proj}\n");
+                }
+            }
+
+            if (allProj.Count > 0)
+            {
+                MyProjectile.SpawnProjectile(data, allProj, npc);
+            }
+        }
 
         if (Event.AIMode?.BossAI != null)
         {
@@ -378,7 +369,7 @@ internal class TimerEvents
         if (state.PauseState.Paused)
         {
             // 暂停状态下使用主事件计时器
-            ActionTime = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - state.UpdateTime);
+            ActionTime = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - state.CooldownTime);
             text = $"Pass {ActionTime.TotalSeconds:F2}";
             color = Color.Red;
         }
@@ -394,8 +385,8 @@ internal class TimerEvents
         else
         {
             // 正常主事件模式
-            ActionTime = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - state.UpdateTime);
-            text = $"Time {ActionTime.TotalSeconds:F2} [{state.Index + 1}/{data.TimerEvent?.Count ?? 1}]";
+            ActionTime = TimeSpan.FromSeconds(data.ActiveTime) - (DateTime.UtcNow - state.CooldownTime);
+            text = $"Time {ActionTime.TotalSeconds:F2} [{state.EventIndex + 1}/{data.TimerEvent?.Count ?? 1}]";
             color = Color.LightGoldenrodYellow;
         }
 

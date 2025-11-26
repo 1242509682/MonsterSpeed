@@ -24,7 +24,7 @@ public class EventFileData
 public class FilePlayState
 {
     public bool Playing { get; set; } = false; // 是否正在播放文件
-    public List<int> FileSeq { get; set; } = new List<int>(); // 文件播放序列
+    public List<string> FileSeq { get; set; } = new List<string>(); // 文件播放序列
     public int FileIndex { get; set; } = 0; // 当前播放的文件索引
     public int EventIndex { get; set; } = 0; // 当前播放的事件索引
     public DateTime EventTimer { get; set; } = DateTime.UtcNow; // 事件计时器
@@ -71,9 +71,10 @@ internal class FilePlayManager
         // 检查当前文件事件的条件，如果开启强制播放则跳过条件检查
         bool all = true;
         bool loop = false;
-        if (!fs.NoCond) // 只有非强制播放时才检查条件
+        if (!string.IsNullOrEmpty(Event.Condition) && !fs.NoCond) // 只有非强制播放时才检查条件
         {
-            Conditions.Condition(npc, mess, data, Event.Condition, ref all, ref loop);
+            var cond = CondFileManager.GetCondData(Event.Condition);
+            Conditions.Condition(npc, mess, data, cond, ref all, ref loop);
         }
 
         // 显示冷却文本
@@ -95,7 +96,7 @@ internal class FilePlayManager
                 UpdateFilePlay(npc, state); // 更新文件播放进度
                 if (!state.FileState.Playing) // 如果文件播放已完成，返回
                 {
-                    NextEvent(data, data.TimerEvent[state.Index].NextAddTimer, npc, state);
+                    NextEvent(data, data.TimerEvent[state.EventIndex].NextAddTimer, npc, state);
                     return;
                 }
             }
@@ -158,7 +159,7 @@ internal class FilePlayManager
             // 如果文件播放已完成，前进到下一个主事件
             if (!state!.FileState.Playing)
             {
-                NextEvent(data, data.TimerEvent[state.Index].NextAddTimer, npc, state);
+                NextEvent(data, data.TimerEvent[state.EventIndex].NextAddTimer, npc, state);
             }
         }
     }
@@ -250,22 +251,22 @@ internal class FilePlayManager
     #endregion
 
     #region 更新文件播放次数
-    public static void UpdateFilePlayCount(NpcState state, List<int> fileList)
+    public static void UpdateFilePlayCount(NpcState state, List<string> fileList)
     {
         if (state.PlayCounts == null)
         {
-            state.PlayCounts = new Dictionary<int, int>();
+            state.PlayCounts = new Dictionary<string, int>();
         }
 
-        foreach (int fileNumber in fileList)
+        foreach (string fileName in fileList)
         {
-            if (state.PlayCounts.ContainsKey(fileNumber))
+            if (state.PlayCounts.ContainsKey(fileName))
             {
-                state.PlayCounts[fileNumber]++;
+                state.PlayCounts[fileName]++;
             }
             else
             {
-                state.PlayCounts[fileNumber] = 1;
+                state.PlayCounts[fileName] = 1;
             }
         }
     }
@@ -288,7 +289,7 @@ internal class FilePlayManager
     #endregion
 
     #region 开始文件播放
-    public static void StartFilePlay(string npcName, List<int> fileList, int playCount, bool noCond, bool byFile, NpcState state)
+    public static void StartFilePlay(string npcName, List<string> fileList, int playCount, bool noCond, bool byFile, NpcState state)
     {
         try
         {
@@ -296,7 +297,7 @@ internal class FilePlayManager
             var fs = new FilePlayState();
 
             fs.Playing = true;
-            fs.FileSeq = new List<int>(fileList);
+            fs.FileSeq = new List<string>(fileList);
             fs.FileIndex = 0;
             fs.EventIndex = 0;
             fs.EventTimer = DateTime.UtcNow;
@@ -338,13 +339,13 @@ internal class FilePlayManager
     {
         try
         {
-            var fileNum = fs.FileSeq[fs.FileIndex];
+            var fileName = fs.FileSeq[fs.FileIndex];
 
-            var (events, moreActiveTime, SoloCooldown) = LoadEventFile(fileNum);
+            var (events, moreActiveTime, SoloCooldown) = LoadEventFile(fileName);
 
             if (events == null || events.Count == 0)
             {
-                TShock.Log.ConsoleError($"文件加载失败: 文件{fileNum} 不存在或为空");
+                TShock.Log.ConsoleError($"文件加载失败: 文件{fileName} 不存在或为空");
                 return false;
             }
 
@@ -364,23 +365,23 @@ internal class FilePlayManager
     #endregion
 
     #region 加载文件播放（核心方法）
-    public static (List<TimerData>? events, double moreActiveTime, bool SoloCooldown) LoadEventFile(int fileNum)
+    public static (List<TimerData>? events, double moreActiveTime, bool SoloCooldown) LoadEventFile(string fileName)
     {
         try
         {
-            var dir = Path.Combine("tshock", "怪物加速_时间事件集");
+            var dir = Path.Combine(Paths, "时间事件");
             if (!Directory.Exists(dir))
             {
                 TShock.Log.ConsoleError($"事件文件夹不存在: {dir}");
                 return (null, 0, false);
             }
 
-            var pattern = $"{fileNum}.*.json";
+            var pattern = $"{fileName}.json";
             var files = Directory.GetFiles(dir, pattern);
 
             if (files.Length == 0)
             {
-                TShock.Log.ConsoleError($"未找到文件: {fileNum}");
+                TShock.Log.ConsoleError($"未找到文件: {fileName}");
                 return (null, 0, false);
             }
 
@@ -398,7 +399,7 @@ internal class FilePlayManager
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"加载文件失败: {fileNum}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"加载文件失败: {fileName}, 错误: {ex.Message}");
             return (null, 0, false);
         }
     }

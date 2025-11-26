@@ -15,39 +15,20 @@ internal class Configuration
     public string[] MarkerSystemInfo { get; set; } = new string[]
     {
     "【指示物系统】为怪物添加可追踪的状态标记，用于复杂行为控制",
-    "【设置指示物】在【指示物修改】中配置，格式：{标记名:[操作表达式]}",
-    "【检查指示物】在【指示物条件】中配置，格式：{标记名:[条件表达式]}",
-    "【操作表达式】支持：+1、-1、=5、+=2、-=3、*=2、/=2、%=3",
+    "【设置位置】时间事件/行动模式/弹幕生成/怪物生成/弹幕更新",
+    "【操作表达式】支持：+1、-1、=5、+=2、-=3、*=2、/=2、%=3、random:1,10",
     "【条件表达式】支持：>5、<10、>=3、<=8、==5、!=0、=10",
-    "【随机范围】random:1,10 或 rm:1,10 生成1-10的随机数",
-    "【引用其他标记】ref:阶段*2 或 use:计数*1.5 引用其他标记值",
-    "【清除标记】clear 清除指定标记",
+    "【引用机制】ref:阶段*2 引用其他标记值，支持跨标记计算",
+    "【NPC属性】[序号]、[被击]、[击杀]、[耗时]、[x坐标]、[y坐标]、[血量]、[ai0]、[ai1]、[ai2]、[ai3]",
+    "【清除操作】clear 清除指定标记",
+    "【注入AI】将标记值注入弹幕AI：{0:阶段,1:计数*2}",
+    "【速度注入】将速度分量注入AI：{0:2,1:3} X→ai[0], Y→ai[1]",
+    "【多条件检查】一个标记可设多个条件，需全部满足才触发",
     "【复合操作】一个标记可执行多个操作，按顺序执行",
-    "【多条件检查】一个标记可设置多个条件，需全部满足",
-    "【示例修改】{阶段:[+1],计数:[rm:1,5,+=2],状态:[=ref:基础值*2]}",
-    "【示例条件】{阶段:[>=3,<10],计数:[!=0],状态:[>50]}",
-    "【符号说明】+加 -减 *乘 /除 %余 =赋值 >大于 <小于 >=大于等于 <=小于等于 ==等于 !=不等于",
-    "【前缀说明】random:随机范围 ref:引用标记 clear:清除标记",
-    "【时间事件指示物修改】在时间事件中设置：{阶段:[+1],攻击计数:[+1]}",
-    "【移动模式指示物修改】行动模式中设置：{移动阶段:[=1],冷却:[=60]}",
-    "【弹幕生成指示物修改】生成弹幕时设置：{弹幕波次:[+1],威力:[*=1.1]}",
-    "【怪物生成指示物修改】召唤随从时设置：{随从数量:[+1],召唤冷却:[=120]}",
-    "【AI赋值指示物修改】AI变化时设置：{AI状态:[=ref:血量阶段],行为模式:[+1]}",
-    "【指示物注入AI】将标记值注入弹幕AI：{0:阶段,1:计数*2} 注入到ai[0]和ai[1]",
-    "【速度注入AI】将速度分量注入AI：{0:2,1:3} 将速度X注入ai[0]，速度Y注入ai[1]",
-    "【弹幕更新指示物修改】弹幕升级时：{升级次数:[+1],追踪强度:[+=0.2]}",
-    "【范围内怪物指示物】修改范围内怪物：{协同:[=1],目标:[=ref:主目标]}",
-    "【条件联动示例】血量50%触发：{狂暴:[=1],速度:[*=1.5],防御:[*=0.8]}",
-    "【阶段转换示例】多阶段BOSS：{阶段:[+1],技能冷却:[=ref:阶段*30]}",
-    "【计数控制示例】限制技能次数：{使用次数:[+1],剩余次数:[=10-ref:使用次数]}",
-    "【状态循环示例】循环状态：{当前状态:[=ref:当前状态%4+1],状态时间:[=0]}",
-    "【BOSS标志联动】同标志怪物：{团队阶段:[=ref:首领阶段],同步攻击:[=1]}",
-    "【环境适应示例】根据环境：{地形适应:[=ref:当前地形],行为调整:[*=1.2]}",
-    "【复合条件示例】多重条件：{阶段:[>=2],计数:[<5],状态:[!=3]}",
-    "【随机行为示例】随机选择：{行为模式:[rm:1,4],持续时间:[=ref:行为模式*60]}",
-    "【引用计算示例】复杂计算：{最终伤害:[=ref:基础伤害*ref:阶段+ref:加成]}",
-    "【冷却管理示例】技能冷却：{冷却时间:[=30],当前冷却:[-=1]}",
-    "【连锁反应示例】连锁触发：{触发计数:[+1],连锁阶段:[=ref:触发计数%3]}"
+    "【循环检测】自动检测循环引用，避免无限递归",
+    "【应用场景】阶段转换、技能计数、状态循环、冷却管理、随机行为",
+    "【示例修改】{阶段:[+1],计数:[rm:1,5],状态:[=ref:基础值*2]}",
+    "【示例条件】{阶段:[>=3,<10],计数:[!=0],状态:[>50]}"
     };
 
     [JsonProperty("播放文件模式说明", Order = -12)]
@@ -89,7 +70,7 @@ internal class Configuration
     [JsonProperty("怪物ID表", Order = 1)]
     public List<int> NpcList { get; set; }
     [JsonProperty("怪物数据表", Order = 2)]
-    public Dictionary<string, NpcData>? Dict { get; set; } = new Dictionary<string, NpcData>();
+    public List<NpcData>? NpcDatas { get; set; } = new List<NpcData>();
     #endregion
 
     #region 怪物数据结构
@@ -97,6 +78,8 @@ internal class Configuration
     {
         [JsonProperty("标志", Order = -10)]
         public string Flag { get; set; } = "";
+        [JsonProperty("怪物ID", Order = -9)]
+        public List<int> Type { get; set; } = new List<int>();
         [JsonProperty("死亡次数", Order = -3)]
         public int DeadCount { get; set; }
         [JsonProperty("自动仇恨", Order = -2)]
@@ -122,13 +105,16 @@ internal class Configuration
         [JsonProperty("倒时间隔", Order = 23)]
         public double TextInterval { get; set; } = 1000f;
         [JsonProperty("倒时渐变", Order = 23)]
-        public bool TextGradient { get; set; } = true;
+        public bool TextGradient { get; set; } = false;
         [JsonProperty("渐变字距", Order = 24)]
         public int TextRange { get; set; } = 16;
         [JsonProperty("冷却时间", Order = 25)]
         public double ActiveTime { get; set; }
-        [JsonProperty("时间事件", Order = 26)]
+        [JsonProperty("独立播放", Order = 26)]
+        public List<IndiePlay> IndiePlayers { get; set; } = new List<IndiePlay>();
+        [JsonProperty("时间事件", Order = 27)]
         public List<TimerData> TimerEvent { get; set; }
+
 
         public NpcData() { }
         public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double activeTimer)
@@ -202,7 +188,8 @@ internal class Configuration
     #endregion
 
     #region 读取与创建配置文件方法
-    public static readonly string FilePath = Path.Combine(TShock.SavePath, "怪物加速.json");
+    internal static readonly string Paths = Path.Combine(TShock.SavePath, "怪物加速");
+    public static readonly string FilePath = Path.Combine(Paths, "怪物加速.json");
     public void Write()
     {
         var settings = new JsonSerializerSettings
@@ -253,192 +240,37 @@ internal class Configuration
             621, 636, 657, 668
         };
 
-        Dict!["克苏鲁之眼"] = new NpcData(0, 62, 25f, 35, 5)
+        NpcDatas = new List<NpcData>() 
         {
-            AutoHealInterval = 5,
-            Loop = true,
-            TimerEvent = new List<TimerData>()
+
+            new NpcData(0, 62, 25f, 35, 5)
             {
-                new TimerData
+                Flag = "克苏鲁之眼",
+                Type = new List<int> { 4 },
+                AutoHealInterval = 5,
+                Loop = true,
+                IndiePlayers = new List<IndiePlay>()
                 {
-                    Condition = new Conditions () { NpcLift = "0,100" },
-                    MoveData = new MoveModeData(),
-                    SendProj = new List<SpawnProjData>()
-                    {
-                        new SpawnProjData()
-                        {
-                            Type = 115,
-                            Damage = 10,
-                            Stack = 15,
-                            Interval = 5f,
-                            KnockBack = 8,
-                            Velocity = 5f,
-                            Radius = 0f,
-                            Angle = 0f,
-                            Rotate = 0f,
-                            AI = new Dictionary<int, float>() { { 0, 50f } },
-                            Life = 180,
-                            UpdateTime = 500,
-                            UpdateProj = new List<UpdateProjData>
-                            {
-                                new UpdateProjData()
-                                {
-                                    NewType = 77,
-                                    Velocity = 10,
-                                    Condition = new Conditions()
-                                    {
-                                        Timer = "1,2"
-                                    }
-                                },
-                                new UpdateProjData()
-                                {
-                                    NewType = 454,
-                                    Velocity = 20,
-                                    Condition = new Conditions()
-                                    {
-                                        Timer = "2,4"
-                                    }
-                                },
-                            },
-                        },
-                    },
+                    new IndiePlay()
                 },
 
-                new TimerData
+                TimerEvent = new List<TimerData>()
                 {
-                    NextAddTimer = 0,
-                    Defense = 50,
-                    Condition = new Conditions()
+                    new TimerData
                     {
-                        NpcLift = "0,50",
+                        Condition = "默认配置",
+                        SendProj = new List<string>() { "多段更新" }
                     },
-
-                    SendProj = new List<SpawnProjData>()
+                
+                    new TimerData
                     {
-                        new SpawnProjData()
-                        {
-                            Type = 671,
-                            Damage = 10,
-                            Stack = 5,
-                            Interval = 10f,
-                            KnockBack = 8,
-                            Velocity = 100f,
-                            Radius = 0f,
-                            Angle = 15f,
-                            Rotate = 2f,
-                            AI = new Dictionary<int, float>(),
-                            Life = 180,
-                        }
-                    }
-                },
-
-                new TimerData
-                {
-                    NextAddTimer = 0,
-                    Defense = 50,
-                    Condition = new Conditions()
-                    {
-                        NpcLift = "0,25",
-                        AIPairs = new Dictionary<int, string[]>()
-                        {
-                            { 0,new string[]{ "!=5", ">=3", "<20" }},
-                            { 1,new string[]{ ">2", "<100" }},
-                            { 2,new string[]{ ">=0" }},
-                            { 3,new string[]{ "<=3" }},
-                        }
+                        NextAddTimer = 0,
+                        Defense = 50,
+                        Condition = "半血",
+                        SendProj = new List<string>(){ "默认弹幕", "散射弹幕" }
                     },
-
-                    ShootItemList = new HashSet<int>(){ 71,75 },
-
-                    SpawnNPC = new List<SpawnNpcData>()
-                    {
-                        new SpawnNpcData()
-                        {
-                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 133 }
-                        }
-                    },
-                },
+                }
             }
-        };
-
-        Dict!["史莱姆王"] = new NpcData(0, 62f, 25, 35, 5)
-        {
-            Loop = true,
-            Teleport = 10,
-            AutoHealInterval = 5,
-            TimerEvent = new List<TimerData>()
-            {
-                new TimerData
-                {
-                    Condition = new Conditions() { NpcLift = "50,100" },
-                    SpawnNPC = new List<SpawnNpcData>()
-                    {
-                        new SpawnNpcData()
-                        {
-                            NpcStack = 5, Interval = 300, NPCID = new List<int>(){ 184, 204 },
-                        }
-                    },
-
-                    SendProj = new List<SpawnProjData>()
-                    {
-                        new SpawnProjData()
-                        {
-                            Type = 671,
-                            Life = 180,
-                            Damage = 10,
-                            Stack = 10,
-                            Interval = 8f,
-                            KnockBack = 8,
-                            Radius = 10f,
-                            Angle = 15f,
-                            Rotate = 0f,
-                            Velocity = 30.0f,
-                        },
-                    },
-                },
-
-                new TimerData
-                {
-                    Defense = 50,
-                    Condition = new Conditions () { NpcLift = "0,50" },
-                    SpawnNPC = new List<SpawnNpcData>()
-                    {
-                        new SpawnNpcData()
-                        {
-                            NpcStack = 2, Interval = 300, NPCID = new List<int>(){ 658, 659, 660 }
-                        }
-                    },
-
-                    SendProj = new List<SpawnProjData>()
-                    {
-                        new SpawnProjData()
-                        {
-                            Type = 351,
-                            Life = 60,
-                            Damage = 10,
-                            Stack = 30,
-                            Interval = 1f,
-                            KnockBack = 8,
-                            Radius = 0f,
-                            Angle = 360f,
-                            Rotate = 2f,
-                            Velocity = 20f,
-                            AI = new Dictionary<int, float>() { { 0, 50f } },
-                        },
-                    }
-                },
-            },
-
-        };
-
-        Dict!["世界吞噬怪"] = new NpcData(0, 62 * 2.5f, 35f, 35, 5)
-        {
-            Teleport = 20,
-        };
-
-        Dict!["毁灭者"] = new NpcData(0, 62 * 2f, 35f, 35, 5)
-        {
-            Teleport = 20,
         };
     }
     #endregion
