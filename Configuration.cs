@@ -94,27 +94,20 @@ internal class Configuration
         public int TrackSpeed { get; set; }
         [JsonProperty("传送冷却", Order = 1)]
         public int Teleport { get; set; } = -1;
-
         [JsonProperty("回血间隔", Order = 18)]
         public int AutoHealInterval { get; set; } = 10;
         [JsonProperty("百分比回血", Order = 19)]
         public int AutoHeal { get; set; } = 1;
-
-        [JsonProperty("循环执行", Order = 22)]
-        public bool Loop { get; set; }
         [JsonProperty("倒时间隔", Order = 23)]
         public double TextInterval { get; set; } = 1000f;
         [JsonProperty("倒时渐变", Order = 23)]
         public bool TextGradient { get; set; } = false;
         [JsonProperty("渐变字距", Order = 24)]
         public int TextRange { get; set; } = 16;
-        [JsonProperty("冷却时间", Order = 25)]
-        public double ActiveTime { get; set; }
-        [JsonProperty("独立播放", Order = 26)]
-        public List<IndiePlay> IndiePlayers { get; set; } = new List<IndiePlay>();
+        [JsonProperty("执行文件", Order = 26)]
+        public List<FilePlayData> FilePlay { get; set; } = new List<FilePlayData>();
         [JsonProperty("时间事件", Order = 27)]
         public List<TimerData> TimerEvent { get; set; }
-
 
         public NpcData() { }
         public NpcData(int deadCount, float trackRange, float trackstopRange, int trackSpeed, double activeTimer)
@@ -123,7 +116,6 @@ internal class Configuration
             this.TrackRange = trackRange;
             this.TrackStopRange = trackstopRange;
             this.TrackSpeed = trackSpeed;
-            this.ActiveTime = activeTimer;
         }
     }
     #endregion
@@ -240,37 +232,61 @@ internal class Configuration
             621, 636, 657, 668
         };
 
-        NpcDatas = new List<NpcData>() 
+        NpcDatas = new List<NpcData>()
         {
-
             new NpcData(0, 62, 25f, 35, 5)
             {
                 Flag = "克苏鲁之眼",
-                Type = new List<int> { 4 },
+                Type = new List<int> { 4, 50 },
                 AutoHealInterval = 5,
-                Loop = true,
-                IndiePlayers = new List<IndiePlay>()
-                {
-                    new IndiePlay()
-                },
-
                 TimerEvent = new List<TimerData>()
                 {
                     new TimerData
                     {
+                        CoolTime = 10,
                         Condition = "默认配置",
-                        SendProj = new List<string>() { "多段更新" }
+                        SendProj = new List<string>() { "多段更新" },
                     },
-                
+
                     new TimerData
                     {
-                        NextAddTimer = 0,
+                        CoolTime = 8,
                         Defense = 50,
                         Condition = "半血",
-                        SendProj = new List<string>(){ "默认弹幕", "散射弹幕" }
+                        SendProj = new List<string>(){ "默认弹幕" },
+                        MoveData = new MoveModeData()
+                        {
+                            Mode = MoveMode.Orbit,
+                        },
                     },
+
+                    new TimerData
+                    {
+                        Defense = 50,
+                        Condition = "史王不在场",
+                        SpawnNPC = new List<SpawnNpcData>()
+                        {
+                            new SpawnNpcData()
+                            {
+                                NPCID = new List<int>{ 50 },
+                                NpcStack = 1
+                            }
+                        },
+                        MarkerList = new List<MstMarkerMod>()
+                        {
+                            new MstMarkerMod()
+                            {
+                                Flag = "",
+                                MarkerMods = new Dictionary<string, string[]>()
+                                {
+                                    { "已召唤史王", new string[] { "=1" } }
+                                }
+                            }
+                        }
+                    }
                 }
-            }
+            },
+
         };
     }
     #endregion

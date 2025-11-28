@@ -222,7 +222,6 @@ internal class Command
                 var fd = new EventFileData
                 {
                     EventName = $"{name}的事件{idx}",
-                    MoreActiveTime = 0,
                     TimerEvents = new List<TimerData> { data }
                 };
 
@@ -320,7 +319,6 @@ internal class Command
             var fd = new EventFileData
             {
                 EventName = $"{name}的当前事件",
-                MoreActiveTime = 0,
                 TimerEvents = new List<TimerData> { evt }
             };
 

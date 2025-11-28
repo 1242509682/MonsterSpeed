@@ -16,14 +16,14 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 5);
+    public override Version Version => new Version(1, 3, 6);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
     #region 注册与释放   
     public MonsterSpeed(Main game) : base(game)
     {
-        MyProjectile.UpdateState = new UpdateProjInfo[1001];
+        UpdateProjectile.UpdateState = new UpdateProjState[1001];
     }
 
     public override void Initialize()
@@ -35,8 +35,8 @@ public class MonsterSpeed : TerrariaPlugin
 
         LoadConfig();
         CondFileManager.Init(); // 新增：初始化触发条件文件系统
-        ProjFileManager.Init(); // 新增：初始化弹幕文件系统
-        UpProjFileManager.Init(); // 新增：初始化更新弹幕文件系统
+        SpawnProjectileFile.Init(); // 新增：初始化弹幕文件系统
+        UpdateProjectileFile.Init(); // 新增：初始化更新弹幕文件系统
         GeneralHooks.ReloadEvent += ReloadConfig;
         GetDataHandlers.KillMe += KillMe!;
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
@@ -92,7 +92,7 @@ public class MonsterSpeed : TerrariaPlugin
 
         if (!hasConfig)
         {
-            NpcData nd = NewData();
+            NpcData nd = NewData(npc.FullName);
             nd.Type = new List<int> { npc.netID }; // 设置怪物ID
             nd.Flag = npc.FullName; // 使用怪物全名作为标志
             Config.NpcDatas.Add(nd);
@@ -100,13 +100,11 @@ public class MonsterSpeed : TerrariaPlugin
 
             var s = StateUtil.GetState(npc);
             s.EventIndex = 0;
-            s.ProjIndex = 0;
+            s.SendProjIndex = 0;
             s.Struck = 0;
             s.KillPlay = 0;
             s.ActiveTime = 0;
-            s.FileState = new FilePlayState();
-            s.PauseState = new PauseState();
-            s.CooldownTime = DateTime.UtcNow;
+            s.CooldownTime = new Dictionary<int, DateTime>();
             s.LastTextTime = DateTime.UtcNow;
             s.MoveState = new MoveModeState();
             s.EventCounts = new Dictionary<int, int>();
@@ -120,7 +118,7 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 创建新数据
-    internal static NpcData NewData()
+    internal static NpcData NewData(string name = null)
     {
         var newData = new Configuration.NpcData()
         {
@@ -129,19 +127,22 @@ public class MonsterSpeed : TerrariaPlugin
             TrackSpeed = 35,
             TrackRange = 62,
             TrackStopRange = 25,
-            ActiveTime = 5f,
             TextInterval = 1000f,
-            IndiePlayers = new List<IndiePlay>()
+            FilePlay = new List<FilePlayData>()
             {
-                new IndiePlay()
+                new FilePlayData()
                 {
+                    Name = name + "的事件",
+                    Flag = name,
                     Cond = "默认配置"
+
                 }
             },
             TimerEvent = new List<TimerData>()
             {
                 new TimerData()
                 {
+                    CoolTime = 5,
                     Condition = "默认配置"
                 }
             },
@@ -165,13 +166,8 @@ public class MonsterSpeed : TerrariaPlugin
         // 清理传送和回血记录
         Teleport.Remove(args.npc.whoAmI);
         HealTimes.Remove(args.npc.whoAmI);
-
-        // 新增：清理独立播放器相关状态
-        var state = StateUtil.GetState(args.npc);
-        if (state?.IndieStates != null)
-        {
-            state.IndieStates.Clear();
-        }
+        // 清理弹幕更新状态
+        UpdateProjectile.ClearStates(args.npc.whoAmI);
 
         // 修改：更新配置数据 - 查找对应的NpcData
         var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(args.npc.netID));
@@ -204,15 +200,13 @@ public class MonsterSpeed : TerrariaPlugin
                 var state = StateUtil.GetState(npc);
                 state.KillPlay++;
             }
-
-            TShock.Utils.Broadcast($"怪物 whoAmI : {npc.whoAmI} - {npc.FullName}", 255, 255, 255);
         }
     }
     #endregion
 
     #region 怪物加速核心方法
     private static DateTime BroadcastTime = DateTime.UtcNow; // 跟踪最后一次广播时间
-    private static long Timer = 0; // 跟踪最后一次广播时间
+    private static long Timer = 0; // 计数器
     private void OnNpcAiUpdate(NpcAiUpdateEventArgs args)
     {
         var mess = new StringBuilder(); //用于存储广播内容
@@ -243,7 +237,7 @@ public class MonsterSpeed : TerrariaPlugin
 
         var handled = false;
         TimerEvents.TimerEvent(npc, mess, data, ref handled); //时间事件
-        IndieManager.HandleAll(npc, mess, data, StateUtil.GetState(npc), ref handled); // 新增：独立文件播放器（并行处理）
+        FilePlayManager.HandleAll(npc, mess, data, StateUtil.GetState(npc), ref handled); // 执行文件（并行处理）
 
         TrackMode(npc, data); //超距离追击
         npc.netUpdate = true;
@@ -252,103 +246,179 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
-    #region 超距离追击模式
-    private Dictionary<int, DateTime> Teleport = new Dictionary<int, DateTime>(); // 跟踪每个NPC上次传送的时间
+    #region 修复：超距离追击模式（解决传送到0,0问题）
+    private Dictionary<int, DateTime> Teleport = new Dictionary<int, DateTime>();
     private void TrackMode(NPC npc, NpcData data)
     {
         if (data == null || !data.AutoTrack) return;
 
-        NPCAimedTarget tar = npc.GetTargetData(true); // 获取玩家与怪物的距离和相对位置向量
-        var dict = tar.Center - npc.Center; // 目标到NPC的方向向量
-        var range = Vector2.Distance(tar.Center, npc.Center);
+        // 修复1：检查目标有效性
+        if (!IsValidTarget(npc, data))
+        {
+            // 尝试寻找有效目标
+            SafeAutoTarget(npc, data);
+            // 如果仍然没有有效目标，直接返回
+            if (!IsValidTarget(npc, data))
+                return;
+        }
+
+        var plr = Main.player[npc.target];
+        var dict = plr.Center - npc.Center;
+        var range = Vector2.Distance(plr.Center, npc.Center);
 
         if (data.TrackRange != 0)
         {
-            // 使用平方距离比较优化性能
-            float TrackRange = data.TrackRange * 16f;
-            float TrackStopRange = data.TrackStopRange * 16f;
-            // 计算中间区域范围
+            // 修复2：使用PxUtil进行距离转换
+            float TrackRange = PxUtil.ToPx(data.TrackRange);
+            float TrackStopRange = PxUtil.ToPx(data.TrackStopRange);
             float SmoothRange = TrackStopRange + (TrackRange - TrackStopRange) * 0.5f;
 
-            if (range > TrackRange) // 超距离追击
+            if (range > TrackRange)
             {
-                // 动态速度调整：距离越远速度越快
+                // 动态速度调整
                 float dicRatio = (range - TrackRange) / TrackRange;
                 float dySpeed = data.TrackSpeed * (1f + Math.Min(dicRatio, 1f) * 0.5f);
 
-                // 优化速度计算
-                Vector2 speedMax = dict * dySpeed + tar.Velocity * 0.3f;
+                Vector2 speedMax = dict * dySpeed + plr.velocity * 0.3f;
                 if (speedMax.Length() > dySpeed)
                 {
                     speedMax.Normalize();
                     speedMax *= dySpeed;
                 }
 
-                // 平滑速度过渡
                 npc.velocity = Vector2.Lerp(npc.velocity, speedMax, 0.6f);
 
-                // 智能目标切换：只在很远的距离切换
+                // 智能目标切换
                 if (range > TrackRange * 1.5f)
                 {
-                    AutoTar(npc, data);
+                    SafeAutoTarget(npc, data);
                 }
 
-                // 优化传送逻辑
+                // 修复3：安全的传送逻辑
                 if (data.Teleport > 0)
                 {
-                    SmartTeleport(npc, data, tar, range);
+                    SafeTeleport(npc, data, plr, range, TrackRange);
                 }
             }
-            else if (range > TrackStopRange && range <= SmoothRange) // 中间区域平滑处理
+            else if (range > TrackStopRange && range <= SmoothRange)
             {
                 npc.velocity *= 0.95f;
             }
-            else if (range < TrackStopRange)  // 在最小距离内停止更新恢复原版AI行为
+            else if (range < TrackStopRange)
             {
                 return;
             }
         }
     }
-    #endregion
 
-    #region 智能传送方法
-    private void SmartTeleport(NPC npc, NpcData data, NPCAimedTarget tar, float range)
+    // 修复：目标有效性检查
+    private bool IsValidTarget(NPC npc, NpcData data)
     {
-        bool canTeleport = !Teleport.ContainsKey(npc.whoAmI) ||
-                          (DateTime.UtcNow - Teleport[npc.whoAmI]).TotalSeconds >= data.Teleport;
+        if (npc.target < 0 || npc.target >= Main.maxPlayers)
+            return false;
 
-        // 只在足够远的距离传送，避免频繁传送
-        if (canTeleport && range > data.TrackRange * 20f)
+        var plr = Main.player[npc.target];
+        return PxUtil.IsValidPlr(plr) && plr.Center != Vector2.Zero;
+    }
+
+    // 修复：安全的自动目标
+    private void SafeAutoTarget(NPC npc, NpcData data)
+    {
+        if (data.AutoTarget)
         {
-            // 尝试找到安全传送位置
-            Vector2 safePos = FindSafePosition(tar.Center, data.TrackStopRange * 16f);
-            if (safePos != Vector2.Zero)
+            float SpeedX = npc.velocity.X;
+
+            // 使用PxUtil寻找最近的有效玩家
+            Player plr2 = new Player();
+            float Distance = float.MaxValue;
+            float maxDistance = PxUtil.ToPx(data.TrackRange * 3f);
+
+            for (int i = 0; i < Main.maxPlayers; i++)
             {
-                npc.Teleport(safePos, 10);
-                Teleport[npc.whoAmI] = DateTime.UtcNow;
+                var plr = Main.player[i];
+                if (plr is null || !plr.active || plr.dead ||
+                    !PxUtil.IsValidPlr(plr) || plr.Center == Vector2.Zero)
+                    continue;
+
+                float distance = PxUtil.DistanceSquared(npc.Center, plr.Center);
+                if (distance < Distance && distance <= maxDistance * maxDistance)
+                {
+                    Distance = distance;
+                    plr2 = plr;
+                }
+            }
+
+            if (plr2 != null && !plr2.dead && plr2.active)
+            {
+                npc.target = plr2.whoAmI;
+                npc.netSpam = 0;
+
+                // 保持原有的移动方向逻辑
+                npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
+
+                if (SpeedX * npc.velocity.X < 0)
+                {
+                    npc.velocity.X *= 0.7f;
+                }
             }
         }
     }
-    #endregion
 
-    #region 传送安全位置检测
-    private Vector2 FindSafePosition(Vector2 Center, float TrackStopRange)
+    // 修复：安全的传送方法
+    private void SafeTeleport(NPC npc, NpcData data, Player plr, float range, float trackRange)
+    {
+        // 检查传送冷却
+        bool canTp = !Teleport.ContainsKey(npc.whoAmI) ||
+                      (DateTime.UtcNow - Teleport[npc.whoAmI]).TotalSeconds >= data.Teleport;
+
+        // 只在足够远的距离传送，避免频繁传送
+        if (canTp && range > trackRange * 20f)
+        {
+            // 使用PxUtil寻找安全位置
+            Vector2 safePos = FindSafePos(plr.Center, PxUtil.ToPx(data.TrackStopRange));
+            if (safePos != Vector2.Zero && PxUtil.InWorldBounds(safePos))
+            {
+                npc.Teleport(safePos, 10);
+                Teleport[npc.whoAmI] = DateTime.UtcNow;
+
+                // 传送后重新寻找目标
+                SafeAutoTarget(npc, data);
+            }
+        }
+    }
+
+    // 查找安全传送位置
+    private Vector2 FindSafePos(Vector2 center, float dice)
     {
         // 在目标周围随机寻找安全位置
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 10; i++) // 增加尝试次数
         {
-            Vector2 testPos = Center + new Vector2(Main.rand.Next(-80, 81), Main.rand.Next(-80, 81));
+            // 使用PxUtil生成随机偏移
+            Vector2 offset = PxUtil.RandomOffset(dice * 0.8f, dice * 1.2f);
+            Vector2 testPos = center + offset;
 
-            // 简单的位置有效性检查
-            Tile tile = (Tile)Framing.GetTileSafely((int)testPos.X / 16, (int)testPos.Y / 16);
-            if (!tile.active() || !Main.tileSolid[tile.type])
+            // 使用PxUtil检查世界边界和位置有效性
+            if (PxUtil.InWorldBounds(testPos) && IsPositionSafe(testPos))
             {
                 return testPos;
             }
         }
 
-        // 没找到安全位置就传送到追击停止范围
-        return new Vector2(Center.X + TrackStopRange, Center.Y + TrackStopRange);
+        // 没找到安全位置就返回一个相对安全的位置（不在0,0）
+        Vector2 fallbackPos = center + new Vector2(dice, dice);
+        return PxUtil.InWorldBounds(fallbackPos) ? fallbackPos : center;
+    }
+
+    // 检查传送位置安全性
+    private bool IsPositionSafe(Vector2 pos)
+    {
+        // 检查是否在固体方块内
+        Point tilePos = pos.ToTileCoordinates();
+        if (tilePos.X < 0 || tilePos.X >= Main.maxTilesX || tilePos.Y < 0 || tilePos.Y >= Main.maxTilesY)
+            return false;
+
+        Tile tile = (Tile)Main.tile[tilePos.X, tilePos.Y];
+        return !(tile.active() && Main.tileSolid[tile.type]);
     }
     #endregion
 

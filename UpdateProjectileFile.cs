@@ -18,7 +18,7 @@ public class UpProjFileData
 }
 
 // 更新弹幕文件管理器
-internal class UpProjFileManager
+internal class UpdateProjectileFile
 {
     #region 文件路径
     public static readonly string UpdateProjectileDir = Path.Combine(TShock.SavePath, "怪物加速", "更新弹幕配置");
@@ -55,41 +55,61 @@ internal class UpProjFileManager
             {
                 new UpProjFileData
                 {
-                    Name = "默认更新弹幕",
-                    Description = "基础更新弹幕配置",
-                    UpdateProjectiles = new List<UpdateProjData>
-                    {
-                        new UpdateProjData
-                        {
-                            NewType = 0,
-                            ExtraTime = 0,
-                            Velocity = 0f
-                        }
-                    }
-                },
-
-                new UpProjFileData
-                {
                     Name = "追踪弹幕",
                     Description = "自动追踪玩家的弹幕",
                     UpdateProjectiles = new List<UpdateProjData>
                     {
                         new UpdateProjData
                         {
-                            NewType = 0,
+                            NewType = 1,
+                            UpdateTime = 250f,
                             ExtraTime = 60,
-                            Homing = true,
-                            TarType = 1,
-                            HomingStrength = 0.1f,
-                            MaxHomingAngle = 30f
+                            HomingMode = new HomingData()
+                            {
+                                Homing = true,
+                                TarType= 1,
+                                ModeType = 1,
+                                HomeStr = 1f,
+                                MaxAngle = 45f,
+                                SmartPred = true,
+                            }
+                        },
+                        new UpdateProjData
+                        {
+                            NewType = 2,
+                            UpdateTime = 500f,
+                            ExtraTime = 60,
+                            HomingMode = new HomingData()
+                            {
+                                Homing = true,
+                                TarType= 1,
+                                ModeType = 1,
+                                HomeStr = 1f,
+                                MaxAngle = 45f,
+                                SmartPred = true,
+                            }
+                        },
+                        new UpdateProjData
+                        {
+                            NewType = -1,
+                            UpdateTime = 250f,
+                            ExtraTime = 60,
+                            HomingMode = new HomingData()
+                            {
+                                Homing = true,
+                                TarType= 1,
+                                HomeStr = 1f,
+                                MaxAngle = 45f,
+                                SmartPred = true,
+                            }
                         }
                     }
                 },
 
                 new UpProjFileData
                 {
-                    Name = "二次更新",
-                    Description = "二次更新弹幕",
+                    Name = "克眼二更弹幕",
+                    Description = "克苏鲁之眼二次更新弹幕",
                     UpdateProjectiles = new List<UpdateProjData>
                     {
                         new UpdateProjData()
@@ -105,7 +125,8 @@ internal class UpProjFileManager
                             Condition = "默认配置"
                         },
                     }
-                }
+                },
+
 
             };
 

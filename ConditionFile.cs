@@ -56,7 +56,31 @@ internal class CondFileManager
                 new CondData { Name = "低血", Desc = "0-30%血触发", Cond = new Conditions { NpcLift = "0,30" } },
                 new CondData { Name = "中血", Desc = "31-70%血触发", Cond = new Conditions { NpcLift = "31,70" } },
                 new CondData { Name = "高血", Desc = "71-100%血触发", Cond = new Conditions { NpcLift = "71,100" } },
-                new CondData { Name = "濒死", Desc = "低于10%血触发", Cond = new Conditions { NpcLift = "0,10" } }
+                new CondData { Name = "濒死", Desc = "低于10%血触发", Cond = new Conditions { NpcLift = "0,10" } },
+                new CondData { Name = "史王不在场", Desc = "击败史莱姆王后,史莱姆王不在场时触发", Cond = new Conditions 
+                {
+                    Progress = new List<string>(){ "史莱姆王" },
+                    NpcLift = "0,30", // BOSS血量在0%-30%之间
+                    Range = 84, // 与玩家距离在84格内
+                    RangeMonsters =  new Conditions.RangeMonsterCondition() 
+                    {
+                        MstID = 50 , // 史莱姆王ID
+                        Range = 84,
+                        MatchCnt = 0
+                    },
+
+                    ExecuteCount = new Dictionary<int, int>()
+                    {
+                        { 0, 1 },  // 事件0至少执行过1次
+                        { 1, 1 }   // 事件1至少执行过1次
+                    },
+
+                    MarkerConds = new Dictionary<string, string[]>()
+                    {
+                        { "已召唤史王", new string[] { "==0" } }
+                    }
+                }},
+
             };
 
             foreach (var cond in defaults)
@@ -64,7 +88,7 @@ internal class CondFileManager
                 SaveCond(cond);
             }
 
-            TShock.Log.ConsoleInfo($"已创建 {defaults.Count} 个条件文件");
+            TShock.Log.ConsoleInfo($"已创建 {defaults.Count} 个限制条件文件");
         }
         catch (Exception ex)
         {

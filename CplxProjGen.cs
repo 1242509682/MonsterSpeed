@@ -1,6 +1,8 @@
-﻿using Microsoft.Xna.Framework;
+﻿using System.Data;
+using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
+using TShockAPI;
 
 namespace MonsterSpeed;
 
@@ -14,20 +16,14 @@ public class CplxProjParams
     [JsonProperty("启用位置偏移", Order = 101)]
     public bool OffsetEnabled { get; set; } = false;
 
-    [JsonProperty("圆形数量", Order = 102)]
-    public int RadialCnt { get; set; } = 0;
     [JsonProperty("圆形角度", Order = 103)]
     public int RadialAng { get; set; } = 0;
     [JsonProperty("圆形半径格数", Order = 104)]
     public int RadialR { get; set; } = 0;
     [JsonProperty("圆形起始角", Order = 105)]
     public int StartAng { get; set; } = 0;
-    [JsonProperty("角度数量", Order = 106)]
-    public int AngCnt { get; set; } = 0;
     [JsonProperty("角度分散", Order = 107)]
     public float AngDisp { get; set; } = 0f;
-    [JsonProperty("偏移数量", Order = 108)]
-    public int OffsetCnt { get; set; } = 0;
     [JsonProperty("偏移量XY/格", Order = 109)]
     public string Offset { get; set; } = "0,0";
 }
@@ -36,121 +32,94 @@ public class CplxProjParams
 public static class CplxProjGen
 {
     #region 生成复杂弹幕
-    public static int SpawnCplxProj(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
+    public static void SpawnCplxProj(SpawnProjData data, NPC npc, Vector2 basePos, Vector2 baseVel, NpcState state)
     {
-        if (proj.CplxParams == null ||
-            (!proj.CplxParams.RadialEnabled && !proj.CplxParams.AngularEnabled && !proj.CplxParams.OffsetEnabled))
-            return 0;
+        if (data.CplxParams == null ||
+            (!data.CplxParams.RadialEnabled && !data.CplxParams.AngularEnabled && !data.CplxParams.OffsetEnabled))
+            return;
 
-        int Count = 0;
+        // 使用现有的发射计数器
+        int currStack = state.SendStack[state.SendProjIndex];
+
+        // 检查是否已经发射完所有弹幕
+        if (currStack >= data.Stack)
+            return;
+
 
         // 应用圆形分布模式
-        if (proj.CplxParams.RadialEnabled)
+        if (data.CplxParams.RadialEnabled)
         {
-            Count += SpawnRadial(proj, npc, basePos, baseVel);
+            SpawnRadial(data, npc, basePos, baseVel, state, currStack);
         }
 
         // 应用角度分散模式
-        if (proj.CplxParams.AngularEnabled)
+        if (data.CplxParams.AngularEnabled)
         {
-            Count += SpawnAngular(proj, npc, basePos, baseVel);
+            SpawnAngular(data, npc, basePos, baseVel, state, currStack);
         }
 
         // 应用位置偏移模式
-        if (proj.CplxParams.OffsetEnabled)
+        if (data.CplxParams.OffsetEnabled)
         {
-            Count += SpawnOffset(proj, npc, basePos, baseVel);
+            SpawnOffset(data, npc, basePos, baseVel, state, currStack);
         }
-
-        return Count;
     }
     #endregion
 
-    #region 圆形分布弹幕
-    private static int SpawnRadial(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
+    #region 圆形分布弹幕（共用计数器）
+    private static void SpawnRadial(SpawnProjData data, NPC npc, Vector2 basePos, Vector2 baseVel, NpcState state, int currentIndex)
     {
-        var param = proj.CplxParams;
-        // 修改：使用SpawnProjData的Stack作为数量
-        int radialCount = proj.Stack > 0 ? proj.Stack : param.RadialCnt;
-        if (radialCount <= 0 || param.RadialR <= 0)
-            return 0;
+        var param = data.CplxParams;
+        if (data.Stack <= 0 || param.RadialR <= 0) return;
 
-        int Count = 0;
         float radiusPixels = PxUtil.ToPx(param.RadialR);
-        double angleStep = 360.0 / radialCount; // 自动计算角度步长
-        double currentAngle = param.StartAng;
+        double angleStep = 360.0 / data.Stack;
 
-        for (int i = 0; i < radialCount; i++)
-        {
-            // 计算圆形分布坐标
-            Vector2 offset = CalculateCircularOffset(currentAngle, radiusPixels);
-            Vector2 position = basePos + offset;
+        // 使用当前索引计算角度
+        double currentAngle = param.StartAng + (currentIndex * angleStep);
 
-            // 生成弹幕
-            if (CreateComplexProjectile(proj, npc, position, baseVel))
-                Count++;
+        // 计算圆形分布坐标
+        Vector2 offset = CalculateCircularOffset(currentAngle, radiusPixels);
+        Vector2 position = basePos + offset;
 
-            currentAngle += angleStep;
-        }
-
-        return Count;
+        // 生成弹幕
+        CreateProjectile(data, npc, position, baseVel, state);
     }
     #endregion
 
-    #region 角度分散弹幕
-    private static int SpawnAngular(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
+    #region 角度分散弹幕（共用计数器）
+    private static void SpawnAngular(SpawnProjData data, NPC npc, Vector2 basePos, Vector2 baseVel, NpcState state, int currentIndex)
     {
-        var param = proj.CplxParams;
-        // 修改：使用SpawnProjData的Stack作为数量
-        int angularCount = proj.Stack > 0 ? proj.Stack : param.AngCnt;
-        if (angularCount <= 0 || param.AngDisp == 0f)
-            return 0;
+        var param = data.CplxParams;
+        if (data.Stack <= 0 || param.AngDisp == 0f) return;
 
-        int Count = 0;
-
-        // 计算基础角度（从速度向量获取）
+        // 计算基础角度
         double baseAngle = Math.Atan2(baseVel.Y, baseVel.X) * (180.0 / Math.PI);
-        double currentAngle = baseAngle - ((angularCount - 1) * param.AngDisp / 2);
 
-        for (int i = 0; i < angularCount; i++)
-        {
-            // 计算角度分散速度
-            Vector2 velocity = CalculateVelocityFromAngle(currentAngle, baseVel.Length());
+        // 使用当前索引计算角度
+        double currentAngle = baseAngle - ((data.Stack - 1) * param.AngDisp / 2) + (currentIndex * param.AngDisp);
 
-            // 生成弹幕
-            if (CreateComplexProjectile(proj, npc, basePos, velocity))
-                Count++;
+        // 计算角度分散速度
+        Vector2 velocity = CalculateVelocityFromAngle(currentAngle, baseVel.Length());
 
-            currentAngle += param.AngDisp;
-        }
-
-        return Count;
+        // 生成弹幕
+        CreateProjectile(data, npc, basePos, velocity, state);
     }
     #endregion
 
-    #region 位置偏移弹幕
-    private static int SpawnOffset(SpawnProjData proj, NPC npc, Vector2 basePos, Vector2 baseVel)
+    #region 位置偏移弹幕（共用计数器）
+    private static void SpawnOffset(SpawnProjData data, NPC npc, Vector2 basePos, Vector2 baseVel, NpcState state, int currentIndex)
     {
-        var param = proj.CplxParams;
-        // 修改：使用SpawnProjData的Stack作为数量
-        int offsetCount = proj.Stack > 0 ? proj.Stack : param.OffsetCnt;
-        if (offsetCount <= 0 || string.IsNullOrWhiteSpace(param.Offset))
-            return 0;
+        var param = data.CplxParams;
+        if (data.Stack <= 0 || string.IsNullOrWhiteSpace(param.Offset)) return;
 
-        int SpCount = 0;
-        Vector2 currPos = basePos;
         Vector2 pixelOff = GetOffsetVector(param);
 
-        for (int i = 0; i < offsetCount; i++)
-        {
-            // 生成弹幕
-            if (CreateComplexProjectile(proj, npc, currPos, baseVel))
-                SpCount++;
+        // 使用当前索引计算位置
+        Vector2 currPos = basePos + (pixelOff * currentIndex);
 
-            currPos += pixelOff;
-        }
-
-        return SpCount;
+        // 生成弹幕
+        CreateProjectile(data, npc, currPos, baseVel, state);
     }
     #endregion
 
@@ -193,17 +162,17 @@ public static class CplxProjGen
     #endregion
 
     #region 创建复杂弹幕（支持锁定）
-    private static bool CreateComplexProjectile(SpawnProjData proj, NPC npc, Vector2 pos, Vector2 baseVel)
+    private static bool CreateProjectile(SpawnProjData data, NPC npc, Vector2 pos, Vector2 baseVel, NpcState state)
     {
         Vector2 finalVel = baseVel;
 
         // 应用目标锁定
-        if (proj.LockParams != null && proj.LockParams.LockRange > 0)
+        if (data.LockParams != null && data.LockParams.LockRange > 0)
         {
-            var tars = TarLockUtil.GetLockTars(npc, proj.LockParams);
+            var tars = TarLockMode.GetLockTars(npc, data.LockParams);
             if (tars.Count > 0)
             {
-                var tarPos = TarLockUtil.GetTargetPosition(tars[0], npc, proj.LockParams);
+                var tarPos = TarLockMode.GetTargetPosition(tars[0], npc, data.LockParams);
                 var dir = tarPos - pos;
 
                 if (dir != Vector2.Zero)
@@ -214,23 +183,41 @@ public static class CplxProjGen
         }
 
         // 获取AI参数
-        float ai0 = proj.AI.ContainsKey(0) ? proj.AI[0] : 0f;
-        float ai1 = proj.AI.ContainsKey(1) ? proj.AI[1] : 0f;
-        float ai2 = proj.AI.ContainsKey(2) ? proj.AI[2] : 0f;
+        float ai0 = data.AI.ContainsKey(0) ? data.AI[0] : 0f;
+        float ai1 = data.AI.ContainsKey(1) ? data.AI[1] : 0f;
+        float ai2 = data.AI.ContainsKey(2) ? data.AI[2] : 0f;
 
         // 创建弹幕
         int projId = Projectile.NewProjectile(
             npc.GetSpawnSourceForNPCFromNPCAI(),
             pos.X, pos.Y, finalVel.X, finalVel.Y,
-            proj.Type, proj.Damage, proj.KnockBack,
+            data.Type, data.Damage, data.KnockBack,
             Main.myPlayer, ai0, ai1, ai2
         );
 
         // 设置弹幕生命时间
-        if (proj.Life > 0 && projId < Main.maxProjectiles)
+        if (data.Life > 0 && projId < Main.maxProjectiles)
         {
-            Main.projectile[projId].timeLeft = proj.Life;
+            Main.projectile[projId].timeLeft = data.Life;
         }
+
+        // 注册更新弹幕
+        if (data.UpdateProj != null && data.UpdateProj.Count > 0)
+        {
+            // 确保索引在有效范围内
+            if (projId >= 0 && projId < UpdateProjectile.UpdateState.Length)
+            {
+                // 使用提供的安全方法而不是直接访问数组
+                if (!UpdateProjectile.AddState(projId, npc.whoAmI, Main.projectile[projId].type))
+                {
+                    TShock.Log.ConsoleWarn($"[怪物加速] 注册弹幕更新状态失败: {projId}");
+                }
+            }
+        }
+
+        state.SendStack[state.SendProjIndex]++;  //更新发射数计数器
+        state.SendCD[state.SendProjIndex] = data.Interval;  //设置间隔
+        state.SPCount++; // 更新总发射次数
 
         return projId < Main.maxProjectiles;
     }

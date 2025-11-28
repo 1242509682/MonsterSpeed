@@ -24,7 +24,7 @@ public class SpawnNpcData
     public bool TarCenter = false;
 }
 
-internal class MyMonster
+internal class SpawnMonster
 {
     #region 召唤怪物方法（增强指示物支持）
     public static void SpawnMonsters(Configuration.NpcData data, List<SpawnNpcData> SpawnNpc, NPC npc)
@@ -45,15 +45,11 @@ internal class MyMonster
             // 条件检查
             if (!string.IsNullOrEmpty(mos.Condition))
             {
-                bool all = true;
-                bool loop = false;
+                bool allow = true;
                 var cond = CondFileManager.GetCondData(mos.Condition);
-                Conditions.Condition(npc, new StringBuilder(), data, cond, ref all, ref loop);
+                Conditions.Condition(npc, new StringBuilder(), data, cond, ref allow);
 
-                if (!all)
-                {
-                    return;
-                }
+                if (!allow) continue;
             }
 
             foreach (var id in mos.NPCID)

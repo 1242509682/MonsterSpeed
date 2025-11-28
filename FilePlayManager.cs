@@ -1,9 +1,11 @@
 ﻿using System.Text;
+using Microsoft.Xna.Framework;
+using Terraria.Utilities;
 using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
-using static MonsterSpeed.TimerEvents;
+using static MonsterSpeed.Conditions;
 
 namespace MonsterSpeed;
 
@@ -12,204 +14,302 @@ public class EventFileData
 {
     [JsonProperty("事件名称")]
     public string EventName { get; set; } = "未命名事件";
-    [JsonProperty("独立冷却")]
-    public bool SoloCooldown { get; set; } = false;
-    [JsonProperty("冷却延长")]
-    public double MoreActiveTime { get; set; }
     [JsonProperty("事件列表")]
     public List<TimerData> TimerEvents { get; set; } = new List<TimerData>();
 }
 
-// 文件状态管理类
+public class FilePlayData
+{
+    [JsonProperty("名称")]
+    public string Name { get; set; } = "";
+    [JsonProperty("标志")]
+    public string Flag { get; set; } = "";
+    [JsonProperty("优先级")]
+    public int Prio { get; set; } = 0;
+    [JsonProperty("触发条件")]
+    public string Cond { get; set; } = "默认配置";
+    [JsonProperty("文件列表")]
+    public List<int> Files { get; set; } = new List<int>();
+    [JsonProperty("播放次数")]
+    public int Count { get; set; } = 1;
+    [JsonProperty("强制播放")]
+    public bool Force { get; set; } = false;
+    [JsonProperty("限次播放")]
+    public bool ByFile { get; set; } = false;
+    [JsonProperty("并行执行")]
+    public bool Parallel { get; set; } = false;
+}
+
 public class FilePlayState
 {
-    public bool Playing { get; set; } = false; // 是否正在播放文件
-    public List<string> FileSeq { get; set; } = new List<string>(); // 文件播放序列
-    public int FileIndex { get; set; } = 0; // 当前播放的文件索引
-    public int EventIndex { get; set; } = 0; // 当前播放的事件索引
-    public DateTime EventTimer { get; set; } = DateTime.UtcNow; // 事件计时器
-    public int TotalCount { get; set; } = 1; // 总播放次数
-    public int PlayCount { get; set; } = 0; // 当前播放次数
-    public bool Reverse { get; set; } = false; // 是否反向播放
-    public List<TimerData> Events { get; set; } = new List<TimerData>(); // 当前文件的事件列表
-    public double MoreActiveTime { get; set; } = 0; // 冷却延长
-    public bool NoCond { get; set; } = false; // 无条件播放
-    public bool ByFile { get; set; } = false; // 限次播放
-    public bool SoloCooldown { get; set; } = true; // 使用独立冷却
+    public bool Playing { get; set; } = false;
+    public List<int> FileSeq { get; set; } = new List<int>();
+    public int FileIdx { get; set; } = 0;
+    public int EvtIdx { get; set; } = 0;
+    public DateTime Timer { get; set; } = DateTime.UtcNow;
+    public int Total { get; set; } = 1;
+    public int Played { get; set; } = 0;
+    public bool Reverse { get; set; } = false;
+    public List<TimerData> Events { get; set; } = new List<TimerData>();
+    public bool NoCond { get; set; } = false;
+    public bool ByFile { get; set; } = false;
+    public DateTime LastTrig { get; set; } = DateTime.MinValue;
+    public string PName { get; set; } = "";
+    public Dictionary<string, int> Markers { get; set; } = new Dictionary<string, int>();
 }
 
 internal class FilePlayManager
 {
-    #region 处理文件播放
-    public static void HandleFilePlay(NPC npc, StringBuilder mess, NpcData data, NpcState state, ref bool handled)
+    private static readonly object Locks = new object();
+
+    #region 处理所有执行文件
+    public static void HandleAll(NPC npc, StringBuilder sb, NpcData data, NpcState state, ref bool handled)
     {
-        var fs = state.FileState;
-        var Event = fs.Events[fs.EventIndex];
-
-        // 状态验证
-        if (fs == null || !fs.Playing ||
-            fs.FileSeq == null || fs.FileSeq.Count <= 0 ||
-            fs.Events == null || fs.Events.Count <= 0 ||
-            fs.EventIndex < 0 || fs.EventIndex >= fs.Events.Count)
-        {
-            state.FileState = new FilePlayState();
+        if (data?.FilePlay == null || data.FilePlay.Count == 0)
             return;
-        }
 
-        // 计算文件播放模式下的实际冷却时间和剩余时间
-        double ActiveTime = GetActiveTime(fs, data);
-        TimeSpan elapsed = DateTime.UtcNow - fs.EventTimer;
-        double remaining = ActiveTime - elapsed.TotalSeconds;
-        remaining = Math.Max(0, remaining); // 确保不为负数
+        // 按优先级排序处理
+        var players = data.FilePlay
+            .Where(p => p != null)
+            .OrderByDescending(p => p.Prio)
+            .ToList();
 
-        // 检查暂停时间 - 如果是强制播放，跳过暂停
-        if (Event.PauseTime > 0 && fs.NoCond)
+        foreach (var play in players)
         {
-            PauseMode(npc, mess, data, state, Event);
-        }
-
-        // 检查当前文件事件的条件，如果开启强制播放则跳过条件检查
-        bool all = true;
-        bool loop = false;
-        if (!string.IsNullOrEmpty(Event.Condition) && !fs.NoCond) // 只有非强制播放时才检查条件
-        {
-            var cond = CondFileManager.GetCondData(Event.Condition);
-            Conditions.Condition(npc, mess, data, cond, ref all, ref loop);
-        }
-
-        // 显示冷却文本
-        string Info = GetStatusInfo(fs, remaining, ActiveTime);
-        ShowCoolText(npc, data, state);
-
-        // 强制播放或条件满足
-        if (fs.NoCond || all)
-        {
-            // 检查事件冷却
-            if ((DateTime.UtcNow - fs.EventTimer).TotalSeconds >= ActiveTime)
+            if (play.Parallel)
             {
-                // 新增：执行指示物修改
-                if (Event.MarkerMods != null && Event.MarkerMods.Count > 0)
-                {
-                    MarkerUtil.SetMarkers(state, Event.MarkerMods, ref Main.rand, npc);
-                }
-
-                UpdateFilePlay(npc, state); // 更新文件播放进度
-                if (!state.FileState.Playing) // 如果文件播放已完成，返回
-                {
-                    NextEvent(data, data.TimerEvent[state.EventIndex].NextAddTimer, npc, state);
-                    return;
-                }
+                // 并行执行：立即处理不等待
+                HandleSingle(npc, sb, data, state, play, ref handled);
             }
             else
             {
-                // 冷却时间未到，但如果条件满足仍然执行事件
-                StartEvent(data, npc, Event, mess,state, ref handled);
-            }
-
-            // 显示状态（包含剩余时间）
-            mess.Append($"{Info}");
-
-            // 不是暂停状态时显示血量和召怪弹发数量
-            if (!state.PauseState.Paused)
-            {
-                // 获取召怪和弹发数量用于广播显示
-                int spCount = state?.SPCount ?? 0;
-                int snCount = state?.SNCount ?? 0;
-                mess.Append($" 血量:[c/A2E4DB:{(int)(npc.life / (float)npc.lifeMax * 100)}%]" +
-                            $" 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
-            }
-        }
-        else
-        {
-            // 显示状态（包含剩余时间）
-            mess.Append($"{Info}");
-
-            // 新增：显示关键指示物
-            if (state?.Markers != null && state.Markers.Count > 0)
-            {
-                mess.Append($" [文件指示物] ");
-                int count = 0;
-                foreach (var marker in state.Markers)
-                {
-                    if (count >= 3) break; // 最多显示3个关键指示物
-                    if (marker.Key.StartsWith("file_") || marker.Key.StartsWith("step_"))
-                    {
-                        mess.Append($"{marker.Key}:{marker.Value} ");
-                        count++;
-                    }
-                }
-                if (count > 0) mess.Append("\n");
-            }
-
-            // 不是暂停状态时显示血量和召怪弹发数量
-            if (!state!.PauseState.Paused)
-            {
-                // 获取召怪和弹发数量用于广播显示
-                int spCount = state?.SPCount ?? 0;
-                int snCount = state?.SNCount ?? 0;
-                mess.Append($" 血量:[c/A2E4DB:{(int)(npc.life / (float)npc.lifeMax * 100)}%]" +
-                            $" 召怪:[c/A2E4DB:{snCount}] 弹发:[c/A2E4DB:{spCount}]\n");
-            }
-
-            mess.Append($" [c/FF6B6B:文件事件条件未满足]\n");
-
-            UpdateFilePlay(npc, state!);  // 更新文件播放进度
-            fs.EventTimer = DateTime.UtcNow; // 重置计时器，等待下一次检查
-
-            // 如果文件播放已完成，前进到下一个主事件
-            if (!state!.FileState.Playing)
-            {
-                NextEvent(data, data.TimerEvent[state.EventIndex].NextAddTimer, npc, state);
+                // 串行执行：如果前一个播放器还在运行，跳过后续
+                if (!HandleSingle(npc, sb, data, state, play, ref handled))
+                    break;
             }
         }
     }
     #endregion
 
-    #region 更新文件播放进度
-    public static void UpdateFilePlay(NPC npc, NpcState state)
+    #region 处理单个执行文件
+    private static bool HandleSingle(NPC npc, StringBuilder sb, NpcData data,
+        NpcState state, FilePlayData play, ref bool handled)
     {
-        var fs = state.FileState;
+        // 使用锁防止竞争
+        lock (Locks)
+        {
+            // 获取或创建播放器状态
+            var pState = GetState(state, play.Name);
 
-        // 前进到下一个事件
-        fs.EventIndex++;
-        fs.EventTimer = DateTime.UtcNow;
+            // 如果正在播放，处理播放逻辑
+            if (pState.Playing)
+            {
+                return HandlePlay(npc, sb, data, state, play, pState, ref handled);
+            }
+
+            // 检查触发条件
+            bool allow = true;
+
+            if (!string.IsNullOrEmpty(play.Cond) && !play.Force)
+            {
+                var cond = CondFileManager.GetCondData(play.Cond);
+                Condition(npc, sb, data, cond, ref allow);
+            }
+
+            // 触发播放
+            if (play.Force || allow)
+            {
+                StartPlay(npc, play, state, pState);
+                pState.LastTrig = DateTime.UtcNow;
+            }
+
+            return true;
+        }
+    }
+    #endregion
+
+    #region 处理执行文件
+    private static bool HandlePlay(NPC npc, StringBuilder sb, NpcData data,
+        NpcState state, FilePlayData play, FilePlayState pState, ref bool handled)
+    {
+        var evt = pState.Events[pState.EvtIdx];
+
+        // 状态验证
+        if (!pState.Playing || pState.Events == null || pState.EvtIdx < 0 ||
+            pState.EvtIdx >= pState.Events.Count)
+        {
+            ResetState(pState);
+            return true;
+        }
+
+        // 使用文件中定义的冷却时间
+        double coolTime = evt.CoolTime;
+        TimeSpan elapsed = DateTime.UtcNow - pState.Timer;
+        double remaining = Math.Max(0, coolTime - elapsed.TotalSeconds);
+
+        // 显示冷却文本
+        ShowCoolText(npc, pState, remaining, coolTime, sb);
+
+        // 检查事件条件
+        bool allow = true;
+        if (!string.IsNullOrEmpty(evt.Condition) && !pState.NoCond)
+        {
+            var cond = CondFileManager.GetCondData(evt.Condition);
+            Condition(npc, sb, data, cond, ref allow);
+        }
+
+        // 强制播放或条件满足
+        if (pState.NoCond || allow)
+        {
+            // 检查事件冷却
+            if ((DateTime.UtcNow - pState.Timer).TotalSeconds >= coolTime)
+            {
+                // 更新播放进度
+                Next(npc, state, pState, play);
+
+                if (!pState.Playing)
+                    return true;
+            }
+            else
+            {
+                // 冷却时间未到，但如果条件满足仍然执行事件
+                StartEvent(data, npc, evt, sb, state, pState, play, ref handled);
+            }
+
+            // 显示状态信息
+            AppendStatus(npc, sb, pState, remaining);
+        }
+        else
+        {
+            // 条件不满足
+            AppendStatus(npc, sb, pState, remaining);
+            sb.Append($" [c/FF6B6B:执行文件事件条件未满足]\n");
+
+            Next(npc, state, pState, play);
+            pState.Timer = DateTime.UtcNow;
+
+            if (!pState.Playing)
+                return true;
+        }
+
+        return true;
+    }
+    #endregion
+
+    #region 执行执行文件动作
+    private static void StartEvent(NpcData data, NPC npc, TimerData evt,
+        StringBuilder sb, NpcState state, FilePlayState pState, FilePlayData play, ref bool handled)
+    {
+        // 执行指示物修改
+        if (evt.MarkerList != null && evt.MarkerList.Count > 0)
+        {
+            int count = MarkerUtil.SetMstMarkers(evt.MarkerList, npc, ref Main.rand);
+            if (count > 0)
+            {
+                sb.Append($" 指示物修改: 成功修改 {count} 个目标\n");
+            }
+        }
+
+        // 移动模式处理
+        if (evt.MoveData != null)
+        {
+            MoveMod.HandleMoveMode(npc, data, evt, sb, ref handled);
+        }
+
+        // 发射物品
+        if (evt.ShootItemList != null)
+        {
+            foreach (var item in evt.ShootItemList)
+            {
+                npc.AI_87_BigMimic_ShootItem(item);
+            }
+        }
+
+        // AI赋值
+        if (evt.AIMode != null)
+            AISystem.AIPairs(npc, evt.AIMode, npc.FullName, ref handled);
+
+        // 生成怪物
+        if (evt.SpawnNPC != null && evt.SpawnNPC.Count > 0)
+            SpawnMonster.SpawnMonsters(data, evt.SpawnNPC, npc);
+
+        // 发射弹幕 - 支持多个弹幕文件同时发射
+        if (evt.SendProj != null && evt.SendProj.Count > 0)
+        {
+            var allProj = new List<SpawnProjData>();
+
+            foreach (var proj in evt.SendProj)
+            {
+                var file = SpawnProjectileFile.GetData(proj);
+                if (file != null && file.Count > 0)
+                {
+                    allProj.AddRange(file);
+                }
+                else
+                {
+                    sb.Append($" 弹幕文件不存在: {proj}\n");
+                }
+            }
+
+            if (allProj.Count > 0)
+            {
+                SpawnProjectile.SpawnProj(data, allProj, npc);
+            }
+        }
+
+        // Boss AI
+        if (evt.AIMode?.BossAI != null)
+        {
+            foreach (var bossAI in evt.AIMode.BossAI)
+                AISystem.TR_AI(bossAI, npc, ref handled);
+        }
+
+        // 修改防御
+        npc.defense = evt.Defense > 0 ? evt.Defense : npc.defDefense;
+    }
+    #endregion
+
+    #region 更新执行文件进度
+    private static void Next(NPC npc, NpcState state,
+        FilePlayState pState, FilePlayData play)
+    {
+        pState.EvtIdx++;
+        pState.Timer = DateTime.UtcNow;
 
         // 检查当前文件的事件是否已全部执行完毕
-        if (fs.EventIndex >= fs.Events.Count)
+        if (pState.EvtIdx >= pState.Events.Count)
         {
-            // 当前文件执行完毕，移动到下一个文件
-            fs.EventIndex = 0;
-            fs.FileIndex++;
+            pState.EvtIdx = 0;
+            pState.FileIdx++;
 
-            // 如果开启限次播放，每次文件播放完毕就增加播放计数
-            if (fs.ByFile)
+            // 限次播放计数
+            if (pState.ByFile)
             {
-                fs.PlayCount++;
+                pState.Played++;
             }
 
             // 检查是否所有文件都已执行完毕
-            if (fs.FileIndex >= fs.FileSeq.Count)
+            if (pState.FileIdx >= pState.FileSeq.Count)
             {
-                // 如果没有开启限次播放，则在所有文件播放完毕后增加播放计数
-                if (!fs.ByFile)
+                // 非限次播放计数
+                if (!pState.ByFile)
                 {
-                    fs.PlayCount++;
+                    pState.Played++;
                 }
 
-                //  当前播放次数超过总次数
-                if (fs.PlayCount >= fs.TotalCount)
+                // 检查播放次数
+                if (pState.Played >= pState.Total)
                 {
-                    // 文件播放完成，重置状态
-                    state.FileState = new FilePlayState();
+                    ResetState(pState);
                     return;
                 }
                 else
                 {
                     // 重新开始播放序列
-                    fs.FileIndex = 0;
-                    if (!LoadNextFile(fs, npc.FullName))
+                    pState.FileIdx = 0;
+                    if (!LoadFile(pState, play))
                     {
-                        state.FileState = new FilePlayState();
+                        ResetState(pState);
                         return;
                     }
                 }
@@ -217,191 +317,228 @@ internal class FilePlayManager
             else
             {
                 // 加载下一个文件
-                if (!LoadNextFile(fs, npc.FullName))
+                if (!LoadFile(pState, play))
                 {
-                    state.FileState = new FilePlayState();
+                    ResetState(pState);
                     return;
                 }
             }
 
-            // 如果开启限次播放，检查是否达到播放次数
-            if (fs.ByFile && fs.PlayCount >= fs.TotalCount)
+            // 限次播放检查
+            if (pState.ByFile && pState.Played >= pState.Total)
             {
-                state.FileState = new FilePlayState();
+                ResetState(pState);
                 return;
             }
         }
     }
     #endregion
 
-    #region 获取文件独立冷却时间
-    public static double GetActiveTime(FilePlayState fs, NpcData data)
-    {
-        if (fs.SoloCooldown)
-        {
-            // 如果使用独立冷却，只使用文件本身的冷却时间（毫秒）
-            return fs.MoreActiveTime;
-        }
-        else
-        {
-            // 兼容旧模式：主事件冷却 + 文件延长冷却
-            return data.ActiveTime + fs.MoreActiveTime;
-        }
-    }
-    #endregion
-
-    #region 更新文件播放次数
-    public static void UpdateFilePlayCount(NpcState state, List<string> fileList)
-    {
-        if (state.PlayCounts == null)
-        {
-            state.PlayCounts = new Dictionary<string, int>();
-        }
-
-        foreach (string fileName in fileList)
-        {
-            if (state.PlayCounts.ContainsKey(fileName))
-            {
-                state.PlayCounts[fileName]++;
-            }
-            else
-            {
-                state.PlayCounts[fileName] = 1;
-            }
-        }
-    }
-    #endregion
-
-    #region 监控广播状态信息显示
-    private static string GetStatusInfo(FilePlayState fs, double remaining, double activeTime)
-    {
-        string Info = "";
-        if (fs.NoCond) Info += "[强制]";
-        if (fs.ByFile) Info += "[限次]";
-        if (fs.SoloCooldown) Info += "[独立冷却]";
-
-        return $" {Info}文件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
-               $"事件:[c/A2E4DB:{fs.EventIndex + 1}/{fs.Events.Count}] " +
-               $"次数:[c/A2E4DB:{fs.PlayCount + 1}/{fs.TotalCount}] " +
-               $"冷却:[c/A2E4DB:{activeTime}秒] " +
-               $"剩余:[c/A2E4DB:{remaining:F1}秒]\n";
-    }
-    #endregion
-
-    #region 开始文件播放
-    public static void StartFilePlay(string npcName, List<string> fileList, int playCount, bool noCond, bool byFile, NpcState state)
+    #region 启动执行文件播放
+    public static void StartPlay(NPC npc, FilePlayData play,
+        NpcState state, FilePlayState pState)
     {
         try
         {
-            // 直接创建新的 FileState 并赋值给 state
-            var fs = new FilePlayState();
-
-            fs.Playing = true;
-            fs.FileSeq = new List<string>(fileList);
-            fs.FileIndex = 0;
-            fs.EventIndex = 0;
-            fs.EventTimer = DateTime.UtcNow;
-            fs.TotalCount = Math.Abs(playCount);
-            fs.PlayCount = 0;
-            fs.Reverse = playCount < 0;
-            fs.MoreActiveTime = 0;
-            fs.NoCond = noCond;
-            fs.ByFile = byFile;
-
-            if (fs.Reverse)
+            if (play.Files == null || play.Files.Count == 0)
             {
-                fs.FileSeq.Reverse();
+                return;
+            }
+
+            pState.Playing = true;
+            pState.FileSeq = new List<int>(play.Files);
+            pState.FileIdx = 0;
+            pState.EvtIdx = 0;
+            pState.Timer = DateTime.UtcNow;
+            pState.Total = Math.Abs(play.Count);
+            pState.Played = 0;
+            pState.Reverse = play.Count < 0;
+            pState.NoCond = play.Force;
+            pState.ByFile = play.ByFile;
+            pState.PName = play.Name;
+
+            if (pState.Reverse)
+            {
+                pState.FileSeq.Reverse();
+            }
+
+            // 加载第一个文件
+            if (!LoadFile(pState, play))
+            {
+                ResetState(pState);
+                return;
             }
 
             // 更新播放计数
-            UpdateFilePlayCount(state, fileList);
-
-            // 加载第一个文件
-            if (!LoadNextFile(fs, npcName))
-            {
-                TShock.Log.ConsoleError($"文件播放器启动失败: 无法加载文件");
-                state.FileState = new FilePlayState();
-                return;
-            }
-
-            state.FileState = fs;
+            UpdateCount(state, play.Files);
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"启动文件播放器失败: {npcName}, 错误: {ex.Message}");
-            state.FileState = new FilePlayState();
+            TShock.Log.ConsoleError($"启动执行文件失败: {play.Name}, 错误: {ex.Message}");
+            ResetState(pState);
         }
     }
     #endregion
 
-    #region 加载下一个文件播放
-    private static bool LoadNextFile(FilePlayState fs, string npcName)
+    #region 辅助方法（线程安全）
+    private static FilePlayState GetState(NpcState state, string name)
+    {
+        if (state.IndieStates == null)
+            state.IndieStates = new Dictionary<string, FilePlayState>();
+
+        if (!state.IndieStates.ContainsKey(name))
+            state.IndieStates[name] = new FilePlayState();
+
+        return state.IndieStates[name];
+    }
+
+    private static void ResetState(FilePlayState pState)
+    {
+        pState.Playing = false;
+        pState.FileSeq.Clear();
+        pState.FileIdx = 0;
+        pState.EvtIdx = 0;
+        pState.Events.Clear();
+        pState.Played = 0;
+        pState.Markers.Clear(); // 清理指示物防止内存泄露
+    }
+
+    private static bool LoadFile(FilePlayState pState, FilePlayData play)
     {
         try
         {
-            var fileName = fs.FileSeq[fs.FileIndex];
-
-            var (events, moreActiveTime, SoloCooldown) = LoadEventFile(fileName);
-
-            if (events == null || events.Count == 0)
+            // 添加边界检查
+            if (pState.FileSeq == null || pState.FileSeq.Count == 0)
             {
-                TShock.Log.ConsoleError($"文件加载失败: 文件{fileName} 不存在或为空");
                 return false;
             }
 
-            fs.Events = events;
-            fs.MoreActiveTime = moreActiveTime; // 设置冷却延长
-            fs.SoloCooldown = SoloCooldown; // 设置独立冷却
-            fs.EventIndex = 0;
-            fs.EventTimer = DateTime.UtcNow;
+            if (pState.FileIdx < 0 || pState.FileIdx >= pState.FileSeq.Count)
+            {
+                return false;
+            }
+
+            var fileName = pState.FileSeq[pState.FileIdx];
+
+            // 修改：不再需要 moreTime 和 soloCD 参数
+            var events = LoadEventsFromFile(fileName);
+
+            if (events == null || events.Count == 0)
+            {
+                return false;
+            }
+
+            pState.Events = events;
+            pState.EvtIdx = 0;
+            pState.Timer = DateTime.UtcNow;
             return true;
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"文件加载失败: {npcName}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"文件加载失败: {play.Name}, 错误: {ex.Message}");
             return false;
         }
     }
-    #endregion
 
-    #region 加载文件播放（核心方法）
-    public static (List<TimerData>? events, double moreActiveTime, bool SoloCooldown) LoadEventFile(string fileName)
+    // 新增：简化版文件加载方法
+    private static List<TimerData> LoadEventsFromFile(int fileNumber)
     {
         try
         {
             var dir = Path.Combine(Paths, "时间事件");
             if (!Directory.Exists(dir))
+                return new List<TimerData>();
+                
+               // 查找匹配的文件
+            var files = Directory.GetFiles(dir, "*.json")
+            .Where(f => Path.GetFileName(f).StartsWith(fileNumber + "."))
+            .ToList();
+            
+            if (files.Count == 0)
             {
-                TShock.Log.ConsoleError($"事件文件夹不存在: {dir}");
-                return (null, 0, false);
+                TShock.Log.ConsoleError($"未找到序号为 {fileNumber} 的事件文件");
+                return new List<TimerData>();
             }
-
-            var pattern = $"{fileName}.json";
-            var files = Directory.GetFiles(dir, pattern);
-
-            if (files.Length == 0)
-            {
-                TShock.Log.ConsoleError($"未找到文件: {fileName}");
-                return (null, 0, false);
-            }
-
+    
+            // 如果有多个匹配，取第一个
             var filePath = files[0];
             var content = File.ReadAllText(filePath);
             var fileData = JsonConvert.DeserializeObject<EventFileData>(content);
-
-            if (fileData?.TimerEvents == null || fileData.TimerEvents.Count == 0)
-            {
-                TShock.Log.ConsoleError($"文件内容错误: {filePath}");
-                return (null, 0, false);
-            }
-
-            return (fileData.TimerEvents, fileData.MoreActiveTime, fileData.SoloCooldown);
+    
+            return fileData?.TimerEvents ?? new List<TimerData>();
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"加载文件失败: {fileName}, 错误: {ex.Message}");
-            return (null, 0, false);
+            TShock.Log.ConsoleError($"加载执行文件失败: {fileNumber}, 错误: {ex.Message}");
+            return new List<TimerData>();
         }
+    }
+
+    private static void UpdateCount(NpcState state, List<int> files)
+    {
+        if (state.PlayCounts == null)
+            state.PlayCounts = new Dictionary<string, int>();
+
+        foreach (int file in files)
+        {
+            var key = $"indie_{file}";
+            if (state.PlayCounts.ContainsKey(key))
+            {
+                state.PlayCounts[key]++;
+            }
+            else
+            {
+                state.PlayCounts[key] = 1;
+            }
+        }
+    }
+
+    // 简化版指示物设置
+    private static void SetMarkers(FilePlayState state, Dictionary<string, string[]> markers, ref UnifiedRandom rand, NPC npc = null)
+    {
+        if (markers == null) return;
+
+        foreach (var marker in markers)
+        {
+            if (marker.Value != null && marker.Value.Length > 0)
+            {
+                // 简化处理：只取第一个操作
+                var op = marker.Value[0];
+                if (int.TryParse(op, out int value))
+                {
+                    state.Markers[marker.Key] = value;
+                }
+            }
+        }
+    }
+    #endregion
+
+    #region 显示相关方法
+    private static void ShowCoolText(NPC npc, FilePlayState pState,
+        double remaining, double coolTime, StringBuilder sb)
+    {
+        string info = "";
+        if (pState.NoCond) info += "[强制]";
+        if (pState.ByFile) info += "[限次]";
+
+        sb.Append($" {info}[{pState.PName}] " +
+               $"序号:[c/A2E4DB:{pState.FileSeq[pState.FileIdx]}] " + // 显示文件序号
+               $"文件:[c/A2E4DB:{pState.FileIdx + 1}/{pState.FileSeq.Count}] " +
+               $"事件:[c/A2E4DB:{pState.EvtIdx + 1}/{pState.Events.Count}] " +
+               $"次数:[c/A2E4DB:{pState.Played + 1}/{pState.Total}] " +
+               $"冷却:[c/A2E4DB:{coolTime}秒] " +
+               $"剩余:[c/A2E4DB:{remaining:F1}秒]\n");
+    }
+
+    private static void AppendStatus(NPC npc, StringBuilder sb,
+        FilePlayState pState, double remaining)
+    {
+        var num = pState.FileSeq.Count > pState.FileIdx ? 
+            pState.FileSeq[pState.FileIdx].ToString() : "未知";
+            
+        sb.Append($" 执行文件序号:[c/A2E4DB:{num}] " +
+               $"进度:{pState.EvtIdx + 1}/{pState.Events.Count} " +
+               $"剩余:{remaining:F1}秒\n");
     }
     #endregion
 }

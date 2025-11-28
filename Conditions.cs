@@ -7,6 +7,7 @@ using TShockAPI;
 using Terraria.GameContent.Events;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.TimerEvents;
+using static MonsterSpeed.UpdateProjectile;
 
 namespace MonsterSpeed;
 
@@ -105,31 +106,28 @@ public class Conditions
     internal static void Condition(NpcData data, NPC npc, Conditions Cond, ref bool allow)
     {
         var mess = new StringBuilder();
-        var loop = false;
-
-        Condition(npc, mess, data, Cond, ref allow, ref loop);
+        Condition(npc, mess, data, Cond, ref allow);
     }
 
-    internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, Conditions Cond, ref bool allow, ref bool loop)
+    internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, Conditions Cond, ref bool allow)
     {
         if (data is null) return;
         if (Cond is null) return;
 
-        bool allConditionsMet = true;
+        bool flag = true;
 
         // 基础条件检查
-        allConditionsMet &= CheckBasicConditions(npc, data, Cond, mess);
+        flag &= CheckConditions(npc, data, Cond, mess);
         
-        // 增强条件检查（不重复的）
-        allConditionsMet &= CheckEnhancedConditions(npc, Cond, mess);
+        // 增强条件检查
+        flag &= CheckConditions2(npc, Cond, mess);
 
-        allow = allConditionsMet;
-        loop = !allConditionsMet;
+        allow = flag;
     }
     #endregion
 
     #region 基础条件检查
-    private static bool CheckBasicConditions(NPC npc, NpcData data, Conditions Cond, StringBuilder mess)
+    private static bool CheckConditions(NPC npc, NpcData data, Conditions Cond, StringBuilder mess)
     {
         bool allMet = true;
 
@@ -273,7 +271,7 @@ public class Conditions
     #endregion
 
     #region 增强条件检查
-    private static bool CheckEnhancedConditions(NPC npc, Conditions Cond, StringBuilder mess)
+    private static bool CheckConditions2(NPC npc, Conditions Cond, StringBuilder mess)
     {
         bool allMet = true;
 
@@ -436,11 +434,10 @@ public class Conditions
         if (!PxUtil.IsValidProj(proj))
             return false;
 
-        if (cond.IsGlobal && MyProjectile.UpdateState[proj.whoAmI]?.whoAmI != npc.whoAmI)
+        if (cond.IsGlobal && UpdateState[proj.whoAmI]?.whoAmI != npc.whoAmI)
             return false;
 
-        return string.IsNullOrEmpty(cond.Flag) ||
-               MyProjectile.UpdateState[proj.whoAmI]?.Notes == cond.Flag;
+        return string.IsNullOrEmpty(cond.Flag) || UpdateState[proj.whoAmI]?.Notes == cond.Flag;
     }
     #endregion
 
@@ -603,7 +600,7 @@ public class Conditions
         var state = StateUtil.GetState(npc);
         if (state == null) return false;
     
-        double elapsed = (DateTime.UtcNow - state.CooldownTime).TotalSeconds;
+        double elapsed = (DateTime.UtcNow - state.CooldownTime[state.EventIndex]).TotalSeconds;
         bool inRange = elapsed >= result.min && elapsed <= result.max;
     
         return inRange;

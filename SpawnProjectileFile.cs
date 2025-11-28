@@ -16,7 +16,7 @@ public class ProjectileFileData
 }
 
 // 弹幕文件管理器
-internal class ProjFileManager
+internal class SpawnProjectileFile
 {
     #region 文件路径
     public static readonly string ProjDir = Path.Combine(TShock.SavePath, "怪物加速", "弹幕配置");
@@ -62,15 +62,22 @@ internal class ProjFileManager
                             Condition = "默认配置",
                             Type = 671,
                             Damage = 10,
-                            Stack = 5,
-                            Interval = 10f,
+                            Stack = 10,
+                            Interval = 60,
                             KnockBack = 8,
-                            Velocity = 100f,
+                            Velocity = 10,
                             Radius = 0f,
                             Angle = 15f,
                             Rotate = 2f,
                             AI = new Dictionary<int, float>(),
-                            Life = 180,
+                            Life = 120,
+                            CplxParams = new CplxProjParams()
+                            {
+                                RadialEnabled = true,
+                                RadialAng = 10,
+                                RadialR = 10,
+                            },
+                            UpdateProj = new List<string> { "追踪弹幕" }
                         }
                         
                     }
@@ -87,7 +94,7 @@ internal class ProjFileManager
                             Condition = "默认配置",
                             Type = 115,
                             Damage = 10,
-                            Stack = 15,
+                            Stack = 30,
                             Interval = 15f,
                             KnockBack = 8,
                             Velocity = 5f,
@@ -96,31 +103,11 @@ internal class ProjFileManager
                             Rotate = 0f,
                             AI = new Dictionary<int, float>() { { 0, 50f } },
                             Life = 180,
-                            UpdateTime = 500,
-                            UpdateProj = new List<string>(){ "二次更新" }
+                            UpdateProj = new List<string>(){ "克眼二更弹幕" }
                         },
                     }
                 },
 
-                new ProjectileFileData
-                {
-                    Name = "散射弹幕",
-                    Description = "多方向散射弹幕",
-                    Projectiles = new List<SpawnProjData>
-                    {
-                        new SpawnProjData
-                        {
-                            Type = 115,
-                            Stack = 8,
-                            Interval = 60f,
-                            Life = 180,
-                            Damage = 25,
-                            KnockBack = 3,
-                            Velocity = 8f,
-                            Angle = 45f
-                        }
-                    }
-                }
             };
 
             foreach (var proj in defaults)
@@ -128,7 +115,7 @@ internal class ProjFileManager
                 SaveFile(proj);
             }
 
-            TShock.Log.ConsoleInfo($"已创建 {defaults.Count} 个弹幕配置文件");
+            TShock.Log.ConsoleInfo($"已创建 {defaults.Count} 个生成弹幕配置文件");
         }
         catch (Exception ex)
         {

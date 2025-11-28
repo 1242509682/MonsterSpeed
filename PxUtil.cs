@@ -294,4 +294,18 @@ public static class PxUtil
     }
     
     #endregion
+    
+    #region 角度计算（为TarLock补充）
+    // 计算从原点出发的两个向量之间的角度差
+    public static float AngleTo(Vector2 origin, Vector2 v1, Vector2 v2)
+    {
+        // 归一化向量
+        v1 = Vector2.Normalize(v1 - origin);
+        v2 = Vector2.Normalize(v2 - origin);
+        
+        var dot = Vector2.Dot(v1, v2);
+        var det = v1.X * v2.Y - v1.Y * v2.X;
+        return (float)(Math.Atan2(det, dot) * (180.0 / Math.PI));
+    }
+    #endregion
 }
