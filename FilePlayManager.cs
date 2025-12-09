@@ -1,11 +1,10 @@
 ﻿using System.Text;
-using Microsoft.Xna.Framework;
-using Terraria.Utilities;
 using Newtonsoft.Json;
 using Terraria;
+using Terraria.Utilities;
 using TShockAPI;
-using static MonsterSpeed.Configuration;
 using static MonsterSpeed.Conditions;
+using static MonsterSpeed.Configuration;
 
 namespace MonsterSpeed;
 
@@ -112,7 +111,7 @@ internal class FilePlayManager
 
             if (!string.IsNullOrEmpty(play.Cond) && !play.Force)
             {
-                var cond = CondFileManager.GetCondData(play.Cond);
+                var cond = ConditionFile.GetCondData(play.Cond);
                 Condition(npc, sb, data, cond, ref allow);
             }
 
@@ -154,7 +153,7 @@ internal class FilePlayManager
         bool allow = true;
         if (!string.IsNullOrEmpty(evt.Condition) && !pState.NoCond)
         {
-            var cond = CondFileManager.GetCondData(evt.Condition);
+            var cond = ConditionFile.GetCondData(evt.Condition);
             Condition(npc, sb, data, cond, ref allow);
         }
 
@@ -200,6 +199,29 @@ internal class FilePlayManager
     private static void StartEvent(NpcData data, NPC npc, TimerData evt,
         StringBuilder sb, NpcState state, FilePlayState pState, FilePlayData play, ref bool handled)
     {
+        // 执行C#脚本 - 使用文件播放器专用键
+        if (!string.IsNullOrEmpty(evt.CsScript))
+        {
+            // 创建唯一的键：文件播放器名称 + 文件序号 + 事件索引
+            string key = $"{pState.PName}_{pState.FileSeq[pState.FileIdx]}_{pState.EvtIdx}";
+            int hashKey = key.GetHashCode();
+
+            // 检查是否已执行过
+            bool executed = state.Script.TryGetValue(hashKey, out bool ok) && ok;
+
+            if (!executed)
+            {
+                sb?.AppendLine($" 执行脚本:{evt.CsScript}");
+                AsyncExec.Exec(evt.CsScript, npc, state, sb, evt.AsyncExec);
+                // 标记为已执行
+                state.Script[hashKey] = true;
+            }
+            else
+            {
+                sb?.AppendLine($" 脚本已执行，跳过:{evt.CsScript}");
+            }
+        }
+
         // 执行指示物修改
         if (evt.MarkerList != null && evt.MarkerList.Count > 0)
         {
@@ -210,10 +232,10 @@ internal class FilePlayManager
             }
         }
 
-        // 移动模式处理
-        if (evt.MoveData != null)
+        // 行动模式处理
+        if (!string.IsNullOrEmpty(evt.MoveMode))
         {
-            MoveMod.HandleMoveMode(npc, data, evt, sb, ref handled);
+            MoveMod.MoveModes(npc, data, sb, evt.MoveMode, ref handled);
         }
 
         // 发射物品
@@ -240,7 +262,7 @@ internal class FilePlayManager
 
             foreach (var proj in evt.SendProj)
             {
-                var file = SpawnProjectileFile.GetData(proj);
+                var file = SpawnProjFile.GetData(proj);
                 if (file != null && file.Count > 0)
                 {
                     allProj.AddRange(file);
@@ -253,7 +275,7 @@ internal class FilePlayManager
 
             if (allProj.Count > 0)
             {
-                SpawnProjectile.SpawnProj(data, allProj, npc);
+                SpawnProj.Spawn(data, allProj, npc);
             }
         }
 
@@ -273,6 +295,9 @@ internal class FilePlayManager
     private static void Next(NPC npc, NpcState state,
         FilePlayState pState, FilePlayData play)
     {
+        string scriptKey = $"{pState.PName}_{pState.FileSeq[pState.FileIdx]}_{pState.EvtIdx}";
+        state.Script.Remove(scriptKey.GetHashCode());
+
         pState.EvtIdx++;
         pState.Timer = DateTime.UtcNow;
 

@@ -16,17 +16,21 @@ public class TimerData
     public string Condition { get; set; } = "默认配置";
     [JsonProperty("修改防御", Order = 1)]
     public int Defense { get; set; } = 0;
-    [JsonProperty("指示物修改", Order = 2)]
+    [JsonProperty("C#脚本", Order = 2)]  // 新增字段
+    public string CsScript { get; set; } = "";
+    [JsonProperty("异步执行脚本", Order = 2)]  // 新增字段
+    public bool AsyncExec { get; set; } = false;
+    [JsonProperty("指示物修改", Order = 3)]
     public List<MstMarkerMod> MarkerList { get; set; } = new List<MstMarkerMod>();
-    [JsonProperty("发射物品", Order = 3)]
+    [JsonProperty("发射物品", Order = 4)]
     public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
-    [JsonProperty("行动模式", Order = 4)]
-    public MoveModeData MoveData { get; set; }
-    [JsonProperty("生成怪物", Order = 5)]
+    [JsonProperty("行动模式", Order = 5)]
+    public string MoveMode { get; set; } = "";
+    [JsonProperty("生成怪物", Order = 6)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
-    [JsonProperty("生成弹幕", Order = 6)]
+    [JsonProperty("生成弹幕", Order = 7)]
     public List<string> SendProj { get; set; } = new List<string>(); 
-    [JsonProperty("AI赋值", Order = 7)]
+    [JsonProperty("AI赋值", Order = 8)]
     public AIModes AIMode { get; set; }
 }
 
@@ -37,11 +41,11 @@ internal class TimerEvents
     {
         if (data?.TimerEvent == null || data.TimerEvent.Count <= 0) return;
 
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         if (state is null) return;
 
         var Event = data.TimerEvent[state.EventIndex];
-
+        
         // 检查事件索引有效性
         if (state.EventIndex < 0 || state.EventIndex >= data.TimerEvent.Count)
         {
@@ -70,7 +74,7 @@ internal class TimerEvents
 
             if (!string.IsNullOrEmpty(Event.Condition))
             {
-                var cond = CondFileManager.GetCondData(Event.Condition);
+                var cond = ConditionFile.GetCondData(Event.Condition);
                 Conditions.Condition(npc, mess, data, cond, ref allow);
             }
             
@@ -102,6 +106,9 @@ internal class TimerEvents
             state.EventCounts[state.EventIndex] = 1;
         }
 
+        // 重置当前事件的脚本执行标记（清除，让下个周期可以重新执行）
+        state.Script.Remove(state.EventIndex);
+
         // 重置移动状态
         state.MoveState = new MoveModeState();
         // 重置悬浮文本计时
@@ -124,6 +131,19 @@ internal class TimerEvents
     #region 执行事件逻辑
     public static void StartEvent(NpcData data, NPC npc, TimerData Event, StringBuilder mess, NpcState state, ref bool handled)
     {
+        // 执行C#脚本 - 每个事件周期只执行一次
+        if (!string.IsNullOrEmpty(Event.CsScript))
+        {
+            // 检查当前事件的脚本是否已执行过
+            bool Exec = state.Script.TryGetValue(state.EventIndex, out bool ok) && ok;
+            if (!Exec)
+            {
+                mess?.AppendLine($" 执行脚本:{Event.CsScript}");
+                AsyncExec.Exec(Event.CsScript, npc, state, mess, Event.AsyncExec);
+                state.Script[state.EventIndex] = true; // 标记为已执行
+            }
+        }
+
         // 统一处理指示物修改（包括自身和其他NPC）
         if (Event.MarkerList != null && Event.MarkerList.Count > 0)
         {
@@ -134,10 +154,10 @@ internal class TimerEvents
             }
         }
 
-        // 移动模式处理
-        if (Event.MoveData != null)
+        // 行动模式处理
+        if (!string.IsNullOrEmpty(Event.MoveMode))
         {
-            MoveMod.HandleMoveMode(npc, data, Event, mess, ref handled);
+            MoveMod.MoveModes(npc, data, mess, Event.MoveMode, ref handled);
         }
 
         // 发射物品
@@ -164,10 +184,10 @@ internal class TimerEvents
             {
                 if (string.IsNullOrEmpty(projName)) continue;
 
-                var projfile = SpawnProjectileFile.GetData(projName);
+                var projfile = SpawnProjFile.GetData(projName);
                 if (projfile != null && projfile.Count > 0)
                 {
-                    SpawnProjectile.SpawnProj(data, projfile, npc);
+                    SpawnProj.Spawn(data, projfile, npc);
                 }
                 else
                 {

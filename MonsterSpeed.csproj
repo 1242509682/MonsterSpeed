@@ -6,10 +6,23 @@
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 	</PropertyGroup>
 	<ItemGroup>
-		<Compile Remove="C:\Users\羽学\.nuget\packages\tshock\5.2.0\contentFiles\any\net6.0\Database.cs" />
+	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.CSharp.dll" />
+	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.CSharp.Scripting.dll" />
+	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.dll" />
+	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.Scripting.dll" />
+	  <EmbeddedResource Include="依赖项\System.Collections.Immutable.dll" />
+	  <EmbeddedResource Include="依赖项\System.Reflection.Metadata.dll" />
+	  <EmbeddedResource Include="示例脚本\复杂BOSSAI脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\异步操作脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\指示物系统示例.csx" />
+	  <EmbeddedResource Include="示例脚本\条件判断脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\基础示例脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\生成弹幕脚本.csx" />
 	</ItemGroup>
 	<ItemGroup>
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p" />
 		<PackageReference Include="TShock" Version="5.2.4" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
+		<PackageReference Include="Microsoft.CodeAnalysis.Scripting.Common" Version="5.0.0" />
 	</ItemGroup>
 </Project>

@@ -3,7 +3,6 @@ using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
-using static MonoMod.InlineRT.MonoModRule;
 
 namespace MonsterSpeed;
 
@@ -33,7 +32,7 @@ internal class SpawnMonster
 
 
         // 获取NPC的状态
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         if (state == null) return;
 
         var flag = false;
@@ -46,7 +45,7 @@ internal class SpawnMonster
             if (!string.IsNullOrEmpty(mos.Condition))
             {
                 bool allow = true;
-                var cond = CondFileManager.GetCondData(mos.Condition);
+                var cond = ConditionFile.GetCondData(mos.Condition);
                 Conditions.Condition(npc, new StringBuilder(), data, cond, ref allow);
 
                 if (!allow) continue;

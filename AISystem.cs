@@ -71,7 +71,7 @@ internal class AISystem
         if (!aiMode.Enabled) return;
 
         // 从NpcState获取AI状态
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         if (state?.AIState == null) return;
 
         bool flag = false;

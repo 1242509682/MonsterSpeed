@@ -1,10 +1,10 @@
-﻿using Newtonsoft.Json;
-using System.Text;
+﻿using System.Text;
+using Microsoft.Xna.Framework;
+using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
-using Microsoft.Xna.Framework;
-using static MonsterSpeed.MonsterSpeed;
 using static MonsterSpeed.Configuration;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -54,7 +54,7 @@ internal class Command
                 case "reset":
                     Commands.HandleCommand(args.Player, "/butcher");
 
-                    StateUtil.ClearAllStates();
+                    StateApi.ClearAll();
 
                     Config.NpcDatas.Clear();
 
@@ -292,7 +292,7 @@ internal class Command
                 return;
             }
 
-            var idx = StateUtil.GetState(npc)!.EventIndex;
+            var idx = StateApi.GetState(npc)!.EventIndex;
             if (idx < 0 || idx >= npcData.TimerEvent.Count)
             {
                 plr.SendErrorMessage($"BOSS '{name}' 的当前事件索引无效！");

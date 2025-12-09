@@ -404,7 +404,7 @@ public static class MarkerUtil
     {
         if (mods == null || npc == null) return 0;
 
-        var sState = StateUtil.GetState(npc);
+        var sState = StateApi.GetState(npc);
         if (sState == null) return 0;
 
         int total = 0;
@@ -421,7 +421,7 @@ public static class MarkerUtil
             {
                 if (!ValidTarget(i, mod, npc)) continue;
 
-                var tState = StateUtil.GetState(Main.npc[i]);
+                var tState = StateApi.GetState(Main.npc[i]);
                 if (tState == null) continue;
 
                 int modded = SetMarkers(tState, mod.MarkerMods, ref rnd, npc);
@@ -444,7 +444,7 @@ public static class MarkerUtil
         if (mod.MstID != 0 && tNpc.netID != mod.MstID) return false;
         if (mod.Range > 0 && !PxUtil.InRangeTiles(npc.Center, tNpc.Center, mod.Range)) return false;
 
-        var tState = StateUtil.GetState(tNpc);
+        var tState = StateApi.GetState(tNpc);
         if (tState == null) return false;
 
         if (mod.MarkerConds != null && mod.MarkerConds.Count > 0 &&

@@ -16,30 +16,28 @@ public class CondData
 }
 
 // 触发条件管理器
-internal class CondFileManager
+internal class ConditionFile
 {
-    #region 文件路径
-    public static readonly string CondDir = Path.Combine(TShock.SavePath, "怪物加速", "触发条件");
-    #endregion
+    public static readonly string Dir = Path.Combine(TShock.SavePath, "怪物加速", "触发条件");
 
     #region 初始化
     public static void Init()
     {
         try
         {
-            if (!Directory.Exists(CondDir))
+            if (!Directory.Exists(Dir))
             {
-                Directory.CreateDirectory(CondDir);
+                Directory.CreateDirectory(Dir);
             }
 
-            if (Directory.GetFiles(CondDir, "*.json").Length == 0)
+            if (Directory.GetFiles(Dir, "*.json").Length == 0)
             {
                 CreateDefault();
             }
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"条件系统初始化失败: {ex.Message}");
+            TShock.Log.ConsoleError($"[怪物加速] 条件系统初始化失败: {ex.Message}");
         }
     }
     #endregion
@@ -85,14 +83,14 @@ internal class CondFileManager
 
             foreach (var cond in defaults)
             {
-                SaveCond(cond);
+                SaveFile(cond);
             }
 
-            TShock.Log.ConsoleInfo($"已创建 {defaults.Count} 个限制条件文件");
+            TShock.Log.ConsoleInfo($"[怪物加速] 已创建 {defaults.Count} 个限制条件文件");
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"创建条件失败: {ex.Message}");
+            TShock.Log.ConsoleError($"[怪物加速] 创建条件失败: {ex.Message}");
         }
     }
     #endregion
@@ -102,10 +100,10 @@ internal class CondFileManager
     {
         try
         {
-            if (!Directory.Exists(CondDir))
+            if (!Directory.Exists(Dir))
                 return new CondData();
 
-            var filePath = Path.Combine(CondDir, $"{name}.json");
+            var filePath = Path.Combine(Dir, $"{name}.json");
 
             if (!File.Exists(filePath))
                 return new CondData();
@@ -115,7 +113,7 @@ internal class CondFileManager
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"读取条件失败: {name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"[怪物加速] 读取条件失败: {name}, 错误: {ex.Message}");
             return new CondData();
         }
     }
@@ -125,7 +123,7 @@ internal class CondFileManager
         var cond = GetCond(name);
         if (cond == null)
         {
-            TShock.Log.ConsoleError($"条件 '{name}' 不存在，使用默认条件");
+            TShock.Log.ConsoleError($"[怪物加速] 条件 '{name}' 不存在，使用默认条件");
             return new Conditions { NpcLift = "0,100" };
         }
         return cond.Cond;
@@ -133,18 +131,61 @@ internal class CondFileManager
     #endregion
 
     #region 保存条件
-    public static void SaveCond(CondData cond)
+    public static void SaveFile(CondData cond)
     {
         try
         {
             var file = $"{cond.Name}.json";
-            var path = Path.Combine(CondDir, file);
+            var path = Path.Combine(Dir, file);
             var json = JsonConvert.SerializeObject(cond, Formatting.Indented);
             File.WriteAllText(path, json, Encoding.UTF8);
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"保存条件失败: {cond.Name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"[怪物加速] 保存条件失败: {cond.Name}, 错误: {ex.Message}");
+        }
+    }
+    #endregion
+
+    #region 重载所有配置
+    public static void Reload()
+    {
+        try
+        {
+            if (!Directory.Exists(Dir))
+            {
+                Directory.CreateDirectory(Dir);
+                if (Directory.GetFiles(Dir, "*.json").Length == 0)
+                    CreateDefault();
+            }
+
+
+            var all = new List<CondData>();
+            var jsonFiles = Directory.GetFiles(Dir, "*.json");
+
+            foreach (var filePath in jsonFiles)
+            {
+                try
+                {
+                    var content = File.ReadAllText(filePath);
+                    var file = JsonConvert.DeserializeObject<CondData>(content);
+                    if (file != null)
+                        all.Add(file);
+                }
+                catch (Exception ex)
+                {
+                    TShock.Log.ConsoleError($"[怪物加速] 读取配置文件失败: " +
+                        $"{Path.GetFileName(filePath)}, 错误:\n {ex.Message}");
+                }
+            }
+
+            if (all.Count > 0)
+                foreach (var FileData in all)
+                    SaveFile(FileData);
+        }
+        catch (Exception ex)
+        {
+            TShock.Log.ConsoleError($"[怪物加速] 重载条件配置失败: {ex.Message}");
         }
     }
     #endregion

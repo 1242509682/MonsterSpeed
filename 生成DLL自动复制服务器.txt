@@ -1,3 +1,4 @@
 copy bin\Release\net6.0\MonsterSpeed.dll C:\Users\羽学\Desktop\TShock5\ServerPlugins
+copy bin\Release\net6.0\MonsterSpeed.pdb C:\Users\羽学\Desktop\TShock5\ServerPlugins
 rd /s /q "C:\Users\羽学\Desktop\TShock5\tshock\怪物加速"
 taskkill /F /IM TShock.Server.exe

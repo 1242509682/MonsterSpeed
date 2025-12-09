@@ -1,8 +1,7 @@
-﻿using Microsoft.Xna.Framework;
-using System;
-using System.Text;
-using TShockAPI;
+﻿using System.Text;
+using Microsoft.Xna.Framework;
 using Terraria;
+using TShockAPI;
 
 namespace MonsterSpeed;
 
@@ -306,6 +305,179 @@ public static class PxUtil
         var dot = Vector2.Dot(v1, v2);
         var det = v1.X * v2.Y - v1.Y * v2.X;
         return (float)(Math.Atan2(det, dot) * (180.0 / Math.PI));
+    }
+    #endregion
+
+    #region 将字符串解析为Vector2，并且将解析到的两个浮点数作为格数
+    public static Vector2 GetVector2(this string vecStr, Vector2 val = default)
+    {
+        if (string.IsNullOrWhiteSpace(vecStr) || vecStr == "0,0")
+            return val;
+
+        try
+        {
+            // 按逗号分割字符串
+            var parts = vecStr.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2)
+                return val;
+
+            // 解析为浮点数，保持原始顺序
+            float x = float.Parse(parts[0].Trim());
+            float y = float.Parse(parts[1].Trim());
+
+            // 返回像素坐标（如果输入是格数）
+            return ToPx(new Vector2(x, y));
+        }
+        catch (Exception)
+        {
+            return val;
+        }
+    }
+    #endregion
+
+    #region 查找最近的目标距离
+    internal static float? FindTarget(Entity Entity, Vector2 Center, int Range)
+    {
+        if (Range <= 0) return null;
+
+        float min = Range * 16f;
+        float max = min * min;
+
+        // 根据Entity类型决定查找的目标类型
+        switch (Entity)
+        {
+            case NPC npcEt:
+                // 查找NPC
+                var npc = Main.npc
+                    .Where(n => n.active && !n.friendly && n.life > 0)
+                    .Where(n => n.DistanceSQ(Center) <= max)
+                    .OrderBy(n => n.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return npc?.Distance(Center);
+
+            case Projectile projEt:
+                // 查找弹幕
+                var projectile = Main.projectile
+                    .Where(p => p.active && !p.friendly)
+                    .Where(p => p.DistanceSQ(Center) <= max)
+                    .OrderBy(p => p.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return projectile?.Distance(Center);
+
+            case Player plrEt:
+                // 查找玩家（排除自己）
+                var plr = TShock.Players
+                    .Where(p => p != null && p.Active && p.TPlayer.whoAmI != plrEt.whoAmI)
+                    .Where(p => p.TPlayer.DistanceSQ(Center) <= max)
+                    .OrderBy(p => p.TPlayer.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return plr?.TPlayer.Distance(Center);
+
+            case Item itemEt:
+                // 查找物品
+                var item = Main.item
+                    .Where(i => i.active)
+                    .Where(i => i.DistanceSQ(Center) <= max)
+                    .OrderBy(i => i.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return item?.Distance(Center);
+
+            // 查找物块
+            case ITile tileEt:
+                return FindTile(Center, Range);
+            default:
+                return null;
+        }
+    }
+
+    private static float? FindTile(Vector2 Center, int Range)
+    {
+        if (Range <= 0) return null;
+
+        int startX = (int)(Center.X / 16) - Range;
+        int endX = (int)(Center.X / 16) + Range;
+        int startY = (int)(Center.Y / 16) - Range;
+        int endY = (int)(Center.Y / 16) + Range;
+
+        // 确保在边界内
+        startX = Math.Max(0, startX);
+        endX = Math.Min(Main.maxTilesX - 1, endX);
+        startY = Math.Max(0, startY);
+        endY = Math.Min(Main.maxTilesY - 1, endY);
+
+        float? Distance = null;
+        for (int x = startX; x <= endX; x++)
+        {
+            for (int y = startY; y <= endY; y++)
+            {
+                ITile tile = Main.tile[x, y];
+                if (tile != null && tile.active())
+                {
+                    Vector2 tileCenter = new Vector2(x * 16 + 8, y * 16 + 8); // 物块中心
+                    float distance = Vector2.Distance(Center, tileCenter);
+
+                    if (!Distance.HasValue || distance < Distance.Value)
+                    {
+                        Distance = distance;
+                    }
+                }
+            }
+        }
+
+        return Distance;
+    }
+    #endregion
+
+    #region 查找最近的实体
+    internal static Entity? FindEntity(Entity Entity, Vector2 Center, int Range)
+    {
+        if (Range <= 0) return null;
+
+        float min = Range * 16f;
+        float max = min * min;
+
+        // 根据Entity类型决定查找的目标类型
+        switch (Entity)
+        {
+            case NPC npcEt:
+                // 查找NPC
+                var npc = Main.npc
+                    .Where(n => n.active && !n.friendly && n.life > 0)
+                    .Where(n => n.DistanceSQ(Center) <= max)
+                    .OrderBy(n => n.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return npc;
+
+            case Projectile projEt:
+                // 查找弹幕
+                var projectile = Main.projectile
+                    .Where(p => p.active && !p.friendly)
+                    .Where(p => p.DistanceSQ(Center) <= max)
+                    .OrderBy(p => p.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return projectile;
+
+            case Player plrEt:
+                // 查找玩家（排除自己）
+                var plr = Main.player
+                    .Where(p => p != null && p.active && p.whoAmI != plrEt.whoAmI)
+                    .Where(p => p.DistanceSQ(Center) <= max)
+                    .OrderBy(p => p.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return plr;
+
+            case Item itemEt:
+                // 查找物品
+                var item = Main.item
+                    .Where(i => i.active)
+                    .Where(i => i.DistanceSQ(Center) <= max)
+                    .OrderBy(i => i.DistanceSQ(Center))
+                    .FirstOrDefault();
+                return item;
+
+            default:
+                return null;
+        }
     }
     #endregion
 }

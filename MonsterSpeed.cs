@@ -1,8 +1,7 @@
-﻿using System.Text;
+﻿using System.Reflection;
+using System.Text;
 using Microsoft.Xna.Framework;
-using ReLogic.Text;
 using Terraria;
-using Terraria.DataStructures;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
@@ -16,14 +15,14 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 6);
+    public override Version Version => new Version(1, 3, 7);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
     #region 注册与释放   
     public MonsterSpeed(Main game) : base(game)
     {
-        UpdateProjectile.UpdateState = new UpdateProjState[1001];
+        UpProj.UpdateState = new UpdateProjState[1001];
     }
 
     public override void Initialize()
@@ -31,12 +30,15 @@ public class MonsterSpeed : TerrariaPlugin
         if (!Directory.Exists(Paths))
         {
             Directory.CreateDirectory(Paths);
+            ExtractData();
         }
 
         LoadConfig();
-        CondFileManager.Init(); // 新增：初始化触发条件文件系统
-        SpawnProjectileFile.Init(); // 新增：初始化弹幕文件系统
-        UpdateProjectileFile.Init(); // 新增：初始化更新弹幕文件系统
+        ConditionFile.Init(); // 新增：初始化触发条件文件系统
+        SpawnProjFile.Init(); // 新增：初始化弹幕文件系统
+        UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
+        MoveFile.Init(); // 新增：初始化移动模式文件系统
+        AsyncExec.Init(); // 新增：初始化异步执行器  
         GeneralHooks.ReloadEvent += ReloadConfig;
         GetDataHandlers.KillMe += KillMe!;
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
@@ -60,12 +62,61 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
+    #region 依赖项内嵌
+    internal static CSExecutor scriptExec = new(); // 脚本执行器字段
+    private void ExtractData()
+    {
+        var files = new List<string>
+        {
+            "Microsoft.CodeAnalysis.dll",
+            "Microsoft.CodeAnalysis.CSharp.dll",
+            "Microsoft.CodeAnalysis.Scripting.dll",
+            "Microsoft.CodeAnalysis.CSharp.Scripting.dll",
+            "System.Collections.Immutable.dll",
+            "System.Reflection.Metadata.dll",
+        };
+
+        foreach (var file in files)
+        {
+            var asm = Assembly.GetExecutingAssembly();
+            var res = $"{asm.GetName().Name}.依赖项.{file}";
+
+            using (var stream = asm.GetManifestResourceStream(res))
+            {
+                if (stream == null) continue;
+                var tshockPath = typeof(TShock).Assembly.Location;
+                var USing = Path.Combine(tshockPath, "ServerPlugins");
+                var tarPath = Path.Combine(USing, file);
+
+                if (File.Exists(tarPath)) continue;
+
+                using (var fs = new FileStream(tarPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096))
+                {
+                    stream.CopyTo(fs);
+                }
+            }
+        }
+    }
+    #endregion
+
     #region 配置重载读取与写入方法
     internal static Configuration Config = new();
     private static void ReloadConfig(ReloadEventArgs args = null!)
     {
         LoadConfig();
-        args.Player.SendInfoMessage("[怪物加速]重新加载配置完毕。");
+        SpawnProjFile.Reload();
+        ConditionFile.Reload();
+        UpProjFile.Reload();
+        MoveFile.Reload();
+        args.Player.SendInfoMessage("[怪物加速] 重新加载配置完毕。");
+
+        // 重载脚本执行器
+        AsyncExec.Reload();
+        AsyncExec.BatchCompile();
+
+        // 编译后清理内存
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
     }
     private static void LoadConfig()
     {
@@ -98,9 +149,9 @@ public class MonsterSpeed : TerrariaPlugin
             Config.NpcDatas.Add(nd);
             Config.Write();
 
-            var s = StateUtil.GetState(npc);
+            var s = StateApi.GetState(npc);
             s.EventIndex = 0;
-            s.SendProjIndex = 0;
+            s.SendProjIdx = 0;
             s.Struck = 0;
             s.KillPlay = 0;
             s.ActiveTime = 0;
@@ -110,9 +161,9 @@ public class MonsterSpeed : TerrariaPlugin
             s.EventCounts = new Dictionary<int, int>();
             s.PlayCounts = new Dictionary<string, int>();
         }
-        else if (StateUtil.NpcStates.ContainsKey(npc.whoAmI))
+        else if (StateApi.NpcStates.ContainsKey(npc.whoAmI))
         {
-            StateUtil.GetState(npc).Struck++;
+            StateApi.GetState(npc).Struck++;
         }
     }
     #endregion
@@ -160,14 +211,12 @@ public class MonsterSpeed : TerrariaPlugin
         {
             return;
         }
-
-        // 清理MyProjectile中的状态
-        StateUtil.ClearState(args.npc);
+        
+        StateApi.ClearState(args.npc); // 清理指定npc所有状态
+        UpProj.ClearStates(args.npc.whoAmI); // 清理弹幕更新状态
         // 清理传送和回血记录
         Teleport.Remove(args.npc.whoAmI);
         HealTimes.Remove(args.npc.whoAmI);
-        // 清理弹幕更新状态
-        UpdateProjectile.ClearStates(args.npc.whoAmI);
 
         // 修改：更新配置数据 - 查找对应的NpcData
         var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(args.npc.netID));
@@ -197,7 +246,7 @@ public class MonsterSpeed : TerrariaPlugin
             var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(npc.netID));
             if (data != null)
             {
-                var state = StateUtil.GetState(npc);
+                var state = StateApi.GetState(npc);
                 state.KillPlay++;
             }
         }
@@ -230,14 +279,14 @@ public class MonsterSpeed : TerrariaPlugin
         Timer++;
         if (Timer >= 60)
         {
-            StateUtil.GetState(npc).ActiveTime++;
+            StateApi.GetState(npc).ActiveTime++;
         }
         Timer = 0;
         #endregion
 
         var handled = false;
         TimerEvents.TimerEvent(npc, mess, data, ref handled); //时间事件
-        FilePlayManager.HandleAll(npc, mess, data, StateUtil.GetState(npc), ref handled); // 执行文件（并行处理）
+        FilePlayManager.HandleAll(npc, mess, data, StateApi.GetState(npc), ref handled); // 执行文件（并行处理）
 
         TrackMode(npc, data); //超距离追击
         npc.netUpdate = true;
@@ -471,7 +520,7 @@ public class MonsterSpeed : TerrariaPlugin
         if (Config.Monitorinterval > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
         {
             // 使用新的状态管理方法获取当前事件索引
-            var state = StateUtil.GetState(npc);
+            var state = StateApi.GetState(npc);
 
             // 新增：显示关键指示物
             if (state?.Markers != null && state.Markers.Count > 0)

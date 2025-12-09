@@ -2,12 +2,11 @@
 using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
+using Terraria.GameContent.Events;
 using Terraria.ID;
 using TShockAPI;
-using Terraria.GameContent.Events;
 using static MonsterSpeed.Configuration;
-using static MonsterSpeed.TimerEvents;
-using static MonsterSpeed.UpdateProjectile;
+using static MonsterSpeed.UpProj;
 
 namespace MonsterSpeed;
 
@@ -145,7 +144,7 @@ public class Conditions
         // 新增：指示物条件检查
         if (Cond.MarkerConds != null && Cond.MarkerConds.Count > 0)
         {
-            if (!MarkerUtil.CheckMarkers(StateUtil.GetState(npc), Cond.MarkerConds, npc))
+            if (!MarkerUtil.CheckMarkers(StateApi.GetState(npc), Cond.MarkerConds, npc))
             {
                 allMet = false;
                 mess.Append(" 指示物条件未满足\n");
@@ -184,7 +183,7 @@ public class Conditions
             mess.Append($" 进度条件未满足: 当前进度不符合 {string.Join(",", Cond.Progress)}\n");
         }
 
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         
         // 数量条件检查
         if (!CheckCountConditions(npc, state, data, Cond, mess))
@@ -597,7 +596,7 @@ public class Conditions
             return false;
         }
     
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         if (state == null) return false;
     
         double elapsed = (DateTime.UtcNow - state.CooldownTime[state.EventIndex]).TotalSeconds;
@@ -610,7 +609,7 @@ public class Conditions
     {
         if (Condition.ExecuteCount.Count == 0) return true;
 
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         if (state == null) return false;
 
         bool allMet = true;
@@ -650,7 +649,7 @@ public class Conditions
 
     private static int GetTotalPlayCount(NPC npc)
     {
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         if (state == null) return 0;
 
         int total = 0;
@@ -668,7 +667,7 @@ public class Conditions
     {
         if (Condition.FilePlayCount.Count == 0) return true;
 
-        var state = StateUtil.GetState(npc);
+        var state = StateApi.GetState(npc);
         if (state == null) return false;
 
         bool allMet = true;
