@@ -73,8 +73,9 @@ public class SpawnProjData
     public string LineOff { get; set; } = "0,0";
 
     // 其他参数
-    [JsonProperty("指示物注入AI", Order = 73)]
-    public Dictionary<int, string> MkrToAI { get; set; } = new();
+    [JsonProperty("指示物", Order = 70)]  // 新增字段
+    public Dictionary<string, int> ScriptMarkers { get; set; } = new();
+
     [JsonProperty("更新弹幕", Order = 81)]
     public List<string> UpdProj { get; set; } = new();
     [JsonProperty("弹幕AI", Order = 82)]
@@ -88,7 +89,7 @@ public class SpawnProjData
 }
 #endregion
 
-internal class SpawnProj
+public class SpawnProj
 {
     #region 主发射方法(发射弹幕主入口)
     public static void Spawn(NpcData set, List<SpawnProjData> projs, NPC npc)
@@ -350,10 +351,6 @@ internal class SpawnProj
                 }
             }
         }
-
-        // 指示物注入AI
-        if (data.MkrToAI != null && data.MkrToAI.Count > 0 && st != null)
-            MarkerUtil.InjectToAI(st, data.MkrToAI, proj);
 
         // 注册更新弹幕
         if (data.UpdProj != null && data.UpdProj.Count > 0 &&

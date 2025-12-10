@@ -16,7 +16,7 @@ public class CondData
 }
 
 // 触发条件管理器
-internal class ConditionFile
+public class ConditionFile
 {
     public static readonly string Dir = Path.Combine(TShock.SavePath, "怪物加速", "触发条件");
 

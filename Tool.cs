@@ -9,7 +9,7 @@ using TShockAPI;
 
 namespace MonsterSpeed;
 
-internal class Tool
+public class Tool
 {
     #region 渐变着色方法 + 物品图标解析
     public static string TextGradient(string text)

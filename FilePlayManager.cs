@@ -57,7 +57,7 @@ public class FilePlayState
     public Dictionary<string, int> Markers { get; set; } = new Dictionary<string, int>();
 }
 
-internal class FilePlayManager
+public class FilePlayManager
 {
     private static readonly object Locks = new object();
 
@@ -207,18 +207,15 @@ internal class FilePlayManager
             int hashKey = key.GetHashCode();
 
             // 检查是否已执行过
-            bool executed = state.Script.TryGetValue(hashKey, out bool ok) && ok;
+            bool has = state.ScriptLoop.ContainsKey(hashKey);
+            if (!has) state.ScriptLoop[hashKey] = 0;
 
-            if (!executed)
+            state.ScriptLoop[hashKey]++;
+            if (state.ScriptLoop[hashKey] % evt.ScriptTime == 0)
             {
                 sb?.AppendLine($" 执行脚本:{evt.CsScript}");
-                AsyncExec.Exec(evt.CsScript, npc, state, sb, evt.AsyncExec);
-                // 标记为已执行
-                state.Script[hashKey] = true;
-            }
-            else
-            {
-                sb?.AppendLine($" 脚本已执行，跳过:{evt.CsScript}");
+                AsyncExec.Exec(evt.CsScript, npc, data, state, sb, evt.AsyncExec);
+                state.ScriptLoop[hashKey] = 0;
             }
         }
 
@@ -296,7 +293,7 @@ internal class FilePlayManager
         FilePlayState pState, FilePlayData play)
     {
         string scriptKey = $"{pState.PName}_{pState.FileSeq[pState.FileIdx]}_{pState.EvtIdx}";
-        state.Script.Remove(scriptKey.GetHashCode());
+        state.ScriptLoop.Remove(scriptKey.GetHashCode());
 
         pState.EvtIdx++;
         pState.Timer = DateTime.UtcNow;
@@ -473,23 +470,23 @@ internal class FilePlayManager
             var dir = Path.Combine(Paths, "时间事件");
             if (!Directory.Exists(dir))
                 return new List<TimerData>();
-                
-               // 查找匹配的文件
+
+            // 查找匹配的文件
             var files = Directory.GetFiles(dir, "*.json")
             .Where(f => Path.GetFileName(f).StartsWith(fileNumber + "."))
             .ToList();
-            
+
             if (files.Count == 0)
             {
                 TShock.Log.ConsoleError($"未找到序号为 {fileNumber} 的事件文件");
                 return new List<TimerData>();
             }
-    
+
             // 如果有多个匹配，取第一个
             var filePath = files[0];
             var content = File.ReadAllText(filePath);
             var fileData = JsonConvert.DeserializeObject<EventFileData>(content);
-    
+
             return fileData?.TimerEvents ?? new List<TimerData>();
         }
         catch (Exception ex)
@@ -558,9 +555,9 @@ internal class FilePlayManager
     private static void AppendStatus(NPC npc, StringBuilder sb,
         FilePlayState pState, double remaining)
     {
-        var num = pState.FileSeq.Count > pState.FileIdx ? 
+        var num = pState.FileSeq.Count > pState.FileIdx ?
             pState.FileSeq[pState.FileIdx].ToString() : "未知";
-            
+
         sb.Append($" 执行文件序号:[c/A2E4DB:{num}] " +
                $"进度:{pState.EvtIdx + 1}/{pState.Events.Count} " +
                $"剩余:{remaining:F1}秒\n");

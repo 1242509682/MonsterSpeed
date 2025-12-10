@@ -174,7 +174,7 @@ public class UpdateProjState
 }
 #endregion
 
-internal class UpProj
+public class UpProj
 {
     #region 检查所有更新弹幕
     public static Dictionary<int, DateTime> UpdateTimer = new(); //用于追踪更新弹幕的时间
@@ -264,7 +264,7 @@ internal class UpProj
     #endregion
 
     #region 更新单个弹幕
-    private static void UpdateSingleProj(NPC npc, NpcState state, UpdateProjState upState, UpdateProjData up, Projectile NewProj, int Stack)
+    public static void UpdateSingleProj(NPC npc, NpcState state, UpdateProjState upState, UpdateProjData up, Projectile NewProj, int Stack)
     {
         if (npc == null || !npc.active || state == null)
             return;
@@ -552,7 +552,7 @@ internal class UpProj
     #endregion
 
     #region 移动下个更新阶段
-    private static void Next(UpdateProjState upInfo)
+    public static void Next(UpdateProjState upInfo)
     {
         upInfo.UpdateIndex++; // 移动到下一个阶段
     }
@@ -589,7 +589,7 @@ internal class UpProj
     #endregion
 
     #region 发送更新
-    private static void SendUp(List<int> UpList)
+    public static void SendUp(List<int> UpList)
     {
         if (UpList.Count > 0)
         {

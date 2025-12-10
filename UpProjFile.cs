@@ -18,7 +18,7 @@ public class UpData
 }
 
 // 更新弹幕文件管理器
-internal class UpProjFile
+public class UpProjFile
 {
     public static readonly string Dir = Path.Combine(TShock.SavePath, "怪物加速", "更新弹幕配置");
 

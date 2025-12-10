@@ -16,7 +16,7 @@ public class MoveDatas
 }
 
 // 行动模式文件管理器
-internal class MoveFile
+public class MoveFile
 {
     #region 文件路径
     public static readonly string Dir = Path.Combine(TShock.SavePath, "怪物加速", "行动模式");

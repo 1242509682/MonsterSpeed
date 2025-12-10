@@ -5,6 +5,7 @@ using Terraria;
 using Terraria.GameContent.Events;
 using Terraria.ID;
 using TShockAPI;
+using static MonoMod.InlineRT.MonoModRule;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.UpProj;
 
@@ -102,13 +103,13 @@ public class Conditions
     #endregion
 
     #region 触发条件主入口
-    internal static void Condition(NpcData data, NPC npc, Conditions Cond, ref bool allow)
+    public static void Condition(NpcData data, NPC npc, Conditions Cond, ref bool allow)
     {
         var mess = new StringBuilder();
         Condition(npc, mess, data, Cond, ref allow);
     }
 
-    internal static void Condition(NPC npc, StringBuilder mess, NpcData? data, Conditions Cond, ref bool allow)
+    public static void Condition(NPC npc, StringBuilder mess, NpcData? data, Conditions Cond, ref bool allow)
     {
         if (data is null) return;
         if (Cond is null) return;
@@ -133,11 +134,11 @@ public class Conditions
         // 新增：标志条件检查
         if (!string.IsNullOrEmpty(Cond.CheckFlag))
         {
-            bool flagMet = data.Flag == Cond.CheckFlag;
+            bool flagMet = StateApi.GetState(npc).Flag == Cond.CheckFlag;
             if (!flagMet)
             {
                 allMet = false;
-                mess.Append($" 标志条件未满足: 需要标志 '{Cond.CheckFlag}'，当前标志 '{data.Flag}'\n");
+                mess.Append($" 标志条件未满足: 需要标志 '{Cond.CheckFlag}'，当前标志 '{StateApi.GetState(npc).Flag}'\n");
             }
         }
 
@@ -393,7 +394,7 @@ public class Conditions
             var matchedData = MonsterSpeed.Config.NpcDatas.FirstOrDefault(data =>
                 data.Type != null &&
                 data.Type.Contains(mst.netID) &&
-                data.Flag == flag);
+                StateApi.GetState(mst).Flag == flag);
 
             return matchedData != null;
         }

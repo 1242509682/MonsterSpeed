@@ -23,7 +23,7 @@ public class SpawnNpcData
     public bool TarCenter = false;
 }
 
-internal class SpawnMonster
+public class SpawnMonster
 {
     #region 召唤怪物方法（增强指示物支持）
     public static void SpawnMonsters(Configuration.NpcData data, List<SpawnNpcData> SpawnNpc, NPC npc)

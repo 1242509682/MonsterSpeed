@@ -7,7 +7,8 @@ namespace MonsterSpeed;
 public class NpcState
 {
     public string Flag { get; set; } = string.Empty; // 标志
-    public Dictionary<int, bool> Script { get; set; } = new(); // 脚本执行状态
+    public Dictionary<int, int> ScriptLoop { get; set; } = new(); // 脚本循环计数器(每帧递增)
+    public Dictionary<int, bool> ScriptOnec { get; set; } = new(); // 脚本仅一次执行标记
     public ConcurrentDictionary<string, int> Marker { get; set; } = new(); // c#脚本里的指示物数据
     public Dictionary<string, int> Markers { get; set; } = new();  // 配置里指示物数据
     // 时间事件基础状态
@@ -50,16 +51,6 @@ public class NpcState
     public bool Remove(string key) => Marker.TryRemove(key, out _);
     public void Clear() => Marker.Clear();
     public Dictionary<string, int> GetAll() => new Dictionary<string, int>(Marker);
-    public bool Check(string key, string op, int val) => op switch
-    {
-        "==" => Get(key) == val,
-        "!=" => Get(key) != val,
-        ">" => Get(key) > val,
-        "<" => Get(key) < val,
-        ">=" => Get(key) >= val,
-        "<=" => Get(key) <= val,
-        _ => false
-    };
     #endregion
 }
 #endregion

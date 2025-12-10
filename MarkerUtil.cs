@@ -121,7 +121,7 @@ public static class MarkerUtil
                 if (parts.Length >= 2 && float.TryParse(parts[1].Trim(), out float fVal))
                     factor = fVal;
     
-                int refVal = GetMarker(st, refName);
+                int refVal = st.Get(refName);
                 
                 // 处理完成后移除引用追踪
                 Refs.Remove(refName);
@@ -205,7 +205,7 @@ public static class MarkerUtil
             "ai1" => (int)npc.ai[1],
             "ai2" => (int)npc.ai[2],
             "ai3" => (int)npc.ai[3],
-            _ => GetMarker(state, propName) // 默认为指示物名称
+            _ => state.Get(propName) // 默认为指示物名称
         };
     }
     #endregion
@@ -241,7 +241,7 @@ public static class MarkerUtil
                 if (parts.Length >= 2 && float.TryParse(parts[1].Trim(), out float fVal))
                     factor = fVal;
     
-                int refVal = GetMarker(st, refName);
+                int refVal = st.Get(refName);
                 
                 // 处理完成后移除引用追踪
                 Refs.Remove(refName);
@@ -259,13 +259,6 @@ public static class MarkerUtil
             TShock.Log.ConsoleError($"数值解析失败: {vStr}, 错误: {ex.Message}");
             return 0;
         }
-    }
-    #endregion
-
-    #region 获取指示物
-    public static int GetMarker(NpcState st, string name, int defVal = 0)
-    {
-        return st?.Markers?.GetValueOrDefault(name, defVal) ?? defVal;
     }
     #endregion
 
@@ -292,7 +285,7 @@ public static class MarkerUtil
 
         try
         {
-            int curr = GetMarker(st, mName);
+            int curr = st.Get(mName);
 
             foreach (string expr in exprs)
             {
@@ -387,7 +380,7 @@ public static class MarkerUtil
                 if (parts.Length >= 2 && float.TryParse(parts[1], out float fVal))
                     factor = fVal;
 
-                proj.ai[idx] = GetMarker(st, mName) * factor;
+                proj.ai[idx] = st.Get(mName) * factor;
                 count++;
             }
             catch (System.Exception ex)
@@ -454,7 +447,7 @@ public static class MarkerUtil
         // 修改：适配 List<NpcData> 结构
         return string.IsNullOrEmpty(mod.Flag) ||
                (MonsterSpeed.Config?.NpcDatas?.Any(npcData =>
-                   npcData.Type.Contains(tNpc.netID) && npcData.Flag == mod.Flag) == true);
+                   npcData.Type.Contains(tNpc.netID) && tState.Flag == mod.Flag) == true);
     }
     #endregion
 

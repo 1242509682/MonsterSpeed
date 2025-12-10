@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using Terraria;
 using TShockAPI;
+using static MonsterSpeed.Configuration;
 using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
@@ -97,7 +98,7 @@ public static class AsyncExec
     #endregion
 
     #region 批量编译脚本
-    internal static ScriptResult BatchCompile()
+    public static ScriptResult BatchCompile()
     {
         try
         {
@@ -148,7 +149,7 @@ public static class AsyncExec
     #endregion
 
     #region 执行脚本 模式选择(异步或同步)
-    internal static void Exec(string name, NPC npc, NpcState state, StringBuilder msg, bool async = false)
+    public static void Exec(string name, NPC npc, Configuration.NpcData data, NpcState state, StringBuilder msg, bool async = false)
     {
         if (scriptExec == null)
         {
@@ -173,7 +174,7 @@ public static class AsyncExec
             {
                 try
                 {
-                    await scriptExec.Run(name, npc, state, msg);
+                    await scriptExec.Run(name, npc, data, state, msg);
                 }
                 finally
                 {
@@ -186,7 +187,7 @@ public static class AsyncExec
         }
         else
         {
-            var task = scriptExec.Run(name, npc, state, msg);
+            var task = scriptExec.Run(name, npc, data, state, msg);
             task.GetAwaiter().GetResult();
             if (!task.Result.Ok)
             {

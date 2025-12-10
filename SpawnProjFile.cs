@@ -16,7 +16,7 @@ public class ProjData
 }
 
 // 弹幕文件管理器
-internal class SpawnProjFile
+public class SpawnProjFile
 {
     public static readonly string Dir = Path.Combine(TShock.SavePath, "怪物加速", "弹幕配置");
 
@@ -93,6 +93,195 @@ internal class SpawnProjFile
                         },
                     }
                 },
+
+            // 新增：环形弹幕
+            new ProjData
+            {
+                Name = "环形弹幕",
+                Description = "一圈弹幕向四周发射",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 115,
+                        Damage = 15,
+                        Stack = 1,
+                        CircleCnt = 12,
+                        CircleRad = 3,
+                        CircleAngInc = 30,
+                        Velocity = 8,
+                        Life = 120,
+                        KnockBack = 6,
+                        UpdProj = new List<string>(){ "螺旋追踪" }
+                    }
+                }
+            },
+
+            // 新增：扇形弹幕
+            new ProjData
+            {
+                Name = "扇形弹幕",
+                Description = "扇形范围弹幕",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 671,
+                        Damage = 20,
+                        Stack = 1,
+                        SprCnt = 5,
+                        SprAngInc = 15,
+                        Velocity = 12,
+                        Life = 150,
+                        KnockBack = 8,
+                        AngleCfg = "0",
+                        UpdProj = new List<string>(){ "加速弹幕" }
+                    }
+                }
+            },
+
+            // 新增：线性弹幕
+            new ProjData
+            {
+                Name = "线性弹幕",
+                Description = "一排直线弹幕",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 664,
+                        Damage = 18,
+                        Stack = 1,
+                        LineCnt = 5,
+                        LineOff = "2,0",
+                        Velocity = 10,
+                        Life = 120,
+                        KnockBack = 7,
+                        UpdProj = new List<string>(){ "分裂弹幕" }
+                    }
+                }
+            },
+
+            // 新增：复合弹幕（圆形+扇形）
+            new ProjData
+            {
+                Name = "复合弹幕",
+                Description = "圆形+扇形组合弹幕",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 115,
+                        Damage = 12,
+                        Stack = 1,
+                        CircleCnt = 8,
+                        CircleRad = 4,
+                        SprCnt = 3,
+                        SprAngInc = 20,
+                        Velocity = 6,
+                        Life = 180,
+                        KnockBack = 5,
+                        UpdProj = new List<string>(){ "智能追踪", "分裂弹幕" }
+                    }
+                }
+            },
+
+            // 新增：螺旋弹幕
+            new ProjData
+            {
+                Name = "螺旋弹幕",
+                Description = "螺旋状发射弹幕",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 671,
+                        Damage = 15,
+                        Stack = 24,
+                        Interval = 5,
+                        AngleCfg = "0,360",
+                        Velocity = 8,
+                        Life = 200,
+                        KnockBack = 6,
+                        UpdProj = new List<string>(){ "螺旋追踪" }
+                    }
+                }
+            },
+
+            // 新增：追踪弹幕组
+            new ProjData
+            {
+                Name = "追踪弹幕组",
+                Description = "生成后自动追踪玩家",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 1,
+                        Damage = 25,
+                        Stack = 6,
+                        Interval = 10,
+                        AngleCfg = "-30,30",
+                        Velocity = 4,
+                        Life = 300,
+                        KnockBack = 4,
+                        UpdProj = new List<string>(){ "强效追踪" }
+                    }
+                }
+            },
+
+            // 新增：爆炸弹幕
+            new ProjData
+            {
+                Name = "爆炸弹幕",
+                Description = "到达目标后爆炸",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 77,
+                        Damage = 30,
+                        Stack = 3,
+                        Interval = 20,
+                        Velocity = 15,
+                        Life = 90,
+                        KnockBack = 10,
+                        LockRange = 20,
+                        LockSpd = 12,
+                        UpdProj = new List<string>(){ "爆炸更新" }
+                    }
+                }
+            },
+
+            // 新增：反弹弹幕
+            new ProjData
+            {
+                Name = "反弹弹幕",
+                Description = "碰到墙壁反弹",
+                Projectiles = new List<SpawnProjData>
+                {
+                    new SpawnProjData()
+                    {
+                        Condition = "默认配置",
+                        Type = 454,
+                        Damage = 22,
+                        Stack = 8,
+                        Interval = 15,
+                        AngleCfg = "0,360",
+                        Velocity = 7,
+                        Life = 240,
+                        KnockBack = 8,
+                        UpdProj = new List<string>(){ "反弹更新" }
+                    }
+                }
+            }
 
             };
 

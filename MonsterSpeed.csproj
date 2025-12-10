@@ -12,12 +12,12 @@
 	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.Scripting.dll" />
 	  <EmbeddedResource Include="依赖项\System.Collections.Immutable.dll" />
 	  <EmbeddedResource Include="依赖项\System.Reflection.Metadata.dll" />
-	  <EmbeddedResource Include="示例脚本\复杂BOSSAI脚本.csx" />
-	  <EmbeddedResource Include="示例脚本\异步操作脚本.csx" />
-	  <EmbeddedResource Include="示例脚本\指示物系统示例.csx" />
-	  <EmbeddedResource Include="示例脚本\条件判断脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\BOSS阶段弹幕脚本.csx" />
 	  <EmbeddedResource Include="示例脚本\基础示例脚本.csx" />
-	  <EmbeddedResource Include="示例脚本\生成弹幕脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\复杂BOSSAI脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\定时弹幕脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\异步操作脚本.csx" />
+	  <EmbeddedResource Include="示例脚本\条件判断脚本.csx" />
 	</ItemGroup>
 	<ItemGroup>
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p" />

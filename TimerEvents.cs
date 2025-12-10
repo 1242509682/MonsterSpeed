@@ -18,6 +18,10 @@ public class TimerData
     public int Defense { get; set; } = 0;
     [JsonProperty("C#脚本", Order = 2)]  // 新增字段
     public string CsScript { get; set; } = "";
+    [JsonProperty("脚本循环频率", Order = 2)]
+    public int ScriptTime { get; set; } = 60;
+    [JsonProperty("脚本只跑一次", Order = 2)]
+    public bool ScriptOnce { get; set; } = false;
     [JsonProperty("异步执行脚本", Order = 2)]  // 新增字段
     public bool AsyncExec { get; set; } = false;
     [JsonProperty("指示物修改", Order = 3)]
@@ -29,12 +33,12 @@ public class TimerData
     [JsonProperty("生成怪物", Order = 6)]
     public List<SpawnNpcData> SpawnNPC { get; set; } = new List<SpawnNpcData>();
     [JsonProperty("生成弹幕", Order = 7)]
-    public List<string> SendProj { get; set; } = new List<string>(); 
+    public List<string> SendProj { get; set; } = new List<string>();
     [JsonProperty("AI赋值", Order = 8)]
     public AIModes AIMode { get; set; }
 }
 
-internal class TimerEvents
+public class TimerEvents
 {
     #region 时间事件主入口
     public static void TimerEvent(NPC npc, StringBuilder mess, NpcData data, ref bool handled)
@@ -45,7 +49,7 @@ internal class TimerEvents
         if (state is null) return;
 
         var Event = data.TimerEvent[state.EventIndex];
-        
+
         // 检查事件索引有效性
         if (state.EventIndex < 0 || state.EventIndex >= data.TimerEvent.Count)
         {
@@ -54,17 +58,21 @@ internal class TimerEvents
         }
 
         // 初始化冷却时间
-        if (!state.CooldownTime.TryGetValue(state.EventIndex, out var time)) 
-        {
+        if (!state.CooldownTime.ContainsKey(state.EventIndex))
             state.CooldownTime[state.EventIndex] = DateTime.UtcNow;
-        }
+
+        // 使用文件中定义的冷却时间
+        var time = state.CooldownTime[state.EventIndex];
+        TimeSpan elapsed = DateTime.UtcNow - time;
+        double remaining = Math.Max(0, Event.CoolTime - elapsed.TotalSeconds);
 
         // 显示冷却文本
-        ShowCoolText(npc, data, state, Event.CoolTime);
+        ShowCoolText(npc, data, state,remaining);
 
         // 检查主事件冷却 - 使用事件的独立冷却时间
-        if ((DateTime.UtcNow - time) >= TimeSpan.FromSeconds(Event.CoolTime))
+        if (elapsed >= TimeSpan.FromSeconds(Event.CoolTime))
         {
+            state.LastTextTime = DateTime.UtcNow; // 重置悬浮文本计时
             NextEvent(data, npc, state); // 切换到下个事件
         }
         else
@@ -77,13 +85,14 @@ internal class TimerEvents
                 var cond = ConditionFile.GetCondData(Event.Condition);
                 Conditions.Condition(npc, mess, data, cond, ref allow);
             }
-            
+
             if (allow) // 满足条件则执行事件
             {
                 StartEvent(data, npc, Event, mess, state, ref handled);
             }
             else
             {
+                state.LastTextTime = DateTime.UtcNow; // 重置悬浮文本计时
                 NextEvent(data, npc, state); // 切换到下个事件（默认循环）
             }
         }
@@ -106,25 +115,12 @@ internal class TimerEvents
             state.EventCounts[state.EventIndex] = 1;
         }
 
-        // 重置当前事件的脚本执行标记（清除，让下个周期可以重新执行）
-        state.Script.Remove(state.EventIndex);
-
-        // 重置移动状态
-        state.MoveState = new MoveModeState();
-        // 重置悬浮文本计时
-        state.LastTextTime = DateTime.UtcNow;
-
-        // 移动到下个事件（自动循环）
-        state.EventIndex = (state.EventIndex + 1) % data.TimerEvent.Count;
-        // 设置下个事件的冷却时间
-        var nextEvent = data.TimerEvent[state.EventIndex];
+        state.ScriptLoop.Remove(state.EventIndex); // 重置当前事件的脚本执行标记
+        state.ScriptOnec.Remove(state.EventIndex);
+        state.MoveState = new MoveModeState(); // 重置移动状态
+        state.AIState = new AIState(); // 重置AI赋值
+        state.EventIndex = (state.EventIndex + 1) % data.TimerEvent.Count; // 移动到下个事件（自动循环）
         state.CooldownTime[state.EventIndex] = DateTime.UtcNow;
-
-        // 确保事件索引在有效范围内
-        if (state.EventIndex < 0 || state.EventIndex >= data.TimerEvent.Count)
-        {
-            state.EventIndex = 0;
-        }
     }
     #endregion
 
@@ -135,12 +131,23 @@ internal class TimerEvents
         if (!string.IsNullOrEmpty(Event.CsScript))
         {
             // 检查当前事件的脚本是否已执行过
-            bool Exec = state.Script.TryGetValue(state.EventIndex, out bool ok) && ok;
-            if (!Exec)
+            var Once = state.ScriptOnec.TryGetValue(state.EventIndex, out bool ok) && ok;
+            bool has = state.ScriptLoop.ContainsKey(state.EventIndex);
+            if (!has) state.ScriptLoop[state.EventIndex] = 0; // 标记为已执行
+            if (!Event.ScriptOnce)
             {
-                mess?.AppendLine($" 执行脚本:{Event.CsScript}");
-                AsyncExec.Exec(Event.CsScript, npc, state, mess, Event.AsyncExec);
-                state.Script[state.EventIndex] = true; // 标记为已执行
+                state.ScriptLoop[state.EventIndex]++;
+                if (state.ScriptLoop[state.EventIndex] % Event.ScriptTime == 0)
+                {
+                    mess?.AppendLine($"循环执行脚本:{Event.CsScript}");
+                    AsyncExec.Exec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
+                }
+            }
+            else if(!Once)
+            {
+                mess?.AppendLine($"仅执行1次脚本:{Event.CsScript}");
+                AsyncExec.Exec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
+                state.ScriptOnec[state.EventIndex] = true;
             }
         }
 
@@ -215,23 +222,6 @@ internal class TimerEvents
         int snCount = state?.SNCount ?? 0;
         var life = (int)(npc.life / (float)npc.lifeMax * 100);
 
-        // 显示关键指示物
-        if (state?.Markers != null && state.Markers.Count > 0)
-        {
-            mess.Append($" [指示物] ");
-            int count = 0;
-            foreach (var marker in state.Markers)
-            {
-                if (count >= 3) break;
-                if (marker.Key.StartsWith("phase") || marker.Key.StartsWith("count") || marker.Key.StartsWith("step"))
-                {
-                    mess.Append($"{marker.Key}:{marker.Value} ");
-                    count++;
-                }
-            }
-            if (count > 0) mess.Append("\n");
-        }
-
         mess.Append($" 顺序:[c/A2E4DB:{state!.EventIndex + 1}/{data.TimerEvent.Count}] " +
                    $"血量:[c/A2E4DB:{life}%] " +
                    $"召怪:[c/A2E4DB:{snCount}] " +
@@ -240,18 +230,12 @@ internal class TimerEvents
     #endregion
 
     #region 时间事件冷却倒计时方法（悬浮文本）
-    public static void ShowCoolText(NPC npc, NpcData data, NpcState state, double coolTime)
+    public static void ShowCoolText(NPC npc, NpcData data, NpcState state, double remaining)
     {
         if ((DateTime.UtcNow - state.LastTextTime).TotalMilliseconds < data.TextInterval)
             return;
 
-        TimeSpan actionTime = TimeSpan.FromSeconds(coolTime) - (DateTime.UtcNow - state.CooldownTime[state.EventIndex]);
-        
-        // 确保时间不为负
-        if (actionTime.TotalSeconds < 0)
-            actionTime = TimeSpan.Zero;
-
-        string text = $"Time {actionTime.TotalSeconds:F2} [{state.EventIndex + 1}/{data.TimerEvent?.Count ?? 1}]";
+        string text = $"Time {remaining:F2} [{state.EventIndex + 1}/{data.TimerEvent?.Count ?? 1}]";
         Color color = Color.LightGoldenrodYellow;
 
         if (!data.TextGradient)

@@ -3,12 +3,13 @@ using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
+using static MonoMod.InlineRT.MonoModRule;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
-internal class Command
+public class Command
 {
     public static void CMD(CommandArgs args)
     {
@@ -64,7 +65,6 @@ internal class Command
                     {
                         var nd = NewData();
                         nd.Type = new List<int>() { 4 }; // 克眼ID
-                        nd.Flag = "克苏鲁之眼";
                         Config.NpcDatas.Add(nd);
                     }
 
@@ -177,25 +177,23 @@ internal class Command
         }
 
         int cnt = 0;
-        var allEvents = new List<(string name, int idx, TimerData data)>();
+        var all = new List<(string name, int idx, TimerData data)>();
 
         // 修改：遍历List<NpcData>而不是字典
-        foreach (var npcData in Config.NpcDatas)
+        foreach (var data in Config.NpcDatas!)
         {
-            var name = string.IsNullOrEmpty(npcData.Flag) ?
-                      $"怪物{npcData.Type.FirstOrDefault()}" :
-                      npcData.Flag;
+            var name = $"怪物{data.Type.FirstOrDefault()}";
 
-            if (npcData.TimerEvent != null && npcData.TimerEvent.Count > 0)
+            if (data.TimerEvent != null && data.TimerEvent.Count > 0)
             {
-                for (int i = 0; i < npcData.TimerEvent.Count; i++)
+                for (int i = 0; i < data.TimerEvent.Count; i++)
                 {
-                    allEvents.Add((name, i + 1, npcData.TimerEvent[i]));
+                    all.Add((name, i + 1, data.TimerEvent[i]));
                 }
             }
         }
 
-        allEvents = allEvents.OrderBy(e => e.name).ThenBy(e => e.idx).ToList();
+        all = all.OrderBy(e => e.name).ThenBy(e => e.idx).ToList();
 
         // 如果不覆盖，找到最大序号
         int startNum = 1;
@@ -212,11 +210,11 @@ internal class Command
             }
         }
 
-        for (int i = 0; i < allEvents.Count; i++)
+        for (int i = 0; i < all.Count; i++)
         {
             try
             {
-                var (name, idx, data) = allEvents[i];
+                var (name, idx, data) = all[i];
                 var num = startNum + i;
 
                 var fd = new EventFileData
@@ -274,32 +272,30 @@ internal class Command
             var npc = near.OrderBy(n => Vector2.Distance(plr.TPlayer.position, n.position)).First();
 
             // 修改：通过怪物ID查找对应的NpcData
-            var npcData = Config.NpcDatas.FirstOrDefault(nd => nd.Type.Contains(npc.type));
+            var data = Config.NpcDatas!.FirstOrDefault(nd => nd.Type.Contains(npc.type));
 
-            if (npcData == null)
+            if (data == null)
             {
                 plr.SendErrorMessage($"未找到BOSS '{npc.FullName}' 的配置数据！");
                 return;
             }
 
-            var name = string.IsNullOrEmpty(npcData.Flag) ?
-                      $"怪物{npcData.Type.FirstOrDefault()}" :
-                      npcData.Flag;
+            var name = $"怪物{data.Type.FirstOrDefault()}";
 
-            if (npcData.TimerEvent == null || npcData.TimerEvent.Count == 0)
+            if (data.TimerEvent == null || data.TimerEvent.Count == 0)
             {
                 plr.SendErrorMessage($"BOSS '{name}' 没有时间事件配置！");
                 return;
             }
 
             var idx = StateApi.GetState(npc)!.EventIndex;
-            if (idx < 0 || idx >= npcData.TimerEvent.Count)
+            if (idx < 0 || idx >= data.TimerEvent.Count)
             {
                 plr.SendErrorMessage($"BOSS '{name}' 的当前事件索引无效！");
                 return;
             }
 
-            var evt = npcData.TimerEvent[idx];
+            var evt = data.TimerEvent[idx];
             var evtIdx = idx + 1;
 
             var existing = Directory.GetFiles(dir, "*.json");
@@ -329,7 +325,7 @@ internal class Command
             File.WriteAllText(path, json, Encoding.UTF8);
 
             plr.SendSuccessMessage($"成功导出BOSS '{name}' 的当前事件到: {fileName}");
-            plr.SendInfoMessage($"事件索引: {evtIdx}/{npcData.TimerEvent.Count}，文件序号: {num}");
+            plr.SendInfoMessage($"事件索引: {evtIdx}/{data.TimerEvent.Count}，文件序号: {num}");
         }
         catch (Exception ex)
         {

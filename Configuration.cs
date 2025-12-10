@@ -5,7 +5,7 @@ using TShockAPI;
 
 namespace MonsterSpeed;
 
-internal class Configuration
+public class Configuration
 {
     #region 实例变量
     [JsonProperty("插件开关", Order = -100)]
@@ -36,8 +36,6 @@ internal class Configuration
     #region 怪物数据结构
     public class NpcData
     {
-        [JsonProperty("标志", Order = -10)]
-        public string Flag { get; set; } = "";
         [JsonProperty("怪物ID", Order = -9)]
         public List<int> Type { get; set; } = new List<int>();
         [JsonProperty("死亡次数", Order = -3)]
@@ -241,24 +239,25 @@ internal class Configuration
         {
             new NpcData(0, 62, 25f, 35, 5)
             {
-                Flag = "克苏鲁之眼",
                 Type = new List<int> { 4, 50 },
                 AutoHealInterval = 5,
                 TimerEvent = new List<TimerData>()
                 {
                     new TimerData
                     {
-                        CoolTime = 10,
+                        CoolTime = 5,
                         Condition = "默认配置",
-                        CsScript = "生成弹幕脚本",
+                        CsScript = "BOSS阶段弹幕脚本",
                         SendProj = new List<string>() { "克眼二更弹幕" },
                     },
 
                     new TimerData
                     {
-                        CoolTime = 8,
+                        CoolTime = 10,
                         Defense = 50,
                         Condition = "半血",
+                        CsScript = "定时弹幕脚本",
+                        ScriptTime = 1,
                         SendProj = new List<string>(){ "默认弹幕" },
                         MoveMode = "顺时针环绕",
                     },

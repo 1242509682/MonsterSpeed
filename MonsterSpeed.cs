@@ -15,7 +15,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 7);
+    public override Version Version => new Version(1, 3, 7,1);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -145,7 +145,6 @@ public class MonsterSpeed : TerrariaPlugin
         {
             NpcData nd = NewData(npc.FullName);
             nd.Type = new List<int> { npc.netID }; // 设置怪物ID
-            nd.Flag = npc.FullName; // 使用怪物全名作为标志
             Config.NpcDatas.Add(nd);
             Config.Write();
 
@@ -206,20 +205,20 @@ public class MonsterSpeed : TerrariaPlugin
     #region 怪物死亡更新数据方法
     private void OnNPCKilled(NpcKilledEventArgs args)
     {
-        if (!Config.Enabled || args.npc == null ||
-            !Config.NpcList.Contains(args.npc.netID))
+        var npc = args.npc;
+        if (!Config.Enabled || npc is null ||
+            !Config.NpcList.Contains(npc.netID))
         {
             return;
         }
-        
-        StateApi.ClearState(args.npc); // 清理指定npc所有状态
-        UpProj.ClearStates(args.npc.whoAmI); // 清理弹幕更新状态
-        // 清理传送和回血记录
-        Teleport.Remove(args.npc.whoAmI);
-        HealTimes.Remove(args.npc.whoAmI);
+
+        StateApi.ClearState(npc); // 清理指定npc所有状态
+        UpProj.ClearStates(npc.whoAmI); // 清理弹幕更新状态
+        Teleport.Remove(npc.whoAmI);    // 清理传送和回血记录
+        HealTimes.Remove(npc.whoAmI);
 
         // 修改：更新配置数据 - 查找对应的NpcData
-        var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(args.npc.netID));
+        var data = Config.NpcDatas!.FirstOrDefault(d => d.Type.Contains(npc.netID));
         if (data != null)
         {
             data.DeadCount += 1;
@@ -235,6 +234,8 @@ public class MonsterSpeed : TerrariaPlugin
         if (e.Handled || plr == null || e.Pvp) return;
 
         e.PlayerDeathReason.TryGetCausingEntity(out var entity);
+        
+        var whoAmI = entity?.whoAmI ?? -1;
 
         if (entity is NPC npc)
         {
@@ -243,10 +244,9 @@ public class MonsterSpeed : TerrariaPlugin
                 return;
             }
 
-            var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(npc.netID));
-            if (data != null)
+            var state = StateApi.GetState(npc);
+            if (state is not null)
             {
-                var state = StateApi.GetState(npc);
                 state.KillPlay++;
             }
         }
@@ -280,8 +280,8 @@ public class MonsterSpeed : TerrariaPlugin
         if (Timer >= 60)
         {
             StateApi.GetState(npc).ActiveTime++;
+            Timer = 0;
         }
-        Timer = 0;
         #endregion
 
         var handled = false;

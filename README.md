@@ -125,6 +125,12 @@
 ## 更新日志
 
 ```
+v1.3.7.1
+修复时间事件倒计时不准确的问题，
+将配置版的指示物系统与脚本指示物合并
+补充了一些预设示例
+C#脚本支持循环执行(自定义频率)与仅执行一次模式切换
+
 v1.3.7
 加入了时间事件C#脚本读取功能
 使用/reload指令可清除缓存并重新编译
@@ -537,7 +543,6 @@ v1.0.0
     "播放文件模式说明",
     "指示物系统说明"
   ],
-  "监控间隔": 0.0,
   "怪物ID表": [
     4,
     13,
@@ -575,14 +580,63 @@ v1.0.0
     657,
     668
   ],
+  "监控间隔": 0.0,
+  "脚本配置": {
+    "启用缓存": true,
+    "超时时间": 5000,
+    "脚本目录": "C#脚本",
+    "引用列表": [
+      "using System;",
+      "using System.Text;",
+      "using System.Linq;",
+      "using System.Collections.Generic;",
+      "using Terraria;",
+      "using TShockAPI;",
+      "using MonsterSpeed;",
+      "using Microsoft.Xna.Framework;",
+      "using static MonsterSpeed.MonsterSpeed;"
+    ],
+    "系统程序集引用": [
+      "System.dll",
+      "System.Web.dll",
+      "System.Web.HttpUtility.dll",
+      "System.Net.dll",
+      "System.Net.Http.dll",
+      "System.Net.Requests.dll",
+      "System.Net.Primitives.dll",
+      "System.Private.CoreLib.dll",
+      "System.Private.Uri.dll",
+      "System.Runtime.dll",
+      "netstandard.dll",
+      "System.Core.dll",
+      "System.Private.Xml.Linq.dll",
+      "System.Diagnostics.TraceSource.dll",
+      "System.Collections.dll",
+      "System.Collections.Concurrent.dll",
+      "System.Collections.Immutable.dll",
+      "System.Linq.dll",
+      "System.Linq.Expressions.dll",
+      "System.Linq.Queryable.dll",
+      "System.IO.dll",
+      "System.IO.FileSystem.dll",
+      "System.IO.FileSystem.Primitives.dll",
+      "System.IO.Compression.dll",
+      "System.IO.Compression.ZipFile.dll",
+      "System.Text.Json.dll",
+      "System.Text.RegularExpressions.dll",
+      "System.Text.Encoding.dll",
+      "System.Text.Encoding.Extensions.dll",
+      "System.Threading.dll",
+      "System.Threading.Tasks.dll"
+    ]
+  },
   "怪物数据表": [
     {
-      "标志": "克苏鲁之眼",
       "怪物ID": [
         4,
         50
       ],
-      "死亡次数": 0,
+      "死亡次数": 2,
       "自动仇恨": true,
       "追击模式": true,
       "追击距离": 62.0,
@@ -594,82 +648,78 @@ v1.0.0
       "倒时间隔": 1000.0,
       "倒时渐变": false,
       "渐变字距": 16,
-      "执行文件": [
-        {
-          "标志": "",
-          "优先级": 0,
-          "事件名称": "",
-          "触发条件": "默认配置",
-          "文件列表": [],
-          "播放次数": 1,
-          "强制播放": false,
-          "限次播放": false,
-          "并行执行": false
-        }
-      ],
+      "执行文件": [],
       "时间事件": [
         {
           "冷却时间": 5.0,
           "触发条件": "默认配置",
           "修改防御": 0,
-          "指示物修改": {},
+          "C#脚本": "BOSS阶段弹幕脚本",
+          "脚本循环频率": 60,
+          "脚本只跑一次": false,
+          "异步执行脚本": false,
+          "指示物修改": [],
           "发射物品": [],
-          "行动模式": {
-            "行动模式说明": "0不启用, 1怪物停留原地, 2环绕模式(0顺时针、1逆时针、2根据交替间隔切换顺时针与逆时针), 3徘徊模式, 4突进模式, 5对视模式,目标锁定:仅对2-5有效)",
-            "模式类型": 0,
-            "行动条件": "默认配置",
-            "平滑系数": 0.15,
-            "目标锁定": {
-              "锁定模式(0-2)": 0,
-              "优先目标(0-3)": 0,
-              "锁定范围格数": 0,
-              "锁定速度": 0.0,
-              "锁定点偏移XY/格": "0,0",
-              "最大锁定数": 1,
-              "扇形锁定": false,
-              "扇形半角": 60,
-              "仅攻击对象": false,
-              "视线检查": false
-            },
-            "环绕方向": 0,
-            "交替间隔": 180.0,
-            "环绕半径格数": 25.0,
-            "环绕速度": 2.5,
-            "环绕移速": 15.0,
-            "徘徊半径格数": 30.0,
-            "徘徊速度": 10.0,
-            "徘徊间隔": 120,
-            "接近距离格数": 1.0,
-            "突进速度": 50.0,
-            "预备时间": 30,
-            "突进时间": 20,
-            "突进冷却": 180,
-            "后退距离格数": 2.0,
-            "后退速度系数": 0.3,
-            "对视距离格数": 30.0,
-            "换位距离格数": 20.0,
-            "对视速度": 10.0,
-            "对视平滑": 0.1,
-            "换位概率": 4
-          },
+          "行动模式": "",
           "生成怪物": [],
           "生成弹幕": [
-            "多段更新"
+            "克眼二更弹幕"
+          ],
+          "AI赋值": null
+        },
+        {
+          "冷却时间": 10.0,
+          "触发条件": "半血",
+          "修改防御": 50,
+          "C#脚本": "定时弹幕脚本",
+          "脚本循环频率": 1,
+          "脚本只跑一次": false,
+          "异步执行脚本": false,
+          "指示物修改": [],
+          "发射物品": [],
+          "行动模式": "顺时针环绕",
+          "生成怪物": [],
+          "生成弹幕": [
+            "默认弹幕"
           ],
           "AI赋值": null
         },
         {
           "冷却时间": 5.0,
-          "触发条件": "半血",
+          "触发条件": "史王不在场",
           "修改防御": 50,
-          "指示物修改": {},
-          "发射物品": [],
-          "行动模式": null,
-          "生成怪物": [],
-          "生成弹幕": [
-            "默认弹幕",
-            "散射弹幕"
+          "C#脚本": "",
+          "脚本循环频率": 60,
+          "脚本只跑一次": false,
+          "异步执行脚本": false,
+          "指示物修改": [
+            {
+              "查标志": "",
+              "怪物ID": 0,
+              "范围内格数": 0,
+              "指示物条件": {},
+              "指示物修改": {
+                "已召唤史王": [
+                  "=1"
+                ]
+              }
+            }
           ],
+          "发射物品": [],
+          "行动模式": "",
+          "生成怪物": [
+            {
+              "召怪条件": "默认配置",
+              "怪物ID": [
+                50
+              ],
+              "范围": 25,
+              "数量": 1,
+              "间隔": 300.0,
+              "以玩家为中心": false
+            }
+          ],
+          "生成弹幕": [],
           "AI赋值": null
         }
       ]
