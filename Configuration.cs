@@ -187,54 +187,6 @@ public class Configuration
             "using static MonsterSpeed.MonsterSpeed;"
         };
 
-        ScriptCfg.SystemAsse = new List<string>()
-        { 
-            // 系统核心相关
-            "System.dll",
-            "System.Web.dll",
-            "System.Web.HttpUtility.dll",
-            "System.Net.dll",
-            "System.Net.Http.dll",
-            "System.Net.Requests.dll",
-            "System.Net.Primitives.dll",
-            "System.Private.CoreLib.dll",
-            "System.Private.Uri.dll",
-            "System.Runtime.dll",
-            "netstandard.dll",
-            "System.Core.dll",
-            "System.Private.Xml.Linq.dll",
-            "System.Diagnostics.TraceSource.dll",
-            
-            // 集合相关
-            "System.Collections.dll",
-            "System.Collections.Concurrent.dll",
-            "System.Collections.Immutable.dll",
-
-            // LinQ相关
-            "System.Linq.dll",
-            "System.Linq.Expressions.dll",
-            "System.Linq.Queryable.dll",
-
-            // IO
-            "System.IO.dll",
-            "System.IO.FileSystem.dll",
-            "System.IO.FileSystem.Primitives.dll",
-
-            // GZip
-            "System.IO.Compression.dll",
-            "System.IO.Compression.ZipFile.dll",
-
-            // 文本处理
-            "System.Text.Json.dll",
-            "System.Text.RegularExpressions.dll",
-            "System.Text.Encoding.dll",
-            "System.Text.Encoding.Extensions.dll",
-
-            // 异步和多线程
-            "System.Threading.dll",
-            "System.Threading.Tasks.dll",
-        };
-
         NpcDatas = new List<NpcData>()
         {
             new NpcData(0, 62, 25f, 35, 5)

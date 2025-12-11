@@ -214,7 +214,7 @@ public class FilePlayManager
             if (state.ScriptLoop[hashKey] % evt.ScriptTime == 0)
             {
                 sb?.AppendLine($" 执行脚本:{evt.CsScript}");
-                AsyncExec.Exec(evt.CsScript, npc, data, state, sb, evt.AsyncExec);
+                CSExecutor.SelExec(evt.CsScript, npc, data, state, sb, evt.AsyncExec);
                 state.ScriptLoop[hashKey] = 0;
             }
         }

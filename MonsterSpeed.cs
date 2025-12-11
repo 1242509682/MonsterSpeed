@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using System.Text;
+using AutoCompile;
 using Microsoft.Xna.Framework;
 using Terraria;
 using TerrariaApi.Server;
@@ -15,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 7,1);
+    public override Version Version => new Version(1, 3, 7, 2);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -34,17 +35,13 @@ public class MonsterSpeed : TerrariaPlugin
         }
 
         LoadConfig();
-        ConditionFile.Init(); // 新增：初始化触发条件文件系统
-        SpawnProjFile.Init(); // 新增：初始化弹幕文件系统
-        UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
-        MoveFile.Init(); // 新增：初始化移动模式文件系统
-        AsyncExec.Init(); // 新增：初始化异步执行器  
         GeneralHooks.ReloadEvent += ReloadConfig;
         GetDataHandlers.KillMe += KillMe!;
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
         ServerApi.Hooks.NpcStrike.Register(this, this.OnNpcStrike);
         ServerApi.Hooks.NpcAIUpdate.Register(this, this.OnNpcAiUpdate);
         TShockAPI.Commands.ChatCommands.Add(new TShockAPI.Command("mos.admin", Command.CMD, "怪物加速", "mos"));
+        ServerApi.Hooks.GamePostInitialize.Register(this, this.GamePost);
     }
 
     protected override void Dispose(bool disposing)
@@ -56,24 +53,19 @@ public class MonsterSpeed : TerrariaPlugin
             ServerApi.Hooks.NpcKilled.Deregister(this, this.OnNPCKilled);
             ServerApi.Hooks.NpcStrike.Deregister(this, this.OnNpcStrike);
             ServerApi.Hooks.NpcAIUpdate.Deregister(this, this.OnNpcAiUpdate);
+            ServerApi.Hooks.GamePostInitialize.Deregister(this, this.GamePost);
             TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Command.CMD);
         }
         base.Dispose(disposing);
     }
     #endregion
 
-    #region 依赖项内嵌
-    internal static CSExecutor scriptExec = new(); // 脚本执行器字段
+    #region 内嵌依赖项
     private void ExtractData()
     {
         var files = new List<string>
         {
-            "Microsoft.CodeAnalysis.dll",
-            "Microsoft.CodeAnalysis.CSharp.dll",
-            "Microsoft.CodeAnalysis.Scripting.dll",
-            "Microsoft.CodeAnalysis.CSharp.Scripting.dll",
-            "System.Collections.Immutable.dll",
-            "System.Reflection.Metadata.dll",
+            "AutoCompile.dll",
         };
 
         foreach (var file in files)
@@ -99,6 +91,64 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
+    #region 加载完世界后事件
+    private void GamePost(EventArgs args)
+    {
+        ConditionFile.Init(); // 新增：初始化触发条件文件系统
+        SpawnProjFile.Init(); // 新增：初始化弹幕文件系统
+        UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
+        MoveFile.Init(); // 新增：初始化移动模式文件系统
+
+        if (Directory.Exists(Path.Combine(TShock.SavePath, "自动编译", "程序集")))
+        {
+            CSExecutor.Init(); // 新增：初始化异步执行器  
+            CSExecutor.CopyMosDll(); // 复制自己到自动编译《程序集文件夹》方便脚本能正确引用
+
+            // 启动服务器自动批量编译
+            if (Config.ScriptCfg?.Int == true &&
+                Config.ScriptCfg?.Enabled == true)
+            {
+                try
+                {
+                    TShock.Log.ConsoleInfo($"[怪物加速] 开始初始化编译脚本...");
+
+                    var result = CSExecutor.BatchCompile();
+                    if (result.Ok)
+                    {
+                        TShock.Log.ConsoleInfo($"[怪物加速] {result.Msg}");
+                    }
+                    else
+                    {
+                        TShock.Log.ConsoleWarn($"[怪物加速] 初始化编译有错误: {result.Msg}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TShock.Log.ConsoleError($"[怪物加速] 初始化编译异常: {ex.Message}");
+                }
+                finally
+                {
+                    // 编译结束 清理程序集引用 避免一直占用内存
+                    Compiler.ClearMetaRefs();
+                    GC.Collect();
+                }
+            }
+        }
+        else
+        {
+            Console.WriteLine(" ----------------------------------------------------------------");
+            TShock.Log.ConsoleError($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
+            TShock.Log.ConsoleWarn($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
+            TShock.Log.ConsoleError($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
+            TShock.Log.ConsoleWarn($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
+            TShock.Log.ConsoleError($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
+            TShock.Utils.Broadcast($"已释放依赖项: AutoCompile.dll —— 自动编译插件", 80, 142, 200);
+            TShock.Utils.Broadcast($"确保编译插件正常工作请重启服务器!", 80, 200, 180);
+            Console.WriteLine(" ----------------------------------------------------------------");
+        }
+    }
+    #endregion
+
     #region 配置重载读取与写入方法
     internal static Configuration Config = new();
     private static void ReloadConfig(ReloadEventArgs args = null!)
@@ -108,15 +158,17 @@ public class MonsterSpeed : TerrariaPlugin
         ConditionFile.Reload();
         UpProjFile.Reload();
         MoveFile.Reload();
-        args.Player.SendInfoMessage("[怪物加速] 重新加载配置完毕。");
 
-        // 重载脚本执行器
-        AsyncExec.Reload();
-        AsyncExec.BatchCompile();
-
-        // 编译后清理内存
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
+        // 重载脚本执行器并预编译
+        var result = CSExecutor.Reload();
+        if (result.Ok)
+        {
+            args.Player.SendInfoMessage("[怪物加速] 重新加载配置完毕。");
+        }
+        else
+        {
+            args.Player.SendErrorMessage($"[怪物加速] 重载失败: {result.Msg}");
+        }
     }
     private static void LoadConfig()
     {
@@ -234,7 +286,7 @@ public class MonsterSpeed : TerrariaPlugin
         if (e.Handled || plr == null || e.Pvp) return;
 
         e.PlayerDeathReason.TryGetCausingEntity(out var entity);
-        
+
         var whoAmI = entity?.whoAmI ?? -1;
 
         if (entity is NPC npc)

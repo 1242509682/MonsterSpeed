@@ -140,13 +140,13 @@ public class TimerEvents
                 if (state.ScriptLoop[state.EventIndex] % Event.ScriptTime == 0)
                 {
                     mess?.AppendLine($"循环执行脚本:{Event.CsScript}");
-                    AsyncExec.Exec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
+                    CSExecutor.SelExec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
                 }
             }
             else if(!Once)
             {
                 mess?.AppendLine($"仅执行1次脚本:{Event.CsScript}");
-                AsyncExec.Exec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
+                CSExecutor.SelExec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
                 state.ScriptOnec[state.EventIndex] = true;
             }
         }

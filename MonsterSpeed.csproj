@@ -6,12 +6,10 @@
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 	</PropertyGroup>
 	<ItemGroup>
-	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.CSharp.dll" />
-	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.CSharp.Scripting.dll" />
-	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.dll" />
-	  <EmbeddedResource Include="依赖项\Microsoft.CodeAnalysis.Scripting.dll" />
-	  <EmbeddedResource Include="依赖项\System.Collections.Immutable.dll" />
-	  <EmbeddedResource Include="依赖项\System.Reflection.Metadata.dll" />
+	  <None Remove="CSExecutor.cs~RF1c07da8.TMP" />
+	</ItemGroup>
+	<ItemGroup>
+	  <EmbeddedResource Include="依赖项\AutoCompile.dll" />
 	  <EmbeddedResource Include="示例脚本\BOSS阶段弹幕脚本.csx" />
 	  <EmbeddedResource Include="示例脚本\基础示例脚本.csx" />
 	  <EmbeddedResource Include="示例脚本\复杂BOSSAI脚本.csx" />
@@ -21,8 +19,11 @@
 	</ItemGroup>
 	<ItemGroup>
 		<NuGetAuditSuppress Include="https://github.com/advisories/GHSA-6qmf-mmc7-6c2p" />
-		<PackageReference Include="TShock" Version="5.2.4" />
-		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
-		<PackageReference Include="Microsoft.CodeAnalysis.Scripting.Common" Version="5.0.0" />
+		<PackageReference Include="TShock" Version="5.2.1" />
+	</ItemGroup>
+	<ItemGroup>
+	  <Reference Include="AutoCompile">
+	    <HintPath>依赖项\AutoCompile.dll</HintPath>
+	  </Reference>
 	</ItemGroup>
 </Project>
