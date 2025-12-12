@@ -125,6 +125,9 @@
 ## 更新日志
 
 ```
+v1.3.7.3
+/reload 不再重复编译未修改过的C#脚本
+
 v1.3.7.2
 将C#脚本编译器与执行器迁移《自动编译》插件内
 由《自动编译》插件实现C#脚本的自动编译与执行(编译指令依旧是:/reload)
@@ -491,7 +494,7 @@ v1.0.0
 | /mos list | 无 |   mos.admin    |    列出文件夹下的所有时间事件文件    |
 | /mos clear | 无 |   mos.admin    |    清空文件夹下的所有时间事件文件    |
 | /mos reset | 无 |   mos.admin    |    重置怪物数据表    |
-| /reload  | 无 |   tshock.cfg.reload    |    重载配置文件    |
+| /reload  | 无 |   tshock.cfg.reload    |    重载配置文件(重新编译脚本)    |
 
 ## 配置
 > 配置文件位置：tshock/怪物加速.json

@@ -16,7 +16,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 插件信息
     public override string Name => "怪物加速";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 7, 2);
+    public override Version Version => new Version(1, 3, 7, 3);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -99,38 +99,24 @@ public class MonsterSpeed : TerrariaPlugin
         UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
         MoveFile.Init(); // 新增：初始化移动模式文件系统
 
-        if (Directory.Exists(Path.Combine(TShock.SavePath, "自动编译", "程序集")))
+        var AsseDir = Path.Combine(TShock.SavePath, "自动编译", "程序集");
+        var has = Directory.Exists(AsseDir); // 检查自动编译的程序集目录是否存在
+        if (has)
         {
-            CSExecutor.Init(); // 新增：初始化异步执行器  
-            CSExecutor.CopyMosDll(); // 复制自己到自动编译《程序集文件夹》方便脚本能正确引用
+            CSExecutor.Init(); // 新增：初始化脚本执行器  
+            CSExecutor.CopyMosDll(AsseDir); // 复制自己到自动编译《程序集文件夹》方便脚本能正确引用
 
             // 启动服务器自动批量编译
-            if (Config.ScriptCfg?.Int == true &&
-                Config.ScriptCfg?.Enabled == true)
+            if (Config.ScriptCfg.Int)
             {
                 try
                 {
                     TShock.Log.ConsoleInfo($"[怪物加速] 开始初始化编译脚本...");
-
-                    var result = CSExecutor.BatchCompile();
-                    if (result.Ok)
-                    {
-                        TShock.Log.ConsoleInfo($"[怪物加速] {result.Msg}");
-                    }
-                    else
-                    {
-                        TShock.Log.ConsoleWarn($"[怪物加速] 初始化编译有错误: {result.Msg}");
-                    }
+                    CSExecutor.Script.BatchCompile(CSExecutor.Dir, Config.ScriptCfg.Usings);
                 }
                 catch (Exception ex)
                 {
                     TShock.Log.ConsoleError($"[怪物加速] 初始化编译异常: {ex.Message}");
-                }
-                finally
-                {
-                    // 编译结束 清理程序集引用 避免一直占用内存
-                    Compiler.ClearMetaRefs();
-                    GC.Collect();
                 }
             }
         }

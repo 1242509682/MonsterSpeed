@@ -176,14 +176,7 @@ public class Configuration
     {
         ScriptCfg.Usings = new List<string>()
         {
-            "using System;",
-            "using System.Text;",
-            "using System.Linq;",
-            "using System.Collections.Generic;",
-            "using Terraria;",
-            "using TShockAPI;",
             "using MonsterSpeed;",
-            "using Microsoft.Xna.Framework;",
             "using static MonsterSpeed.MonsterSpeed;"
         };
 

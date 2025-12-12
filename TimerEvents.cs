@@ -22,8 +22,6 @@ public class TimerData
     public int ScriptTime { get; set; } = 60;
     [JsonProperty("脚本只跑一次", Order = 2)]
     public bool ScriptOnce { get; set; } = false;
-    [JsonProperty("异步执行脚本", Order = 2)]  // 新增字段
-    public bool AsyncExec { get; set; } = false;
     [JsonProperty("指示物修改", Order = 3)]
     public List<MstMarkerMod> MarkerList { get; set; } = new List<MstMarkerMod>();
     [JsonProperty("发射物品", Order = 4)]
@@ -140,13 +138,13 @@ public class TimerEvents
                 if (state.ScriptLoop[state.EventIndex] % Event.ScriptTime == 0)
                 {
                     mess?.AppendLine($"循环执行脚本:{Event.CsScript}");
-                    CSExecutor.SelExec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
+                    CSExecutor.SelExec(Event.CsScript, npc, data, state, mess);
                 }
             }
             else if(!Once)
             {
                 mess?.AppendLine($"仅执行1次脚本:{Event.CsScript}");
-                CSExecutor.SelExec(Event.CsScript, npc, data, state, mess, Event.AsyncExec);
+                CSExecutor.SelExec(Event.CsScript, npc, data, state, mess);
                 state.ScriptOnec[state.EventIndex] = true;
             }
         }

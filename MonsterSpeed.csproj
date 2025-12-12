@@ -7,6 +7,7 @@
 	</PropertyGroup>
 	<ItemGroup>
 	  <None Remove="CSExecutor.cs~RF1c07da8.TMP" />
+	  <None Remove="依赖项\AutoCompile.dll" />
 	</ItemGroup>
 	<ItemGroup>
 	  <EmbeddedResource Include="依赖项\AutoCompile.dll" />

@@ -290,7 +290,7 @@ public class SpawnProjFile
                 SaveFile(proj);
             }
 
-            TShock.Log.ConsoleInfo($"已创建 {defaults.Count} 个生成弹幕配置文件");
+            TShock.Log.ConsoleInfo($"[怪物加速] 已创建 {defaults.Count} 个生成弹幕配置文件");
         }
         catch (Exception ex)
         {
