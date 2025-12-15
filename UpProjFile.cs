@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
 using TShockAPI;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -35,7 +36,7 @@ public class UpProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"更新弹幕系统初始化失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 更新弹幕系统初始化失败: {ex.Message}");
         }
     }
     #endregion
@@ -116,11 +117,11 @@ public class UpProjFile
                 SaveFile(updateProj);
             }
 
-            TShock.Log.ConsoleInfo($"[怪物加速] 已创建 {defaults.Count} 个更新弹幕配置文件");
+            TShock.Log.ConsoleInfo($"{LogName} 已创建 {defaults.Count} 个更新弹幕配置文件");
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"创建更新弹幕配置失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 创建更新弹幕配置失败: {ex.Message}");
         }
     }
     #endregion
@@ -143,7 +144,7 @@ public class UpProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"读取更新弹幕配置失败: {name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 读取更新弹幕配置失败: {name}, 错误: {ex.Message}");
             return new UpData();
         }
     }
@@ -153,7 +154,7 @@ public class UpProjFile
         var file = GetFile(name);
         if (file == null || file.UpdateProjectiles == null || file.UpdateProjectiles.Count == 0)
         {
-            TShock.Log.ConsoleError($"更新弹幕配置 '{name}' 不存在或为空，使用默认更新弹幕");
+            TShock.Log.ConsoleError($"{LogName} 更新弹幕配置 '{name}' 不存在或为空，使用默认更新弹幕");
             return new List<UpdateProjData> { new UpdateProjData() };
         }
         return file.UpdateProjectiles;
@@ -172,7 +173,7 @@ public class UpProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"保存更新弹幕配置失败: {update.Name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 保存更新弹幕配置失败: {update.Name}, 错误: {ex.Message}");
         }
     }
     #endregion
@@ -203,7 +204,7 @@ public class UpProjFile
                 }
                 catch (Exception ex)
                 {
-                    TShock.Log.ConsoleError($"[怪物加速] 读取配置文件失败: " +
+                    TShock.Log.ConsoleError($"{LogName} 读取配置文件失败: " +
                         $"{Path.GetFileName(filePath)}, 错误:\n {ex.Message}");
                 }
             }
@@ -214,7 +215,7 @@ public class UpProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 重载条件配置失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 重载条件配置失败: {ex.Message}");
         }
     }
     #endregion

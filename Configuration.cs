@@ -19,9 +19,9 @@ public class Configuration
     [JsonProperty("进度条件说明", Order = -10)]
     public string[] ProgID { get; set; } = new string[0];
 
-    [JsonProperty(PropertyName = "隐藏默认配置项", Order = -2)]
+    [JsonProperty("隐藏默认配置项", Order = -2)]
     public bool HideConfig { get; set; } = false;
-    [JsonProperty(PropertyName = "强制隐藏配置项", Order = -1)]
+    [JsonProperty("强制隐藏配置项", Order = -1)]
     public List<string> CustomHideList { get; set; } = new List<string>();
     [JsonProperty("怪物ID表", Order = 0)]
     public List<int> NpcList { get; set; }

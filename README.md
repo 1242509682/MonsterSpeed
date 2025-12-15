@@ -125,6 +125,12 @@
 ## 更新日志
 
 ```
+v1.3.7.4
+不再内嵌依赖项导致插件体积过大,
+移除了脚本异步执行功能
+优化了脚本执行器使用：
+[自动编译的ScriptMag](https://github.com/1242509682/AutoCompile/blob/master/ScriptMag.cs)
+
 v1.3.7.3
 /reload 不再重复编译未修改过的C#脚本
 

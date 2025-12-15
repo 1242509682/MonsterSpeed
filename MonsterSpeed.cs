@@ -15,8 +15,9 @@ public class MonsterSpeed : TerrariaPlugin
 {
     #region 插件信息
     public override string Name => "怪物加速";
+    public static readonly string LogName = "[怪物加速]";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 7, 3);
+    public override Version Version => new Version(1, 3, 7, 4);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -31,7 +32,6 @@ public class MonsterSpeed : TerrariaPlugin
         if (!Directory.Exists(Paths))
         {
             Directory.CreateDirectory(Paths);
-            ExtractData();
         }
 
         LoadConfig();
@@ -48,6 +48,7 @@ public class MonsterSpeed : TerrariaPlugin
     {
         if (disposing)
         {
+            CSExecutor.Clear(); // 清理脚本执行器
             GeneralHooks.ReloadEvent -= ReloadConfig;
             GetDataHandlers.KillMe -= KillMe!;
             ServerApi.Hooks.NpcKilled.Deregister(this, this.OnNPCKilled);
@@ -99,38 +100,20 @@ public class MonsterSpeed : TerrariaPlugin
         UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
         MoveFile.Init(); // 新增：初始化移动模式文件系统
 
-        var AsseDir = Path.Combine(TShock.SavePath, "自动编译", "程序集");
-        var has = Directory.Exists(AsseDir); // 检查自动编译的程序集目录是否存在
+        // 决定初始化脚本执行器或释放内嵌文件
+        var has = ServerApi.Plugins.Any(p => p.Plugin.Name == "自动编译插件");
         if (has)
         {
-            CSExecutor.Init(); // 新增：初始化脚本执行器  
-            CSExecutor.CopyMosDll(AsseDir); // 复制自己到自动编译《程序集文件夹》方便脚本能正确引用
-
-            // 启动服务器自动批量编译
-            if (Config.ScriptCfg.Int)
-            {
-                try
-                {
-                    TShock.Log.ConsoleInfo($"[怪物加速] 开始初始化编译脚本...");
-                    CSExecutor.Script.BatchCompile(CSExecutor.Dir, Config.ScriptCfg.Usings);
-                }
-                catch (Exception ex)
-                {
-                    TShock.Log.ConsoleError($"[怪物加速] 初始化编译异常: {ex.Message}");
-                }
-            }
+            CSExecutor.Register();
         }
         else
         {
-            Console.WriteLine(" ----------------------------------------------------------------");
-            TShock.Log.ConsoleError($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
-            TShock.Log.ConsoleWarn($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
-            TShock.Log.ConsoleError($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
-            TShock.Log.ConsoleWarn($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
-            TShock.Log.ConsoleError($"[怪物加速] 请重启服务器 否则《C#脚本》无法使用！！！");
-            TShock.Utils.Broadcast($"已释放依赖项: AutoCompile.dll —— 自动编译插件", 80, 142, 200);
-            TShock.Utils.Broadcast($"确保编译插件正常工作请重启服务器!", 80, 200, 180);
-            Console.WriteLine(" ----------------------------------------------------------------");
+            // ExtractData(); // 释放内嵌依赖项
+
+            Console.WriteLine($"\n---------------------------{LogName}---------------------------");
+            TShock.Log.ConsoleError($"\n          缺失依赖项: AutoCompile.dll —— 自动编译插件", 80, 142, 200);
+            TShock.Log.ConsoleInfo($"       请放入依赖项后重启服务器!确保C#脚本执行能正常工作!\n", 80, 200, 180);
+            Console.WriteLine("----------------------------------------------------------------\n");
         }
     }
     #endregion
@@ -149,11 +132,11 @@ public class MonsterSpeed : TerrariaPlugin
         var result = CSExecutor.Reload();
         if (result.Ok)
         {
-            args.Player.SendInfoMessage("[怪物加速] 重新加载配置完毕。");
+            args.Player.SendInfoMessage($"{LogName} 重新加载配置完毕。");
         }
         else
         {
-            args.Player.SendErrorMessage($"[怪物加速] 重载失败: {result.Msg}");
+            args.Player.SendErrorMessage($"{LogName} 重载失败: {result.Msg}");
         }
     }
     private static void LoadConfig()

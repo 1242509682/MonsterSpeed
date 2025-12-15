@@ -1,9 +1,10 @@
-﻿using System.Collections.Concurrent;
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text;
 using AutoCompile;
+using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
+using TerrariaApi.Server;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.MonsterSpeed;
@@ -14,217 +15,222 @@ namespace MonsterSpeed;
 public class ScriptConfig
 {
     [JsonProperty("启动服务器自动编译")]
-    public bool Int { get; set; } = true;
-    [JsonProperty("超时时间")]
-    public int Timeout { get; set; } = 5000;
-    [JsonProperty("异步执行")]
-    public bool AsyncExec { get; set; } = false;
+    public bool AutoComp = true;
     [JsonProperty("引用列表")]
     public List<string> Usings { get; set; } = new List<string>();
 }
 #endregion
 
-#region 脚本执行器
+#region 脚本执行器（简化）
 public static class CSExecutor
 {
-    public static ScriptExec Script;
-    public static readonly string Dir = Path.Combine(TShock.SavePath, "怪物加速", "C#脚本");
-    private static readonly ConcurrentDictionary<string, Task> Running; // 异步任务执行状态
-    static CSExecutor() => Running = new ConcurrentDictionary<string, Task>();
+    private static bool isInit = false; // 初始化标识
+    private static readonly Assembly Asm = typeof(MonsterSpeed).Assembly;  // 获取当前插件的程序集传参给自动编译插件进行注册(避免命名空间引用污染)
+    public static readonly string Dir = Path.Combine(TShock.SavePath, "怪物加速", "C#脚本"); // 给编译器指定一个脚本目录
 
-    #region 初始化方法
-    public static void Init()
+    #region 注册脚本执行器
+    public static bool Register()
     {
         try
         {
-            if (!Directory.Exists(Dir))
+            if (!isInit)
             {
-                Directory.CreateDirectory(Dir);
-                Extract(Dir);
+                // 创建脚本存放目录
+                if (!Directory.Exists(Dir))
+                {
+                    Directory.CreateDirectory(Dir);
+                    CopyCSX(); // 释放内嵌好的脚本
+                }
+
+                isInit = true;
             }
 
-            // 使用 AutoCompile 的执行器，传入 ScriptGlobals 类型
-            Script = new ScriptExec(typeof(ScriptGlobals));
+            var exec = ScriptMag.Register(Asm, Dir, typeof(ScriptGlobals),
+                                          Config.ScriptCfg.AutoComp, 
+                                          Config.ScriptCfg.Usings);
+            return exec != null;
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 脚本执行器异常: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 注册执行器失败: {ex.Message}");
+            return false;
         }
     }
     #endregion
 
-    #region 重载执行器方法
+    #region 重载脚本(只对修改过的脚本重新编译)
     internal static CompResult Reload()
     {
         try
         {
-            TShock.Log.ConsoleInfo("[怪物加速] 开始重载脚本执行器...");
+            if (!isInit) return CompResult.Fail("脚本执行器未初始化，请先注册");
 
-            // 不清除脚本缓存，只重新编译需要更新的
-            if (Script == null)
-            {
-                Init(); // 如果执行器为null，重新初始化
-            }
+            if (!ServerApi.Plugins.Any(p => p.Plugin.Name == "自动编译插件")) 
+                return CompResult.Fail("AutoCompile插件未加载,请重启");
 
-            // 重新批量编译（会自动跳过未修改的）
-            if (Script != null)
-            {
-                Script.BatchCompile(Dir, Config.ScriptCfg.Usings);
-                return CompResult.Success("重载完成，已重新编译修改过的脚本");
-            }
-            else
-            {
-                return CompResult.Fail("脚本执行器初始化失败");
-            }
+            TShock.Log.ConsoleInfo($"{LogName} 开始重载脚本...");
+
+            var result = ScriptMag.Reload(Asm);
+            if (result == null) return CompResult.Fail("执行器未注册");
+            return result;
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 重载异常: {ex.Message}");
             return CompResult.Fail($"重载异常: {ex.Message}");
         }
     }
     #endregion
 
-    #region 选择执行方法
-    public static void SelExec(string name, NPC npc, NpcData data, NpcState state, StringBuilder msg)
+    #region 选择执行
+    // 提供给TimerEvents.StartEvent方法使用
+    public static void SelExec(string csxName, NPC npc, NpcData data, NpcState state, StringBuilder msg)
     {
-        if (Script == null)
+        if (npc == null || !npc.active || string.IsNullOrEmpty(csxName))
+            return;
+        
+        var exec = ScriptMag.GetExec(Asm);
+        if (exec == null)
         {
-            TShock.Log.ConsoleError("脚本执行器未初始化");
+            TShock.Log.ConsoleError($"{LogName} 脚本执行器未初始化");
             return;
         }
 
-        var globals = new ScriptGlobals(npc, state, data, msg);
+        // 编写脚本用的全局变量类,把需要传的参数写进去,方便编写时直接调用。
+        var gtype = new ScriptGlobals(npc, state, data, msg);
 
-        if (!Config.ScriptCfg.AsyncExec)
+        // 同步执行
+        var result = exec.SyncRun(csxName, gtype);
+        if (!result.Ok)
         {
-            // 同步执行
-            var result = Script.SyncRun(name, globals);
-            if (!result.Ok)
-            {
-                TShock.Log.ConsoleError($"执行失败: {result.Msg} 请使用指令进行编译:/reload");
-            }
-        }
-        else
-        {
-            // 异步执行
-            var key = $"{npc.whoAmI}_{name}";
-
-            if (!Running.TryAdd(key, Task.CompletedTask))
-            {
-                TShock.Log.ConsoleError($"脚本执行中:{name}");
-                return;
-            }
-
-            var task = Task.Run(async () =>
-            {
-                try
-                {
-                    var result = await Script.AsyncRun(name, globals, Config.ScriptCfg.Timeout);
-                    if (!result.Ok)
-                    {
-                        TShock.Log.ConsoleError($"执行失败: {result.Msg} 请使用指令进行编译:/reload");
-                    }
-                }
-                finally
-                {
-                    Running.TryRemove(key, out _);
-                }
-            });
-
-            Running[key] = task;
+            // 恢复原详细提示
+            TShock.Log.ConsoleError($"{LogName} 执行失败: {result.Msg} 请使用指令进行编译:/reload");
         }
     }
     #endregion
 
-    #region 复制自己程序集
-    public static void CopyMosDll(string AsseDir)
+    #region 提取内嵌脚本
+    private static void CopyCSX()
     {
-        // 查找插件DLL（允许改名）
-        var spDir = Path.Combine(typeof(TShock).Assembly.Location, "ServerPlugins");
-        var AsmName = Assembly.GetExecutingAssembly().GetName().Name;
-
-        // 1. 首先检查目标目录是否已存在相同程序集
-        var exis = Directory.GetFiles(AsseDir, "*.dll");
-        foreach (var dllPath in exis)
+        try
         {
-            try
+            var asm = Asm;
+            var asmName = asm.GetName().Name;
+
+            foreach (string res in asm.GetManifestResourceNames())
             {
-                var asmName = AssemblyName.GetAssemblyName(dllPath);
-                if (asmName.Name == AsmName)
+                if (!res.StartsWith($"{asmName}.示例脚本."))
+                    continue;
+
+                var fName = res.Substring(asmName.Length + "示例脚本.".Length + 1);
+                var tPath = Path.Combine(Dir, fName);
+
+                if (File.Exists(tPath)) continue;
+
+                var dir = Path.GetDirectoryName(tPath);
+                if (!string.IsNullOrEmpty(dir))
+                    Directory.CreateDirectory(dir);
+
+                using (var stream = asm.GetManifestResourceStream(res))
+                using (var fs = new FileStream(tPath, FileMode.Create))
                 {
-                    // 已存在相同程序集，无需复制
-                    return;
+                    stream?.CopyTo(fs);
                 }
             }
-            catch { }
         }
-
-        // 2. 在ServerPlugins中查找当前插件DLL
-        string plugin = null;
-        var allDlls = Directory.GetFiles(spDir, "*.dll");
-        foreach (var dllPath in allDlls)
+        catch (Exception ex)
         {
-            try
-            {
-                var asmName = AssemblyName.GetAssemblyName(dllPath);
-                if (asmName.Name == AsmName)
-                {
-                    plugin = dllPath;
-                    break;
-                }
-            }
-            catch { }
-        }
-
-        // 3. 如果找到插件且程序集目录中没有它，则复制
-        if (plugin != null)
-        {
-            var pluginName = Path.GetFileName(plugin);
-            var dst = Path.Combine(AsseDir, pluginName);
-            try
-            {
-                File.Copy(plugin, dst, true);
-                TShock.Log.ConsoleInfo($"[怪物加速] 已复制本插件到 {AsseDir} 作为脚本引用");
-            }
-            catch (Exception ex)
-            {
-                TShock.Log.ConsoleError($"[怪物加速] 复制插件失败: {ex.Message}");
-            }
+            TShock.Log.ConsoleError($"{LogName} 提取资源失败: {ex.Message}");
         }
     }
     #endregion
 
-    #region 内嵌脚本示例管理
-    internal static void Extract(string AsmPath)
+    #region 清理所有执行器
+    public static void Clear()
     {
-        var asm = Assembly.GetExecutingAssembly();
-        string assemblyName = asm.GetName().Name!;
-
-        foreach (string res in asm.GetManifestResourceNames())
-        {
-            if (!res.StartsWith($"{assemblyName}.示例脚本."))
-                continue;
-
-            string fileName = res.Substring(assemblyName.Length + "示例脚本.".Length + 1);
-            string tarPath = Path.Combine(AsmPath, fileName);
-
-            if (File.Exists(tarPath)) continue;
-
-            Directory.CreateDirectory(Path.GetDirectoryName(tarPath)!);
-
-            using (var stream = asm.GetManifestResourceStream(res))
-            {
-                if (stream == null) continue;
-
-                using (var fs = new FileStream(tarPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096))
-                {
-                    stream.CopyTo(fs);
-                }
-            }
-        }
+        ScriptMag.ClearPlugin(Asm);
     }
     #endregion
+}
+#endregion
 
-} 
+#region 脚本全局变量包装类 编写可直接调用
+public class ScriptGlobals
+{
+    public NPC Npc { get; set; }
+    public NpcState State { get; set; }
+    public StringBuilder Msg { get; set; }
+    public NpcData Data { get; set; }
+    internal ScriptGlobals(NPC npc, NpcState state, NpcData data, StringBuilder msg)
+    {
+        Npc = npc;
+        State = state;
+        Data = data;
+        Msg = msg;
+    }
+
+    #region 简化方法包装（直接调用StateApi）
+    // 1. 指示物操作
+    public void SetMkr(string key, int val) => State.Set(key, val);
+    public int GetMkr(string key, int def = 0) => State.Get(key, def);
+    public bool HasMkr(string key) => State.Has(key);
+    public void DelMkr(string key) => State.Remove(key);
+    // 2. 标志操作
+    public void SetFlg(string flag) => StateApi.SetFlag(Npc, flag);
+    public string GetFlg() => StateApi.GetFlag(Npc);
+    // 3. 事件控制
+    public void NextEvt() => TimerEvents.NextEvent(Data, Npc, State);
+    public void ShowTxt(double rem) => TimerEvents.ShowCoolText(Npc, Data, State, rem);
+    public void SetEvtIdx(int idx) => State.EventIndex = idx;
+    public int GetEvtIdx() => State.EventIndex;
+    // 4. 弹幕控制
+    public void SetProjIdx(int idx) => State.SendProjIdx = idx;
+    public int GetProjIdx() => State.SendProjIdx;
+    public void ResetProj() => State.SendCnt.Clear();
+    // 9. 执行文件状态
+    public FilePlayState GetPlySt(string key) => State.IndieStates.TryGetValue(key, out var s) ? s : new FilePlayState();
+    public void SetPlySt(string key, FilePlayState st) => State.IndieStates[key] = st;
+    // 10. 快捷功能
+    public void HealNpc(int val) => Npc.life = Math.Min(Npc.lifeMax, Npc.life + val);
+    public void SetDef(int val) => Npc.defense = val;
+    public void SetSpd(int val) => Npc.velocity = Npc.velocity.SafeNormalize(Vector2.Zero) * val;
+    // 11. 玩家目标
+    public Player GetTar() => Npc.target >= 0 && Npc.target < Main.maxPlayers ? Main.player[Npc.target] : new Player();
+    public void SetTar(int idx) => Npc.target = idx;
+    // 12. 弹幕生成（简化版）
+    public void SpawnProj(int type, int dmg, Vector2 vel, int life = 120)
+    {
+        if (type <= 0) return;
+        int idx = Projectile.NewProjectile(
+            Npc.GetSpawnSourceForNPCFromNPCAI(),
+            Npc.Center.X, Npc.Center.Y,
+            vel.X, vel.Y,
+            type, dmg, 5f, Main.myPlayer
+        );
+        if (idx >= 0 && idx < Main.maxProjectiles && life > 0)
+            Main.projectile[idx].timeLeft = life;
+    }
+    // 13. 怪物生成（简化版）
+    public void SpawnNpc(int type, Vector2 pos, int cnt = 1)
+    {
+        if (type <= 0 || type == 113 || type == 488) return;
+        for (int i = 0; i < cnt; i++)
+        {
+            int idx = NPC.NewNPC(
+                Npc.GetSpawnSourceForNPCFromNPCAI(),
+                (int)pos.X, (int)pos.Y,
+                type
+            );
+            if (idx >= 0 && idx < Main.maxNPCs)
+                Main.npc[idx].netUpdate = true;
+        }
+    }
+    // 14. 日志输出
+    public void Log(string txt) => TShock.Log.ConsoleDebug($"{LogName} {txt}");
+    public void Warn(string txt) => TShock.Log.ConsoleWarn($"{LogName}{txt}");
+    public void Err(string txt) => TShock.Log.ConsoleError($"{LogName} {txt}");
+    // 跨NPC操作
+    public List<int> FindByFlag(string flag) => StateApi.FindByFlag(flag);
+    public void SetByFlag(string flag, string key, int val) => StateApi.SetByFlag(flag, key, val);
+    #endregion
+}
 #endregion

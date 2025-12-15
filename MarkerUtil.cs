@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using Terraria;
 using Terraria.Utilities;
 using TShockAPI;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -59,7 +60,7 @@ public static class MarkerUtil
         }
         catch (System.Exception ex)
         {
-            TShock.Log.ConsoleError($"设置指示物失败: {mName}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 设置指示物失败: {mName}, 错误: {ex.Message}");
             return false;
         }
     }
@@ -134,7 +135,7 @@ public static class MarkerUtil
         }
         catch (System.Exception ex)
         {
-            TShock.Log.ConsoleError($"操作失败: {op}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 操作失败: {op}, 错误: {ex.Message}");
             return curr;
         }
     }
@@ -181,7 +182,7 @@ public static class MarkerUtil
         }
         catch (System.Exception ex)
         {
-            TShock.Log.ConsoleError($"数学解析失败: {expr}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 数学解析失败: {expr}, 错误: {ex.Message}");
             return curr;
         }
     }
@@ -256,7 +257,7 @@ public static class MarkerUtil
         }
         catch (System.Exception ex)
         {
-            TShock.Log.ConsoleError($"数值解析失败: {vStr}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 数值解析失败: {vStr}, 错误: {ex.Message}");
             return 0;
         }
     }
@@ -296,7 +297,7 @@ public static class MarkerUtil
         }
         catch (System.Exception ex)
         {
-            TShock.Log.ConsoleError($"检查失败: {mName}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 检查失败: {mName}, 错误: {ex.Message}");
             return false;
         }
     }
@@ -339,7 +340,7 @@ public static class MarkerUtil
         }
         catch (System.Exception ex)
         {
-            TShock.Log.ConsoleError($"条件评估失败: {expr}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 条件评估失败: {expr}, 错误: {ex.Message}");
             return false;
         }
     }
@@ -385,7 +386,7 @@ public static class MarkerUtil
             }
             catch (System.Exception ex)
             {
-                TShock.Log.ConsoleError($"AI注入失败: {inj.Value}, 错误: {ex.Message}");
+                TShock.Log.ConsoleError($"{LogName} AI注入失败: {inj.Value}, 错误: {ex.Message}");
             }
         }
         return count;

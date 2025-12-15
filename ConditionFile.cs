@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
 using TShockAPI;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -37,7 +38,7 @@ public class ConditionFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 条件系统初始化失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 条件系统初始化失败: {ex.Message}");
         }
     }
     #endregion
@@ -86,11 +87,11 @@ public class ConditionFile
                 SaveFile(cond);
             }
 
-            TShock.Log.ConsoleInfo($"[怪物加速] 已创建 {defaults.Count} 个限制条件文件");
+            TShock.Log.ConsoleInfo($"{LogName} 已创建 {defaults.Count} 个限制条件文件");
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 创建条件失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 创建条件失败: {ex.Message}");
         }
     }
     #endregion
@@ -113,7 +114,7 @@ public class ConditionFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 读取条件失败: {name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 读取条件失败: {name}, 错误: {ex.Message}");
             return new CondData();
         }
     }
@@ -123,7 +124,7 @@ public class ConditionFile
         var cond = GetCond(name);
         if (cond == null)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 条件 '{name}' 不存在，使用默认条件");
+            TShock.Log.ConsoleError($"{LogName} 条件 '{name}' 不存在，使用默认条件");
             return new Conditions { NpcLift = "0,100" };
         }
         return cond.Cond;
@@ -142,7 +143,7 @@ public class ConditionFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 保存条件失败: {cond.Name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 保存条件失败: {cond.Name}, 错误: {ex.Message}");
         }
     }
     #endregion
@@ -174,7 +175,7 @@ public class ConditionFile
                 }
                 catch (Exception ex)
                 {
-                    TShock.Log.ConsoleError($"[怪物加速] 读取配置文件失败: " +
+                    TShock.Log.ConsoleError($"{LogName} 读取配置文件失败: " +
                         $"{Path.GetFileName(filePath)}, 错误:\n {ex.Message}");
                 }
             }
@@ -185,7 +186,7 @@ public class ConditionFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 重载条件配置失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 重载条件配置失败: {ex.Message}");
         }
     }
     #endregion

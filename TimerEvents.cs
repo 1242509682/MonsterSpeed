@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -155,7 +156,7 @@ public class TimerEvents
             int Count = MarkerUtil.SetMstMarkers(Event.MarkerList, npc, ref Main.rand);
             if (Count > 0)
             {
-                mess.Append($" 指示物修改: 成功修改 {Count} 个目标\n");
+                mess.Append($" 成功修改 {Count} 个指示物\n");
             }
         }
 
@@ -196,7 +197,7 @@ public class TimerEvents
                 }
                 else
                 {
-                    mess.Append($" 弹幕文件不存在或为空: {projName}\n");
+                    TShock.Log.ConsoleError($"{LogName} 弹幕文件不存在或为空: {projName}\n");
                 }
             }
         }

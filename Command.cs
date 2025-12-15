@@ -29,7 +29,7 @@ public class Command
                 case "hide":
                     Config.HideConfig = !Config.HideConfig;
                     Config.Write();
-                    args.Player.SendSuccessMessage($"已切换多余配置项显示状态为: {(Config.HideConfig ? "隐藏" : "显示")}。");
+                    args.Player.SendSuccessMessage($"{LogName} 已切换多余配置项显示状态为: {(Config.HideConfig ? "隐藏" : "显示")}。");
                     break;
 
                 case "all":
@@ -69,7 +69,7 @@ public class Command
                     }
 
                     Config.Write();
-                    args.Player.SendSuccessMessage($"已清理《怪物加速》的怪物数据(自动击杀当前存在敌对怪物)");
+                    args.Player.SendSuccessMessage($"{LogName} 已清理怪物数据(自动击杀当前存在敌对怪物)");
                     break;
 
                 default:
@@ -143,7 +143,7 @@ public class Command
         }
         catch (Exception ex)
         {
-            args.Player.SendErrorMessage($"列出时间事件文件失败: {ex.Message}");
+            args.Player.SendErrorMessage($"{LogName} 列出时间事件文件失败: {ex.Message}");
             TShock.Log.ConsoleError($"列出时间事件文件失败: {ex}");
         }
     }

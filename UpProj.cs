@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using Terraria;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -567,7 +568,7 @@ public class UpProj
         // 严格的边界检查
         if (projIndex < 0 || projIndex >= Main.maxProjectiles)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 弹幕索引越界: {projIndex}");
+            TShock.Log.ConsoleError($"{LogName} 弹幕索引越界: {projIndex}");
             return false;
         }
 
@@ -582,7 +583,7 @@ public class UpProj
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 添加弹幕状态失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 添加弹幕状态失败: {ex.Message}");
             return false;
         }
     }

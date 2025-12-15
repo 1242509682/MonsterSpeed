@@ -6,11 +6,6 @@
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 	</PropertyGroup>
 	<ItemGroup>
-	  <None Remove="CSExecutor.cs~RF1c07da8.TMP" />
-	  <None Remove="依赖项\AutoCompile.dll" />
-	</ItemGroup>
-	<ItemGroup>
-	  <EmbeddedResource Include="依赖项\AutoCompile.dll" />
 	  <EmbeddedResource Include="示例脚本\BOSS阶段弹幕脚本.csx" />
 	  <EmbeddedResource Include="示例脚本\基础示例脚本.csx" />
 	  <EmbeddedResource Include="示例脚本\复杂BOSSAI脚本.csx" />

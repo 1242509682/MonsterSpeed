@@ -5,6 +5,7 @@ using Terraria.Utilities;
 using TShockAPI;
 using static MonsterSpeed.Conditions;
 using static MonsterSpeed.Configuration;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -396,7 +397,7 @@ public class FilePlayManager
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"启动执行文件失败: {play.Name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 启动执行文件失败: {play.Name}, 错误: {ex.Message}");
             ResetState(pState);
         }
     }
@@ -457,7 +458,7 @@ public class FilePlayManager
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"文件加载失败: {play.Name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 文件加载失败: {play.Name}, 错误: {ex.Message}");
             return false;
         }
     }
@@ -511,25 +512,6 @@ public class FilePlayManager
             else
             {
                 state.PlayCounts[key] = 1;
-            }
-        }
-    }
-
-    // 简化版指示物设置
-    private static void SetMarkers(FilePlayState state, Dictionary<string, string[]> markers, ref UnifiedRandom rand, NPC npc = null)
-    {
-        if (markers == null) return;
-
-        foreach (var marker in markers)
-        {
-            if (marker.Value != null && marker.Value.Length > 0)
-            {
-                // 简化处理：只取第一个操作
-                var op = marker.Value[0];
-                if (int.TryParse(op, out int value))
-                {
-                    state.Markers[marker.Key] = value;
-                }
             }
         }
     }

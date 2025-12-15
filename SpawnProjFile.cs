@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
 using TShockAPI;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -37,7 +38,7 @@ public class SpawnProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"弹幕系统初始化失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 弹幕系统初始化失败: {ex.Message}");
         }
     }
     #endregion
@@ -290,11 +291,11 @@ public class SpawnProjFile
                 SaveFile(proj);
             }
 
-            TShock.Log.ConsoleInfo($"[怪物加速] 已创建 {defaults.Count} 个生成弹幕配置文件");
+            TShock.Log.ConsoleInfo($"{LogName} 已创建 {defaults.Count} 个生成弹幕配置文件");
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"创建弹幕配置失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 创建弹幕配置失败: {ex.Message}");
         }
     }
     #endregion
@@ -317,7 +318,7 @@ public class SpawnProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"读取弹幕配置失败: {name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 读取弹幕配置失败: {name}, 错误: {ex.Message}");
             return new ProjData();
         }
     }
@@ -327,7 +328,7 @@ public class SpawnProjFile
         var file = GetFile(name);
         if (file == null || file.Projectiles == null || file.Projectiles.Count == 0)
         {
-            TShock.Log.ConsoleError($"弹幕配置 '{name}' 不存在或为空");
+            TShock.Log.ConsoleError($"{LogName} 弹幕配置 '{name}' 不存在或为空");
             return new List<SpawnProjData>();
         }
         return file.Projectiles;
@@ -346,7 +347,7 @@ public class SpawnProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"保存弹幕配置失败: {projFile.Name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 保存弹幕配置失败: {projFile.Name}, 错误: {ex.Message}");
         }
     }
     #endregion
@@ -377,7 +378,7 @@ public class SpawnProjFile
                 }
                 catch (Exception ex)
                 {
-                    TShock.Log.ConsoleError($"[怪物加速] 读取配置文件失败: " +
+                    TShock.Log.ConsoleError($"{LogName} 读取配置文件失败: " +
                         $"{Path.GetFileName(filePath)}, 错误:\n {ex.Message}");
                 }
             }
@@ -388,7 +389,7 @@ public class SpawnProjFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 重载条件配置失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 重载条件配置失败: {ex.Message}");
         }
     }
     #endregion

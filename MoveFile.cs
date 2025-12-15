@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using Newtonsoft.Json;
 using TShockAPI;
+using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
 
@@ -39,7 +40,7 @@ public class MoveFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 行动模式系统初始化失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 行动模式系统初始化失败: {ex.Message}");
         }
     }
     #endregion
@@ -56,11 +57,11 @@ public class MoveFile
                 SaveFile(config);
             }
 
-            TShock.Log.ConsoleInfo($"[怪物加速] 已创建 {defaults.Count} 个行动模式文件");
+            TShock.Log.ConsoleInfo($"{LogName} 已创建 {defaults.Count} 个行动模式文件");
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 创建行动模式失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 创建行动模式失败: {ex.Message}");
         }
     }
     #endregion
@@ -185,7 +186,7 @@ public class MoveFile
 
             if (!File.Exists(filePath))
             {
-                TShock.Log.ConsoleError($"[怪物加速] 行动模式文件不存在: {name}");
+                TShock.Log.ConsoleError($"{LogName} 行动模式文件不存在: {name}");
                 return new MoveDatas();
             }
 
@@ -194,7 +195,7 @@ public class MoveFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 读取行动模式失败: {name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 读取行动模式失败: {name}, 错误: {ex.Message}");
             return new MoveDatas();
         }
     }
@@ -204,7 +205,7 @@ public class MoveFile
         var config = GetFile(name);
         if (config == null || config.MoveData == null)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 行动模式 '{name}' 不存在，使用默认停留模式");
+            TShock.Log.ConsoleError($"{LogName} 行动模式 '{name}' 不存在，使用默认停留模式");
             return new MoveModeData { Mode = MoveMode.Stay };
         }
         return config.MoveData;
@@ -223,7 +224,7 @@ public class MoveFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 保存行动模式失败: {config.Name}, 错误: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 保存行动模式失败: {config.Name}, 错误: {ex.Message}");
         }
     }
     #endregion
@@ -254,7 +255,7 @@ public class MoveFile
                 }
                 catch (Exception ex)
                 {
-                    TShock.Log.ConsoleError($"[怪物加速] 读取配置文件失败: " +
+                    TShock.Log.ConsoleError($"{LogName} 读取配置文件失败: " +
                         $"{Path.GetFileName(filePath)}, 错误:\n {ex.Message}");
                 }
             }
@@ -265,7 +266,7 @@ public class MoveFile
         }
         catch (Exception ex)
         {
-            TShock.Log.ConsoleError($"[怪物加速] 重载条件配置失败: {ex.Message}");
+            TShock.Log.ConsoleError($"{LogName} 重载条件配置失败: {ex.Message}");
         }
     }
     #endregion
