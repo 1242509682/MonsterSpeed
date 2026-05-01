@@ -196,7 +196,7 @@ public class FilePlayManager
     }
     #endregion
 
-    #region 执行执行文件动作
+    #region 开始执行文件动作
     private static void StartEvent(NpcData data, NPC npc, TimerData evt,
         StringBuilder sb, NpcState state, FilePlayState pState, FilePlayData play, ref bool handled)
     {
@@ -223,7 +223,8 @@ public class FilePlayManager
         // 执行指示物修改
         if (evt.MarkerList != null && evt.MarkerList.Count > 0)
         {
-            int count = MarkerUtil.SetMstMarkers(evt.MarkerList, npc, ref Main.rand);
+            var rand = new UnifiedRandom();
+            int count = MarkerUtil.SetMstMarkers(evt.MarkerList, npc, ref rand);
             if (count > 0)
             {
                 sb.Append($" 指示物修改: 成功修改 {count} 个目标\n");

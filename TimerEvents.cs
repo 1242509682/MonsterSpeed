@@ -5,6 +5,7 @@ using Terraria;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.MonsterSpeed;
+using Terraria.Utilities;
 
 namespace MonsterSpeed;
 
@@ -153,7 +154,8 @@ public class TimerEvents
         // 统一处理指示物修改（包括自身和其他NPC）
         if (Event.MarkerList != null && Event.MarkerList.Count > 0)
         {
-            int Count = MarkerUtil.SetMstMarkers(Event.MarkerList, npc, ref Main.rand);
+            var rand = new UnifiedRandom();
+            int Count = MarkerUtil.SetMstMarkers(Event.MarkerList, npc, ref rand);
             if (Count > 0)
             {
                 mess.Append($" 成功修改 {Count} 个指示物\n");

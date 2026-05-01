@@ -17,7 +17,7 @@ public class MonsterSpeed : TerrariaPlugin
     public override string Name => "怪物加速";
     public static readonly string LogName = "[怪物加速]";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 7, 4);
+    public override Version Version => new Version(1, 3, 7, 5);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -108,7 +108,7 @@ public class MonsterSpeed : TerrariaPlugin
         }
         else
         {
-            // ExtractData(); // 释放内嵌依赖项
+            ExtractData(); // 释放内嵌依赖项
 
             Console.WriteLine($"\n---------------------------{LogName}---------------------------");
             TShock.Log.ConsoleError($"\n          缺失依赖项: AutoCompile.dll —— 自动编译插件", 80, 142, 200);

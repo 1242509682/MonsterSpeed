@@ -35,12 +35,11 @@ public static class AutoHoming
     #region 处理追踪与躲避模式
     public static Vector2 ApplyAll(Vector2 v, Projectile p, HomingData d, NPC n, List<int> lst)
     {
-        Entity tar = null;
+        Entity? tar = null;
 
         // 获取目标
         tar = GetTar(d.TarType, n, p, d.MaxRange);
-
-        if (tar is null || !tar.active) return v;
+        if (tar is null) return v;
 
         // 执行顺序
         if (d.Avoid && d.Homing)

@@ -115,9 +115,6 @@ public static class PxUtil
     // 验证抛射物是否有效
     public static bool IsValidProj(Projectile proj) => 
         proj?.active == true && proj.owner == Main.myPlayer;
-    
-    // 验证实体是否有效
-    public static bool IsValidEntity(Entity entity) => entity?.active == true;
     #endregion
 
     #region 生命值计算
@@ -137,7 +134,6 @@ public static class PxUtil
     #endregion
 
     #region 向量和位置工具
-    
     // 生成随机偏移向量（对称范围）
     public static Vector2 RandomOffset(float maxOffset)
     {
@@ -373,7 +369,7 @@ public static class PxUtil
                     .FirstOrDefault();
                 return plr?.TPlayer.Distance(Center);
 
-            case Item itemEt:
+            case WorldItem itemEt:
                 // 查找物品
                 var item = Main.item
                     .Where(i => i.active)
@@ -466,7 +462,7 @@ public static class PxUtil
                     .FirstOrDefault();
                 return plr;
 
-            case Item itemEt:
+            case WorldItem itemEt:
                 // 查找物品
                 var item = Main.item
                     .Where(i => i.active)
