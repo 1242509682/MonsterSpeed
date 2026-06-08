@@ -23,7 +23,7 @@ public class FilePlayData
     [JsonProperty("名称")]
     public string Name { get; set; } = "";
     [JsonProperty("标志")]
-    public string Flag { get; set; } = "";
+    public string? Flag { get; set; } = "";
     [JsonProperty("优先级")]
     public int Prio { get; set; } = 0;
     [JsonProperty("触发条件")]
@@ -198,7 +198,7 @@ public class FilePlayManager
 
     #region 开始执行文件动作
     private static void StartEvent(NpcData data, NPC npc, TimerData evt,
-        StringBuilder sb, NpcState state, FilePlayState pState, FilePlayData play, ref bool handled)
+        StringBuilder? sb, NpcState state, FilePlayState pState, FilePlayData play, ref bool handled)
     {
         // 执行C#脚本 - 使用文件播放器专用键
         if (!string.IsNullOrEmpty(evt.CsScript))
@@ -227,7 +227,7 @@ public class FilePlayManager
             int count = MarkerUtil.SetMstMarkers(evt.MarkerList, npc, ref rand);
             if (count > 0)
             {
-                sb.Append($" 指示物修改: 成功修改 {count} 个目标\n");
+                sb?.Append($" 指示物修改: 成功修改 {count} 个目标\n");
             }
         }
 
@@ -268,7 +268,7 @@ public class FilePlayManager
                 }
                 else
                 {
-                    sb.Append($" 弹幕文件不存在: {proj}\n");
+                    sb?.Append($" 弹幕文件不存在: {proj}\n");
                 }
             }
 

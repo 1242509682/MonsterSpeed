@@ -9,12 +9,15 @@ using static MonsterSpeed.MonsterSpeed;
 namespace MonsterSpeed;
 
 #region 更新弹幕数据
+/// <summary>
+/// 弹幕更新配置（每个阶段）
+/// </summary>
 public class UpdateProjData
 {
     [JsonProperty("新弹幕ID(-1恢复,0不更新,>0替换)", Order = -2)]
     public int NewType = 0;
     [JsonProperty("更新间隔/毫秒", Order = -2)]
-    public double UpdateTime = 500f;
+    public double UpdInterval = 500f;
     [JsonProperty("延长持续时间", Order = -1)]
     public int ExtraTime = 0;
     [JsonProperty("触发条件", Order = 1)]
@@ -22,11 +25,11 @@ public class UpdateProjData
     [JsonProperty("速度", Order = 2)]
     public float Velocity = 0f;
     [JsonProperty("速度向量XY/格", Order = 3)]
-    public string Velocity_XY { get; set; } = "0,0";
+    public string VelXY { get; set; } = "0,0";
     [JsonProperty("半径格数", Order = 4)]
     public float Radius = 0f;
     [JsonProperty("位置偏移XY/格", Order = 5)]
-    public string PosOffset_XY { get; set; } = "0,0";
+    public string PosOffXY { get; set; } = "0,0";
     [JsonProperty("偏移角度", Order = 6)]
     public float Angle = 0f;
     [JsonProperty("旋转角度", Order = 7)]
@@ -36,601 +39,395 @@ public class UpdateProjData
     public HomingData HomingMode { get; set; } = new HomingData();
 
     [JsonProperty("弹幕AI", Order = 50)]
-    public Dictionary<int, float> AI { get; set; } = new Dictionary<int, float>();
+    public Dictionary<int, float> AI { get; set; } = new();
     [JsonProperty("速度注入AI", Order = 51)]
-    public Dictionary<int, int> SpeedToAI { get; set; } = new Dictionary<int, int>();
+    public Dictionary<int, int> SpdToAI { get; set; } = new();
     [JsonProperty("注入后速度向量XY/格", Order = 52)]
-    public string SpeedToAIVel_XY { get; set; } = "0,0";
+    public string SpdToAIVel { get; set; } = "0,0";
     [JsonProperty("指示物修改", Order = 54)]
     public Dictionary<string, string[]> MarkerMods { get; set; } = new();
     [JsonProperty("指示物注入AI", Order = 55)]
-    public Dictionary<int, string> MarkerToAI { get; set; } = new Dictionary<int, string>();
+    public Dictionary<int, string> MarkerToAI { get; set; } = new();
     [JsonProperty("弹点召怪ID", Order = 120)]
-    public int[] SpawnNPCAtProj { get; set; } = new int[0];
+    public int[] SpawnNPCs { get; set; } = new int[0];
     [JsonProperty("弹点召怪数量", Order = 121)]
-    public int SpawnNPCAtProjCount { get; set; } = 1;
+    public int SpawnCnt { get; set; } = 1;
 
-    #region 计算最终速度（使用XY分离格式）
-    public Vector2 GetFinalVelocity(Projectile proj)
+    /// <summary>将字符串转为像素向量</summary>
+    private Vector2 ParseVec(string s) => s.GetVector2();
+
+    /// <summary>获取最终速度（优先向量，否则标量）</summary>
+    public Vector2 GetFinalVel(Projectile proj)
     {
-        Vector2 newVel = proj.velocity;
+        Vector2 v = ParseVec(VelXY);
+        if (v != Vector2.Zero) return v;
+        if (Velocity != 0f)
+            return proj.velocity.SafeNormalize(Vector2.Zero) * Velocity;
+        return proj.velocity;
+    }
 
-        // 优先使用速度向量字符串
-        if (!string.IsNullOrWhiteSpace(Velocity_XY) && Velocity_XY != "0,0")
+    /// <summary>获取位置偏移向量</summary>
+    public Vector2 GetPosOff() => ParseVec(PosOffXY);
+
+    /// <summary>获取速度注入向量</summary>
+    public Vector2 GetSpdToAIVec() => ParseVec(SpdToAIVel);
+
+    /// <summary>将速度分量注入到AI字段</summary>
+    public void ApplySpdToAI(Projectile proj, Vector2 vel, List<int> updList, int pid)
+    {
+        if (SpdToAI == null || SpdToAI.Count == 0) return;
+        foreach (var kv in SpdToAI)
         {
-            var Result = PxUtil.ParseFloatRange(Velocity_XY);
-            if (Result.success)
+            int idx = kv.Key;
+            if (idx < 0 || idx >= proj.ai.Length) continue;
+            float val = kv.Value switch
             {
-                newVel = PxUtil.ToPx(new Vector2(Result.min, Result.max));
-            }
-        }
-        // 使用标量速度
-        else if (Velocity != 0f)
-        {
-            newVel = newVel.SafeNormalize(Vector2.Zero) * Velocity;
-        }
-
-        return newVel;
-    }
-    #endregion
-
-    #region 获取位置偏移向量
-    public Vector2 GetPosOffsetVector()
-    {
-        if (string.IsNullOrWhiteSpace(PosOffset_XY) || PosOffset_XY == "0,0")
-            return Vector2.Zero;
-
-        var Result = PxUtil.ParseFloatRange(PosOffset_XY);
-        if (!Result.success)
-            return Vector2.Zero;
-
-        return PxUtil.ToPx(new Vector2(Result.min, Result.max));
-    }
-    #endregion
-
-    #region 获取速度注入向量
-    public Vector2 GetSpeedToAIVector()
-    {
-        if (string.IsNullOrWhiteSpace(SpeedToAIVel_XY) || SpeedToAIVel_XY == "0,0")
-            return Vector2.Zero;
-
-        var Result = PxUtil.ParseFloatRange(SpeedToAIVel_XY);
-        if (!Result.success)
-            return Vector2.Zero;
-
-        return PxUtil.ToPx(new Vector2(Result.min, Result.max));
-    }
-    #endregion
-
-    #region 应用速度注入到AI
-    public void ApplySpeedToAI(Projectile proj, Vector2 velocity, List<int> updateList, int projId)
-    {
-        if (SpeedToAI == null || SpeedToAI.Count == 0) return;
-
-        foreach (var inje in SpeedToAI)
-        {
-            int aiIndex = inje.Key;
-            int injeType = inje.Value;
-
-            if (aiIndex < 0 || aiIndex >= proj.ai.Length) continue;
-
-            float value = injeType switch
-            {
-                0 => (float)Math.Atan2(velocity.Y, velocity.X), // 角度
-                1 => velocity.Length(),                         // 速度大小
-                2 => velocity.X,                                // X分量
-                3 => velocity.Y,                                // Y分量
+                0 => (float)Math.Atan2(vel.Y, vel.X),
+                1 => vel.Length(),
+                2 => vel.X,
+                3 => vel.Y,
                 _ => 0f
             };
-
-            proj.ai[aiIndex] = value;
-            if (!updateList.Contains(projId))
-                updateList.Add(projId);
+            proj.ai[idx] = val;
+            if (!updList.Contains(pid)) updList.Add(pid);
         }
     }
-    #endregion
 }
 #endregion
 
-#region 用于存储更新弹幕的信息
-public class UpdateProjState
+#region 更新弹幕状态
+/// <summary>
+/// 存储每个弹幕的更新状态（用于多阶段更新）
+/// </summary>
+public class UpdProjState
 {
-    public string Notes { get; set; } // 标志
-    public int Index { get; set; }  // 弹幕索引
-    public int whoAmI { get; set; } // 怪物索引
-    public int Type { get; set; }  // 弹幕ID
-    public int NewType { get; set; } // 新弹幕ID（用于类型转换）
-    public int UpdateIndex { get; set; } = 0; // 当前更新阶段索引
+    public string Notes { get; set; }
+    public int Index { get; set; }      // 弹幕索引
+    public int Who { get; set; }        // 所属怪物ID
+    public int Type { get; set; }       // 原始类型
+    public int NewType { get; set; }    // 当前类型
+    public int UpdIdx { get; set; } = 0; // 当前更新阶段索引
 
-    // 新增：模式标志和参数
-    public string ProjFlag { get; set; } = "";          // 模式标志
-    public float CircleAngle { get; set; } = 0f;        // 圆形模式中的角度
-    public int CircleIndex { get; set; } = 0;           // 圆形模式中的索引
-    public Vector2 BasePosition { get; set; }           // 原始位置（用于半径偏移）
-    public Vector2 BaseVelocity { get; set; }           // 原始速度（用于扇形模式）
-                                                        // 新增：存储原始配置关键信息
-    public float CircleRadius { get; set; } = 0f;      // 圆形半径
-    public string LineOffsetStr { get; set; } = "0,0"; // 线性偏移字符串
-    public float SprAngInc { get; set; } = 0f;         // 扇形角度增量
+    // 模式标志和参数（用于智能半径偏移）
+    public string Flag { get; set; } = ""; // 模式标志
+    public float CirAng { get; set; } = 0f;   // 圆形模式中的角度
+    public int CirIdx { get; set; } = 0;      // 圆形模式中的索引
+    public Vector2 BasePos { get; set; }  // 原始位置（用于半径偏移）
+    public Vector2 BaseVel { get; set; }  // 原始速度（用于扇形模式）
+    public float CirRad { get; set; } = 0f;  // 圆形半径
+    public string LineOff { get; set; } = "0,0"; // 线性偏移字符串
+    public float SprInc { get; set; } = 0f; // 扇形角度增量
 
-    // 构造器增强
-    public UpdateProjState(int index, int useIndex, int type,
-                          string flag = "", float angle = 0f, int idx = 0,
-                          Vector2? basePos = null, Vector2? baseVel = null,
-                          float circleRad = 0f, string lineOff = "0,0", float sprAngInc = 0f)
+    public UpdProjState(int idx, int who, int type,
+                        string flag = "", float ang = 0f, int cirIdx = 0,
+                        Vector2? basePos = null, Vector2? baseVel = null,
+                        float cirRad = 0f, string lineOff = "0,0", float sprInc = 0f)
     {
-        Index = index;
-        whoAmI = useIndex;
+        Index = idx;
+        Who = who;
         Type = type;
         NewType = type;
-        ProjFlag = flag;
-        CircleAngle = angle;
-        CircleIndex = idx;
-        BasePosition = basePos ?? Vector2.Zero;
-        BaseVelocity = baseVel ?? Vector2.Zero;
-        CircleRadius = circleRad;
-        LineOffsetStr = lineOff;
-        SprAngInc = sprAngInc;
+        Flag = flag;
+        CirAng = ang;
+        CirIdx = cirIdx;
+        BasePos = basePos ?? Vector2.Zero;
+        BaseVel = baseVel ?? Vector2.Zero;
+        CirRad = cirRad;
+        LineOff = lineOff;
+        SprInc = sprInc;
     }
 }
 #endregion
 
+/// <summary>
+/// 弹幕更新管理类（支持多阶段更新、追踪、偏移等）
+/// </summary>
 public class UpProj
 {
-    #region 检查所有更新弹幕
     public static Dictionary<int, DateTime> UpdateTimer = new(); //用于追踪更新弹幕的时间
-    public static UpdateProjState[] UpdateState { get; set; } = new UpdateProjState[Main.maxProjectiles];
-    public static void CheckAllUpdate(NpcData Setting, NPC npc, List<SpawnProjData> datas)
+    public static UpdProjState?[] UpdateState = new UpdProjState[Main.maxProjectiles];
+
+    #region 检查所有更新弹幕
+    /// <summary>
+    /// 遍历所有活跃的更新弹幕，按时间触发更新
+    /// </summary>
+    public static void ChkUpdates(NpcData set, NPC npc, List<SpawnProjData> datas)
     {
-        // 增强参数检查
-        if (npc == null || !npc.active || datas == null || UpdateState == null)
-            return;
-
-        var state = StateApi.GetState(npc);
-        if (state == null || state.SendProjIdx < 0 || state.SendProjIdx >= datas.Count)
-            return;
-
-        var data = datas[state.SendProjIdx];
+        if (npc == null || !npc.active || datas == null || UpdateState == null) return;
+        var st = StateApi.GetState(npc);
+        if (st == null || st.SendProjIdx < 0 || st.SendProjIdx >= datas.Count) return;
+        var data = datas[st.SendProjIdx];
         if (data?.UpdProj == null || data.UpdProj.Count == 0) return;
 
-        for (var i = UpdateState.Length - 1; i > 0; i--)
+        // 修复：循环包含索引0
+        for (int i = UpdateState.Length - 1; i >= 0; i--)
         {
-            var upState = UpdateState[i];
-            if (upState == null)
-                continue;
+            var ups = UpdateState[i];
+            if (ups == null) continue;
+            if (ups.Who != npc.whoAmI || ups.Index < 0 || ups.Index >= Main.maxProjectiles)
+            { Remove(ups.Index); continue; }
 
-            // 增强索引检查
-            if (upState.whoAmI != npc.whoAmI ||
-                upState.Index < 0 ||
-                upState.Index >= Main.maxProjectiles)
+            Projectile p = Main.projectile[ups.Index];
+            if (p == null || !p.active || p.owner != Main.myPlayer || p.type != ups.NewType)
+            { Remove(ups.Index); continue; }
+
+            // 加载所有更新阶段配置
+            var updList = new List<UpdateProjData>();
+            foreach (string f in data.UpdProj)
             {
-                // 结束更新
-                Remove(upState.Index);
-                continue;
+                var fdata = UpProjFile.GetData(f);
+                if (fdata != null && fdata.Count > 0) updList.AddRange(fdata);
             }
+            if (updList.Count == 0) continue;
+            if (ups.UpdIdx < 0 || ups.UpdIdx >= updList.Count)
+            { Remove(ups.Index); continue; }
 
-            Projectile NewProj = Main.projectile[upState.Index];
-            if (NewProj == null || !NewProj.active ||
-                NewProj.owner != Main.myPlayer ||
-                NewProj.type != upState.NewType)
-            {
-                // 结束更新
-                Remove(upState.Index);
-                continue;
-            }
-
-            // 从文件加载更新弹幕配置
-            var Update = new List<UpdateProjData>();
-
-            if (data.UpdProj != null && data.UpdProj.Count > 0)
-            {
-                foreach (var File in data.UpdProj)
-                {
-                    var file = UpProjFile.GetData(File);
-                    if (file != null && file.Count > 0)
-                    {
-                        Update.AddRange(file);
-                    }
-                }
-            }
-
-            if (Update.Count <= 0) continue;
-
-            if (upState.UpdateIndex < 0 || upState.UpdateIndex >= Update.Count)
-            {
-                Remove(upState.Index);
-                continue;
-            }
-
-            UpdateProjData up = Update[upState.UpdateIndex];
-
+            var cur = updList[ups.UpdIdx];
             // 条件检查
-            if (!string.IsNullOrEmpty(up.Condition))
+            if (!string.IsNullOrEmpty(cur.Condition))
             {
-                bool allow = true;
-                var cond = ConditionFile.GetCondData(up.Condition);
-                Conditions.Condition(npc, new StringBuilder(), Setting, cond, ref allow);
-                if (!allow) continue;
+                bool ok = true;
+                var cond = ConditionFile.GetCondData(cur.Condition);
+                Conditions.Condition(npc, new StringBuilder(), set, cond, ref ok);
+                if (!ok) continue;
             }
 
-            // 检查更新间隔
-            if (UpdateTimer.ContainsKey(upState.Index) &&
-                (DateTime.UtcNow - UpdateTimer[upState.Index]).TotalMilliseconds >= up.UpdateTime)
+            // 间隔检查
+            if (UpdateTimer.TryGetValue(ups.Index, out DateTime last) &&
+                (DateTime.UtcNow - last).TotalMilliseconds >= cur.UpdInterval)
             {
-                UpdateSingleProj(npc, state, upState, up, NewProj, data.Stack);
-                UpdateTimer[upState.Index] = DateTime.UtcNow;
+                UpdSingle(npc, st, ups, cur, p);
+                UpdateTimer[ups.Index] = DateTime.UtcNow;
             }
         }
     }
     #endregion
 
     #region 更新单个弹幕
-    public static void UpdateSingleProj(NPC npc, NpcState state, UpdateProjState upState, UpdateProjData up, Projectile NewProj, int Stack)
+    /// <summary>
+    /// 执行单个弹幕的更新逻辑（速度、位置、AI、模式偏移等）
+    /// </summary>
+    private static void UpdSingle(NPC npc, NpcState st, UpdProjState ups, UpdateProjData cur, Projectile p)
     {
-        if (npc == null || !npc.active || state == null)
-            return;
+        if (npc == null || !npc.active || st == null) return;
+        var updList = new List<int>();
 
-        var UpList = new List<int>();
+        // 取消友善标记
+        if (p.friendly) { p.friendly = false; Add(updList, ups.Index); }
 
-        if (NewProj.friendly)
+        // 指示物注入AI
+        if (cur.MarkerToAI != null && cur.MarkerToAI.Count > 0)
+        { MarkerUtil.InjectToAI(st, cur.MarkerToAI, p); Add(updList, ups.Index); }
+
+        // 类型转换
+        if (cur.NewType != 0)
         {
-            NewProj.friendly = false;
-            Add(UpList, upState.Index);
-        }
-
-        // 新增：应用指示物注入AI
-        if (up.MarkerToAI != null && up.MarkerToAI.Count > 0)
-        {
-            MarkerUtil.InjectToAI(state, up.MarkerToAI, NewProj);
-            Add(UpList, upState.Index);
-        }
-
-        // 弹幕类型变更
-        if (up.NewType != 0)
-        {
-            int newType = up.NewType == -1 ? upState.Type : up.NewType;
-            if (newType > 0 && newType != upState.NewType)
-            {
-                NewProj.type = newType;
-                upState.NewType = newType;
-                Add(UpList, upState.Index);
-            }
+            int nt = cur.NewType == -1 ? ups.Type : cur.NewType;
+            if (nt > 0 && nt != ups.NewType) { p.type = nt; ups.NewType = nt; Add(updList, ups.Index); }
         }
 
         // 延长持续时间
-        if (up.ExtraTime != 0)
+        if (cur.ExtraTime != 0) { p.timeLeft += cur.ExtraTime; Add(updList, ups.Index); }
+
+        // 速度计算
+        Vector2 newVel = cur.GetFinalVel(p);
+        // 追踪模式
+        if (cur.HomingMode != null && cur.HomingMode.Homing)
+            newVel = AutoHoming.ApplyAll(newVel, p, cur.HomingMode, npc, updList);
+
+        // 角度旋转
+        if (cur.Angle != 0f || cur.Rotate != 0f)
         {
-            NewProj.timeLeft += up.ExtraTime;
-            Add(UpList, upState.Index);
+            double ang = cur.Angle * Math.PI / 180;
+            if (cur.Rotate != 0f) ang += cur.Rotate * Math.PI / 180;
+            newVel = newVel.RotatedBy(ang);
+            Add(updList, ups.Index);
         }
 
-        // 速度处理
-        Vector2 newVel = up.GetFinalVelocity(NewProj);
-
-        // 应用追踪模式（使用新的追踪系统）
-        if (up.HomingMode != null && up.HomingMode.Homing)
+        // 位置偏移
+        Vector2 off = cur.GetPosOff();
+        if (off != Vector2.Zero)
         {
-            newVel = AutoHoming.ApplyAll(newVel, NewProj, up.HomingMode, npc, UpList);
-        }
-
-        // 应用角度和旋转
-        if (up.Angle != 0f || up.Rotate != 0f)
-        {
-            double totalAngle = up.Angle * Math.PI / 180;
-            if (up.Rotate != 0f)
-            {
-                totalAngle += up.Rotate * Math.PI / 180;
-            }
-            newVel = newVel.RotatedBy(totalAngle);
-            Add(UpList, upState.Index);
-        }
-
-        // 应用位置偏移（使用字符串格式）
-        if (!string.IsNullOrWhiteSpace(up.PosOffset_XY) && up.PosOffset_XY != "0,0")
-        {
-            Vector2 offset = up.GetPosOffsetVector();
-            Vector2 newPos = NewProj.position + offset;
-            // ✅ 使用浮点容差比较
-            if ((newPos - NewProj.position).LengthSquared() > 0.001f)
-            {
-                NewProj.position = newPos;
-                Add(UpList, upState.Index);
-            }
+            Vector2 np = p.position + off;
+            if ((np - p.position).LengthSquared() > 0.001f)
+            { p.position = np; Add(updList, ups.Index); }
         }
 
         #region 智能半径偏移（利用模式标志）
-        if (up.Radius != 0f)
+        if (cur.Radius != 0f)
         {
-            Vector2 offset = Vector2.Zero;
-
-            // 根据模式标志使用不同的偏移策略
-            switch (upState.ProjFlag)
+            Vector2 delta = Vector2.Zero;
+            float incRad = cur.Radius * 16f;
+            switch (ups.Flag)
             {
                 case "circle":
-                    if (upState.BasePosition != Vector2.Zero)
+                    if (ups.BasePos != Vector2.Zero)
                     {
-                        float radiusPx = PxUtil.ToPx(up.Radius);
-                        // ✅ 使用存储的圆形半径作为基础，更新半径作为增量
-                        float totalRadius = upState.CircleRadius + up.Radius;
-                        float totalRadiusPx = PxUtil.ToPx(totalRadius);
-                        float newAngle = upState.CircleAngle + state.SPCount * 0.1f;
-                        offset = new Vector2((float)Math.Cos(newAngle), (float)Math.Sin(newAngle)) * totalRadiusPx;
-                        NewProj.position = upState.BasePosition + offset;
+                        float totalRad = ups.CirRad + incRad;   // ups.CirRad 已是像素
+                        float ang = ups.CirAng + st.SPCount * 0.1f;
+                        delta = new Vector2((float)Math.Cos(ang), (float)Math.Sin(ang)) * totalRad;
+                        p.position = ups.BasePos + delta;
                     }
                     break;
-
-                case "spread":
-                    // 扇形模式：保持角度，调整距离
-                    if (upState.BasePosition != Vector2.Zero && upState.BaseVelocity != Vector2.Zero)
+                case "cir_spr":
+                    if (ups.BasePos != Vector2.Zero && ups.BaseVel != Vector2.Zero)
                     {
-                        float bAng = (float)Math.Atan2(upState.BaseVelocity.Y, upState.BaseVelocity.X);
-                        float radiusPx = PxUtil.ToPx(up.Radius);
-                        offset = new Vector2((float)Math.Cos(bAng), (float)Math.Sin(bAng)) * radiusPx;
-                        NewProj.position += offset;
+                        float ba = (float)Math.Atan2(ups.BaseVel.Y, ups.BaseVel.X);
+                        float ang = ba + ups.CirIdx * MathHelper.ToRadians(ups.SprInc);
+                        Vector2 dir = new Vector2((float)Math.Cos(ang), (float)Math.Sin(ang));
+                        delta = dir * incRad;
+                        p.position = ups.BasePos + delta;
                     }
                     break;
-
+                case "nest":
                 case "line":
-                    if (upState.BasePosition != Vector2.Zero && upState.BaseVelocity != Vector2.Zero)
+                    if (ups.BasePos != Vector2.Zero && ups.BaseVel != Vector2.Zero)
                     {
-                        float radiusPx = PxUtil.ToPx(up.Radius);
-                        // ✅ 使用存储的线性偏移方向
-                        Vector2 lineDir = Vector2.Zero;
-                        if (!string.IsNullOrWhiteSpace(upState.LineOffsetStr) && upState.LineOffsetStr != "0,0")
-                        {
-                            lineDir = SpawnProj.ParseOffset(upState.LineOffsetStr).SafeNormalize(Vector2.Zero);
-                        }
-                        if (lineDir == Vector2.Zero)
-                        {
-                            lineDir = upState.BaseVelocity.SafeNormalize(Vector2.Zero);
-                        }
-                        offset = lineDir * radiusPx * upState.CircleIndex;
-                        NewProj.position += offset;
+                        Vector2 dir = ups.LineOff.GetVector2().SafeNormalize(Vector2.Zero);
+                        if (dir == Vector2.Zero) dir = ups.BaseVel.SafeNormalize(Vector2.Zero);
+                        delta = dir * incRad * ups.CirIdx;
+                        p.position = ups.BasePos + delta;
                     }
                     break;
-
-                // UpProj.cs 智能半径偏移 - 增强复合模式处理
+                case "spread":
+                    if (ups.BasePos != Vector2.Zero && ups.BaseVel != Vector2.Zero)
+                    {
+                        float ba = (float)Math.Atan2(ups.BaseVel.Y, ups.BaseVel.X);
+                        delta = new Vector2((float)Math.Cos(ba), (float)Math.Sin(ba)) * incRad;
+                        p.position += delta;
+                    }
+                    break;
                 case "circle_line":
-                    if (upState.BasePosition != Vector2.Zero && upState.BaseVelocity != Vector2.Zero)
+                    if (ups.BasePos != Vector2.Zero && ups.BaseVel != Vector2.Zero)
                     {
-                        float radiusPx = PxUtil.ToPx(up.Radius);
-
-                        // 圆形部分
-                        float newAngle = upState.CircleAngle + state.SPCount * 0.1f;
-                        Vector2 circleOffset = new Vector2((float)Math.Cos(newAngle), (float)Math.Sin(newAngle)) * radiusPx;
-
-                        // 线性部分：使用存储的线性偏移方向
-                        Vector2 lineDir = Vector2.Zero;
-                        if (!string.IsNullOrWhiteSpace(upState.LineOffsetStr) && upState.LineOffsetStr != "0,0")
-                        {
-                            lineDir = SpawnProj.ParseOffset(upState.LineOffsetStr).SafeNormalize(Vector2.Zero);
-                        }
-                        if (lineDir == Vector2.Zero)
-                        {
-                            lineDir = upState.BaseVelocity.SafeNormalize(Vector2.Zero);
-                        }
-                        Vector2 lineOffset = lineDir * radiusPx * upState.CircleIndex * 0.5f;
-
-                        offset = circleOffset + lineOffset;
-                        NewProj.position = upState.BasePosition + offset;
+                        float ang = ups.CirAng + st.SPCount * 0.1f;
+                        Vector2 cirOff = new Vector2((float)Math.Cos(ang), (float)Math.Sin(ang)) * incRad;
+                        Vector2 dir = ups.LineOff.GetVector2().SafeNormalize(Vector2.Zero);
+                        if (dir == Vector2.Zero) dir = ups.BaseVel.SafeNormalize(Vector2.Zero);
+                        Vector2 lineOff = dir * incRad * ups.CirIdx * 0.5f;
+                        p.position = ups.BasePos + cirOff + lineOff;
                     }
                     break;
-
                 case "spread_line":
-                    if (upState.BasePosition != Vector2.Zero && upState.BaseVelocity != Vector2.Zero)
+                    if (ups.BasePos != Vector2.Zero && ups.BaseVel != Vector2.Zero)
                     {
-                        float radiusPx = PxUtil.ToPx(up.Radius);
-                        // ✅ 使用存储的扇形角度增量
-                        float bAng = (float)Math.Atan2(upState.BaseVelocity.Y, upState.BaseVelocity.X);
-                        float spreadAng = bAng + upState.CircleIndex * MathHelper.ToRadians(upState.SprAngInc);
-                        Vector2 spreadDir = new Vector2((float)Math.Cos(spreadAng), (float)Math.Sin(spreadAng));
-                        Vector2 spreadOffset = spreadDir * radiusPx;
-
-                        // 线性偏移方向
-                        Vector2 lineDir = new Vector2(-spreadDir.Y, spreadDir.X);
-                        Vector2 lineOffset = lineDir * radiusPx * upState.CircleIndex * 0.5f;
-
-                        offset = spreadOffset + lineOffset;
-                        NewProj.position = upState.BasePosition + offset;
+                        float ba = (float)Math.Atan2(ups.BaseVel.Y, ups.BaseVel.X);
+                        float sa = ba + ups.CirIdx * MathHelper.ToRadians(ups.SprInc);
+                        Vector2 spdDir = new Vector2((float)Math.Cos(sa), (float)Math.Sin(sa));
+                        Vector2 spdOff = spdDir * incRad;
+                        Vector2 lineDir = new Vector2(-spdDir.Y, spdDir.X);
+                        Vector2 lineOff = lineDir * incRad * ups.CirIdx * 0.5f;
+                        p.position = ups.BasePos + spdOff + lineOff;
                     }
                     break;
-
                 default:
-                    // 默认模式：随机偏移
-                    float angle = (NewProj.identity * 137.508f + state.SPCount * 0.5f) % 360f;
-                    float radPx = PxUtil.ToPx(up.Radius);
-                    offset = new Vector2((float)Math.Cos(MathHelper.ToRadians(angle)),
-                                       (float)Math.Sin(MathHelper.ToRadians(angle))) * radPx;
-                    NewProj.position += offset;
+                    float rndAng = (p.identity * 137.508f + st.SPCount * 0.5f) % 360f;
+                    delta = new Vector2((float)Math.Cos(MathHelper.ToRadians(rndAng)),
+                                        (float)Math.Sin(MathHelper.ToRadians(rndAng))) * incRad;
+                    p.position += delta;
                     break;
             }
-
-            if (offset != Vector2.Zero)
-                Add(UpList, upState.Index);
+            if (delta != Vector2.Zero) Add(updList, ups.Index);
         }
         #endregion
 
-        // 更新速度
-        if ((newVel - NewProj.velocity).LengthSquared() > 0.001f)
+        // 应用新速度
+        if ((newVel - p.velocity).LengthSquared() > 0.001f)
+        { p.velocity = newVel; Add(updList, ups.Index); }
+
+        // 直接设置AI值
+        if (cur.AI.Count > 0)
         {
-            NewProj.velocity = newVel;
-            Add(UpList, upState.Index);
+            foreach (var kv in cur.AI)
+                if (kv.Key >= 0 && kv.Key < p.ai.Length)
+                { p.ai[kv.Key] = kv.Value; Add(updList, ups.Index); }
         }
 
-        // 更新AI参数
-        if (up.AI.Count > 0)
+        // 速度注入AI
+        if (cur.SpdToAI != null && cur.SpdToAI.Count > 0)
         {
-            for (int j = 0; j < NewProj.ai.Length; j++)
-            {
-                if (up.AI.ContainsKey(j))
-                {
-                    NewProj.ai[j] = up.AI[j];
-                    Add(UpList, upState.Index);
-                }
-            }
+            cur.ApplySpdToAI(p, newVel, updList, ups.Index);
+            Vector2 sv = cur.GetSpdToAIVec();
+            if (sv != Vector2.Zero) { p.velocity = sv; Add(updList, ups.Index); }
         }
 
-        // 速度注入AI（自定义注入）
-        if (up.SpeedToAI != null && up.SpeedToAI.Count > 0)
-        {
-            // 应用速度注入到指定的AI索引
-            up.ApplySpeedToAI(NewProj, newVel, UpList, upState.Index);
-
-            // 设置新的速度向量
-            Vector2 speedVec = up.GetSpeedToAIVector();
-            if (speedVec != Vector2.Zero)
-            {
-                NewProj.velocity = speedVec;
-                Add(UpList, upState.Index);
-            }
-        }
-
-        Next(upState); // 移动下个更新阶段
-
-        // 发送更新
-        SendUp(UpList);
+        // 进入下一阶段
+        ups.UpdIdx++;
+        SendUpd(updList);
 
         // 弹点召唤怪物
-        if (up.SpawnNPCAtProj != null && up.SpawnNPCAtProj.Any() && up.SpawnNPCAtProjCount > 0)
+        if (cur.SpawnNPCs != null && cur.SpawnNPCs.Length > 0 && cur.SpawnCnt > 0)
         {
-            // 使用弹幕的当前位置（世界坐标）
-            Vector2 spawnPosition = NewProj.Center; // 使用中心点更准确
-
-            foreach (var type in up.SpawnNPCAtProj)
-            {
-                SpawnNPC(state, npc, spawnPosition, type, up.SpawnNPCAtProjCount);
-            }
+            foreach (int id in cur.SpawnNPCs)
+                SpawnNPC(st, npc, p.Center, id, cur.SpawnCnt);
         }
     }
     #endregion
 
-    #region 添加到更新列表
-    public static void Add(List<int> list, int projId)
+    #region 辅助方法
+    /// <summary>添加弹幕ID到待同步列表</summary>
+    public static void Add(List<int> list, int pid)
     {
-        // 添加边界检查
-        if (projId >= 0 && projId < Main.maxProjectiles && !list.Contains(projId))
-        {
-            list.Add(projId);
-        }
+        if (pid >= 0 && pid < Main.maxProjectiles && !list.Contains(pid))
+            list.Add(pid);
     }
-    #endregion
 
-    #region 获取弹幕状态
-    public static UpdateProjState GetState(int projIndex)
-    {
-        if (projIndex >= 0 && projIndex < Main.maxProjectiles)
-        {
-            return UpdateState[projIndex];
-        }
-        return null;
-    }
-    #endregion
+    /// <summary>获取弹幕的更新状态</summary>
+    public static UpdProjState? GetState(int pid) => (pid >= 0 && pid < Main.maxProjectiles) ? UpdateState[pid] : null;
 
-    #region 清理怪物相关的弹幕状态
-    public static void ClearStates(int npcWhoAmI)
+    /// <summary>清除某个怪物关联的所有弹幕状态</summary>
+    public static void ClearStates(int who)
     {
         for (int i = 0; i < UpdateState.Length; i++)
-        {
-            if (UpdateState[i] != null && UpdateState[i].whoAmI == npcWhoAmI)
-            {
-                UpdateState[i] = null;
-                UpdateTimer.Remove(i);
-            }
-        }
+            if (UpdateState[i] != null && UpdateState[i]?.Who == who)
+            { UpdateState[i] = null; UpdateTimer.Remove(i); }
     }
-    #endregion
 
-    #region 移除单个弹幕状态
-    public static void Remove(int Index)
+    /// <summary>移除单个弹幕的更新状态</summary>
+    public static void Remove(int idx)
     {
-        if (Index >= 0 && Index < Main.maxProjectiles)
-        {
-            UpdateState[Index] = null;
-            if (UpdateTimer.ContainsKey(Index))
-                UpdateTimer.Remove(Index);
-        }
+        if (idx >= 0 && idx < Main.maxProjectiles)
+        { UpdateState[idx] = null; UpdateTimer.Remove(idx); }
     }
-    #endregion
 
-    #region 移动下个更新阶段
-    public static void Next(UpdateProjState upInfo)
+    /// <summary>添加新的弹幕更新状态（在弹幕生成时调用）</summary>
+    public static bool AddState(int pid, int who, int type,
+                                string flag = "", float ang = 0f, int cirIdx = 0,
+                                Vector2? basePos = null, Vector2? baseVel = null,
+                                float cirRad = 0f, string lineOff = "0,0", float sprInc = 0f)
     {
-        upInfo.UpdateIndex++; // 移动到下一个阶段
-    }
-    #endregion
-
-    #region 添加弹幕更新状态（带边界检查）
-    public static bool AddState(int projIndex, int npcWhoAmI, int projType,
-                           string flag = "", float angle = 0f, int idx = 0,
-                           Vector2? basePos = null, Vector2? baseVel = null,
-                           float circleRad = 0f, string lineOff = "0,0", float sprAngInc = 0f)
-    {
-        // 严格的边界检查
-        if (projIndex < 0 || projIndex >= Main.maxProjectiles)
-        {
-            TShock.Log.ConsoleError($"{LogName} 弹幕索引越界: {projIndex}");
-            return false;
-        }
-
+        if (pid < 0 || pid >= Main.maxProjectiles) return false;
         try
         {
-            var state = new UpdateProjState(projIndex, npcWhoAmI, projType,
-                                            flag, angle, idx, basePos, baseVel,
-                                            circleRad, lineOff, sprAngInc);
-            UpdateState[projIndex] = state;
-            UpdateTimer[projIndex] = DateTime.UtcNow;
+            UpdateState[pid] = new UpdProjState(pid, who, type, flag, ang, cirIdx,
+                                             basePos, baseVel, cirRad, lineOff, sprInc);
+            UpdateTimer[pid] = DateTime.UtcNow;
             return true;
         }
-        catch (Exception ex)
-        {
-            TShock.Log.ConsoleError($"{LogName} 添加弹幕状态失败: {ex.Message}");
-            return false;
-        }
+        catch { return false; }
     }
-    #endregion
 
-    #region 发送更新
-    public static void SendUp(List<int> UpList)
+    /// <summary>发送弹幕更新数据包给所有玩家</summary>
+    private static void SendUpd(List<int> list)
     {
-        if (UpList.Count > 0)
-        {
-            foreach (int all in UpList)
-            {
-                // 确保弹幕索引有效且弹幕仍然活跃
-                if (all >= 0 && all < Main.maxProjectiles &&
-                    Main.projectile[all] != null && Main.projectile[all].active)
-                {
-                    TSPlayer.All.SendData(PacketTypes.ProjectileNew, null, all, 0f, 0f, 0f, 0);
-                }
-            }
-        }
-    } 
-    #endregion
+        foreach (int pid in list)
+            if (pid >= 0 && pid < Main.maxProjectiles && Main.projectile[pid]?.active == true)
+                TSPlayer.All.SendData(PacketTypes.ProjectileNew, null, pid, 0f, 0f, 0f, 0);
+    }
 
-    #region 弹点召怪
-    public static void SpawnNPC(NpcState state, NPC npc, Vector2 pos, int npcID, int stack)
+    /// <summary>在弹幕位置生成怪物</summary>
+    private static void SpawnNPC(NpcState st, NPC npc, Vector2 pos, int id, int cnt)
     {
-        if (npcID <= 0 || npcID >= Terraria.ID.NPCID.Count || npcID == 113 || npcID == 488) return;
-        var Count = Main.npc.Count(p => p.active && p.type == npcID);
-        if (Count >= stack) return;
-
-        for (int i = 0; i < stack; i++)
+        if (id <= 0 || id >= Terraria.ID.NPCID.Count || id == 113 || id == 488) return;
+        int curCnt = Main.npc.Count(n => n.active && n.type == id);
+        if (curCnt >= cnt) return;
+        for (int i = 0; i < cnt; i++)
         {
-            int npcIndex = NPC.NewNPC(
-                npc.GetSpawnSourceForNPCFromNPCAI(),
-                (int)pos.X,
-                (int)pos.Y,
-                npcID
-            );
-
-            if (npcIndex >= 0 && npcIndex < Main.maxNPCs)
-            {
-                Main.npc[npcIndex].active = true;
-                Main.npc[npcIndex].netUpdate = true;
-            }
+            int idx = NPC.NewNPC(npc.GetSpawnSourceForNPCFromNPCAI(), (int)pos.X, (int)pos.Y, id);
+            if (idx >= 0 && idx < Main.maxNPCs)
+            { Main.npc[idx].active = true; Main.npc[idx].netUpdate = true; }
         }
-
-        state.SNCount++; //增加该NPC的怪物生成次数
+        st.SNCount++;
     }
     #endregion
 }

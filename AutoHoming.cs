@@ -63,7 +63,7 @@ public static class AutoHoming
     #endregion
 
     #region 追踪模式核心
-    public static Vector2 Track(Vector2 v, Entity p, HomingData d, NPC n, List<int> lst, Entity tar = null)
+    public static Vector2 Track(Vector2 v, Entity p, HomingData d, NPC n, List<int> lst, Entity? tar = null)
     {
         if (!d.Homing || tar == null) return v;
 
@@ -141,7 +141,7 @@ public static class AutoHoming
     #endregion
 
     #region 目标获取
-    private static Entity GetTar(int type, NPC n, Entity p, float rng)
+    private static Entity? GetTar(int type, NPC n, Entity p, float rng)
     {
         return type switch
         {
@@ -153,16 +153,17 @@ public static class AutoHoming
         };
     }
 
-    private static Player FindPlr(NPC n, float rng)
+    private static Player? FindPlr(NPC n, float rng)
     {
-        Player pl = null;
+        Player? pl = null;
         float min = float.MaxValue;
         float rngSq = rng * rng;
 
         for (int i = 0; i < Main.maxPlayers; i++)
         {
             var p = Main.player[i];
-            if (!PxUtil.IsValidPlr(p)) continue;
+            if (p == null || !p.active || p.dead || p.statLife <= 0)
+                continue;
 
             float dSq = n.DistanceSQ(p.Center);
             if (dSq < min && dSq <= rngSq)
@@ -175,9 +176,9 @@ public static class AutoHoming
         return pl;
     }
 
-    private static Projectile FindProj(Entity src, float rng)
+    private static Projectile? FindProj(Entity src, float rng)
     {
-        Projectile proj = null;
+        Projectile? proj = null;
         float min = float.MaxValue;
         float rngSq = rng * rng;
 
@@ -198,9 +199,9 @@ public static class AutoHoming
         return proj;
     }
 
-    public static NPC FindMst(NPC n, float rng)
+    public static NPC? FindMst(NPC n, float rng)
     {
-        NPC target = null;
+        NPC? target = null;
         float min = float.MaxValue;
         float rngSq = rng * rng;
 
@@ -208,7 +209,7 @@ public static class AutoHoming
         {
             var t = Main.npc[i];
 
-            if (!PxUtil.IsValidMst(t, n))
+            if (t == null || !t.active || t.whoAmI == n.whoAmI)
                 continue;
 
             float dSq = n.DistanceSQ(t.Center);
@@ -224,15 +225,15 @@ public static class AutoHoming
     #endregion
 
     #region 躲避系统
-    private static Vector2 Evade(Vector2 v, Projectile p, HomingData d, List<int> lst, Entity tar = null)
+    private static Vector2 Evade(Vector2 v, Projectile p, HomingData d, List<int> lst, Entity? tar = null)
     {
         Vector2 f = Vector2.Zero;
         int cnt = 0;
-        float rng = PxUtil.ToPx(d.AvoidRange);
+        float rng = d.AvoidRange * 16;
         float rngSq = rng * rng;
 
         // 统计附近弹幕密度
-        List<Vector2> nearPos = new List<Vector2>();
+        List<Vector2> nearPos = new();
 
         for (int i = 0; i < Main.maxProjectiles; i++)
         {

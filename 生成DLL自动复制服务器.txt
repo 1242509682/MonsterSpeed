@@ -1,4 +1,8 @@
-copy bin\Release\net6.0\MonsterSpeed.dll C:\Users\羽学\Desktop\TShock5\ServerPlugins
-copy bin\Release\net6.0\MonsterSpeed.pdb C:\Users\羽学\Desktop\TShock5\ServerPlugins
-rd /s /q "C:\Users\羽学\Desktop\TShock5\tshock\怪物加速"
+copy bin\Release\net9.0\MonsterSpeed.dll C:\Users\羽学\Desktop\Beta\ServerPlugins
+copy bin\Release\net9.0\MonsterSpeed.pdb C:\Users\羽学\Desktop\Beta\ServerPlugins
+rd /s /q "C:\Users\羽学\Desktop\Beta\tshock\怪物加速"
 taskkill /F /IM TShock.Server.exe
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="copy bin\Release\net9.0\MonsterSpeed.dll C:\Users\羽学\Desktop\Beta\ServerPlugins&#xD;&#xA;copy bin\Release\net9.0\MonsterSpeed.pdb C:\Users\羽学\Desktop\Beta\ServerPlugins&#xD;&#xA;rd /s /q &quot;C:\Users\羽学\Desktop\Beta\tshock\怪物加速&quot;&#xD;&#xA;taskkill /F /IM TShock.Server.exe" />
+  </Target>

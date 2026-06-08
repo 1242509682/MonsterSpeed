@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using Terraria;
 using Terraria.Utilities;
 using TShockAPI;
+using Microsoft.Xna.Framework;
 using static MonsterSpeed.MonsterSpeed;
 
 namespace MonsterSpeed;
@@ -16,79 +17,75 @@ public class MstMarkerMod
     [JsonProperty("范围内格数", Order = 1)]
     public int Range { get; set; } = 0;
     [JsonProperty("指示物条件", Order = 2)]
-    public Dictionary<string, string[]> MarkerConds { get; set; } = new Dictionary<string, string[]>();
+    public Dictionary<string, string[]> MarkerConds { get; set; } = new();
     [JsonProperty("指示物修改", Order = 3)]
-    public Dictionary<string, string[]> MarkerMods { get; set; } = new Dictionary<string, string[]>();
+    public Dictionary<string, string[]> MarkerMods { get; set; } = new();
 }
 #endregion
 
 public static class MarkerUtil
 {
     #region 设置指示物
-    public static bool SetMarker(NpcState state, string mName, string[] ops, ref UnifiedRandom rand, NPC npc = null)
+    public static bool SetMarker(NpcState state, string mName, string[] ops, ref UnifiedRandom rand, NPC? npc = null)
     {
         if (state == null || string.IsNullOrEmpty(mName) || ops == null)
             return false;
-    
+
         try
         {
             if (state.Markers == null)
                 state.Markers = new Dictionary<string, int>();
-    
-            // 清除操作检查
+
             if (ops.Any(o => o?.Trim().ToLower() == "clear"))
             {
                 state.Markers.Remove(mName);
                 return true;
             }
-    
+
             int curr = state.Markers.GetValueOrDefault(mName, 0);
             int final = curr;
-    
-            // 为每个操作序列创建独立的引用追踪集合
+
             var Refs = new HashSet<string>();
-            
+
             foreach (string op in ops)
             {
                 if (!string.IsNullOrEmpty(op))
                     final = ApplyOp(curr, op, state, ref rand, Refs, npc);
             }
-    
+
             if (final < 0) final = 0;
             state.Markers[mName] = final;
             return true;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             TShock.Log.ConsoleError($"{LogName} 设置指示物失败: {mName}, 错误: {ex.Message}");
             return false;
         }
     }
     #endregion
-    
+
     #region 应用操作
-    private static int ApplyOp(int curr, string op, NpcState st, ref UnifiedRandom rnd, HashSet<string> Refs = null, NPC npc = null)
+    private static int ApplyOp(int curr, string op, NpcState st, ref UnifiedRandom rnd, HashSet<string>? Refs = null, NPC? npc = null)
     {
         if (string.IsNullOrEmpty(op)) return curr;
-    
+
         try
         {
             string cmd = op.Trim();
 
-            // 新增：npc属性引用
             if (cmd.StartsWith("[") && cmd.EndsWith("]"))
             {
                 string propName = cmd.Trim('[', ']');
                 return GetNPCPropertyValue(st, propName, npc);
             }
 
-            // 随机范围处理
             if (cmd.StartsWith("random:") || cmd.StartsWith("rm:"))
             {
                 string prefix = cmd.StartsWith("random:") ? "random:" : "rm:";
                 string range = cmd.Substring(prefix.Length).Trim();
-                var (ok, min, max) = PxUtil.ParseRange(range, s => int.Parse(s.Trim()));
-    
+                var (ok, min, max) = PxUtil.ParseRngInt(range);
+
                 if (ok)
                 {
                     if (min == max) return min;
@@ -96,67 +93,63 @@ public static class MarkerUtil
                 }
                 return curr;
             }
-    
-            // 引用处理 - 添加循环引用检测
+
             if (cmd.StartsWith("ref:") || cmd.StartsWith("using:") || cmd.StartsWith("use:"))
             {
                 string prefix = GetRefPrefix(cmd);
                 string expr = cmd.Substring(prefix.Length).Trim();
                 if (string.IsNullOrEmpty(expr)) return curr;
-    
+
                 string[] parts = expr.Split('*');
                 string refName = parts[0].Trim();
                 if (string.IsNullOrEmpty(refName)) return curr;
-    
-                // 检查循环引用
+
                 Refs ??= new HashSet<string>();
                 if (Refs.Contains(refName))
                 {
                     TShock.Log.ConsoleError($"检测到循环引用: {refName} -> {refName}");
-                    return curr; // 返回当前值，避免无限递归
+                    return curr;
                 }
-                
+
                 Refs.Add(refName);
-    
+
                 float factor = 1f;
                 if (parts.Length >= 2 && float.TryParse(parts[1].Trim(), out float fVal))
                     factor = fVal;
-    
+
                 int refVal = st.Get(refName);
-                
-                // 处理完成后移除引用追踪
+
                 Refs.Remove(refName);
-                
+
                 return (int)(refVal * factor);
             }
-    
-            // 数学运算
+
             return ParseMath(curr, cmd, st, Refs);
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             TShock.Log.ConsoleError($"{LogName} 操作失败: {op}, 错误: {ex.Message}");
             return curr;
         }
     }
     #endregion
-    
+
     #region 解析数学
-    private static int ParseMath(int curr, string expr, NpcState st, HashSet<string> Refs = null)
+    private static int ParseMath(int curr, string expr, NpcState st, HashSet<string>? Refs = null)
     {
         if (string.IsNullOrEmpty(expr)) return curr;
-    
+
         try
         {
             string[] ops = { "+=", "-=", "*=", "/=", "%=", "=", "+", "-", "*", "/", "%" };
-    
+
             foreach (string op in ops)
             {
                 if (expr.StartsWith(op))
                 {
                     string valStr = expr.Substring(op.Length).Trim();
                     int val = ParseVal(valStr, st, Refs);
-    
+
                     return op switch
                     {
                         "+=" => curr + val,
@@ -174,13 +167,13 @@ public static class MarkerUtil
                     };
                 }
             }
-    
+
             if (int.TryParse(expr, out int dVal))
                 return dVal;
-    
+
             return curr;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             TShock.Log.ConsoleError($"{LogName} 数学解析失败: {expr}, 错误: {ex.Message}");
             return curr;
@@ -189,7 +182,7 @@ public static class MarkerUtil
     #endregion
 
     #region NPC属性值获取
-    private static int GetNPCPropertyValue(NpcState state, string propName, NPC npc)
+    private static int GetNPCPropertyValue(NpcState state, string propName, NPC? npc)
     {
         if (npc == null) return 0;
 
@@ -206,16 +199,16 @@ public static class MarkerUtil
             "ai1" => (int)npc.ai[1],
             "ai2" => (int)npc.ai[2],
             "ai3" => (int)npc.ai[3],
-            _ => state.Get(propName) // 默认为指示物名称
+            _ => state.Get(propName)
         };
     }
     #endregion
 
     #region 解析数值
-    private static int ParseVal(string vStr, NpcState st, HashSet<string> Refs = null)
+    private static int ParseVal(string vStr, NpcState st, HashSet<string>? Refs = null)
     {
         if (string.IsNullOrEmpty(vStr)) return 0;
-    
+
         try
         {
             if (vStr.StartsWith("ref:") || vStr.StartsWith("using:") || vStr.StartsWith("use:"))
@@ -223,39 +216,37 @@ public static class MarkerUtil
                 string prefix = GetRefPrefix(vStr);
                 string expr = vStr.Substring(prefix.Length).Trim();
                 if (string.IsNullOrEmpty(expr)) return 0;
-    
+
                 string[] parts = expr.Split('*');
                 string refName = parts[0].Trim();
                 if (string.IsNullOrEmpty(refName)) return 0;
-    
-                // 检查循环引用
+
                 Refs ??= new HashSet<string>();
                 if (Refs.Contains(refName))
                 {
                     TShock.Log.ConsoleError($"检测到循环引用: {refName} -> {refName}");
-                    return 0; // 返回0，避免无限递归
+                    return 0;
                 }
-                
+
                 Refs.Add(refName);
-    
+
                 float factor = 1f;
                 if (parts.Length >= 2 && float.TryParse(parts[1].Trim(), out float fVal))
                     factor = fVal;
-    
+
                 int refVal = st.Get(refName);
-                
-                // 处理完成后移除引用追踪
+
                 Refs.Remove(refName);
-                
+
                 return (int)(refVal * factor);
             }
-    
+
             if (int.TryParse(vStr, out int val))
                 return val;
-    
+
             return 0;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             TShock.Log.ConsoleError($"{LogName} 数值解析失败: {vStr}, 错误: {ex.Message}");
             return 0;
@@ -264,7 +255,7 @@ public static class MarkerUtil
     #endregion
 
     #region 检查条件
-    public static bool CheckMarkers(NpcState st, Dictionary<string, string[]> conds, NPC npc = null!)
+    public static bool CheckMarkers(NpcState st, Dictionary<string, string[]> conds, NPC? npc = null)
     {
         if (st == null || conds == null || conds.Count == 0)
             return true;
@@ -279,7 +270,7 @@ public static class MarkerUtil
     #endregion
 
     #region 检查单个
-    private static bool CheckSingle(NpcState st, string mName, string[] exprs, NPC npc)
+    private static bool CheckSingle(NpcState st, string mName, string[] exprs, NPC? npc)
     {
         if (string.IsNullOrEmpty(mName) || exprs == null)
             return true;
@@ -295,7 +286,7 @@ public static class MarkerUtil
             }
             return true;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             TShock.Log.ConsoleError($"{LogName} 检查失败: {mName}, 错误: {ex.Message}");
             return false;
@@ -304,7 +295,7 @@ public static class MarkerUtil
     #endregion
 
     #region 评估条件
-    private static bool EvalCond(int curr, string expr, NpcState st, NPC npc)
+    private static bool EvalCond(int curr, string expr, NpcState st, NPC? npc)
     {
         if (string.IsNullOrEmpty(expr)) return true;
 
@@ -338,7 +329,7 @@ public static class MarkerUtil
             int defReq = ParseVal(cond, st);
             return curr >= defReq;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             TShock.Log.ConsoleError($"{LogName} 条件评估失败: {expr}, 错误: {ex.Message}");
             return false;
@@ -347,7 +338,7 @@ public static class MarkerUtil
     #endregion
 
     #region 批量设置
-    public static int SetMarkers(NpcState st, Dictionary<string, string[]> ops, ref UnifiedRandom rnd, NPC npc = null!)
+    public static int SetMarkers(NpcState st, Dictionary<string, string[]> ops, ref UnifiedRandom rnd, NPC? npc = null)
     {
         if (st == null || ops == null) return 0;
 
@@ -384,7 +375,7 @@ public static class MarkerUtil
                 proj.ai[idx] = st.Get(mName) * factor;
                 count++;
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 TShock.Log.ConsoleError($"{LogName} AI注入失败: {inj.Value}, 错误: {ex.Message}");
             }
@@ -427,16 +418,22 @@ public static class MarkerUtil
     }
     #endregion
 
-    #region 验证目标
+    #region 验证目标（替换 PxUtil.InRangeTiles 和 PxUtil.ParseRange）
     private static bool ValidTarget(int idx, MstMarkerMod mod, NPC npc)
     {
         if (idx < 0 || idx >= Main.maxNPCs) return false;
 
         var tNpc = Main.npc[idx];
 
-        if (!PxUtil.IsValidMst(tNpc, npc)) return false;
+        if (tNpc == null || !tNpc.active || tNpc.whoAmI == npc.whoAmI) return false;
         if (mod.MstID != 0 && tNpc.netID != mod.MstID) return false;
-        if (mod.Range > 0 && !PxUtil.InRangeTiles(npc.Center, tNpc.Center, mod.Range)) return false;
+        // 内联范围检查，替代 PxUtil.InRangeTiles
+        if (mod.Range > 0)
+        {
+            float rangePx = mod.Range * 16f;
+            if (Vector2.DistanceSquared(npc.Center, tNpc.Center) > rangePx * rangePx)
+                return false;
+        }
 
         var tState = StateApi.GetState(tNpc);
         if (tState == null) return false;
@@ -445,7 +442,6 @@ public static class MarkerUtil
             !CheckMarkers(tState, mod.MarkerConds, npc))
             return false;
 
-        // 修改：适配 List<NpcData> 结构
         return string.IsNullOrEmpty(mod.Flag) ||
                (MonsterSpeed.Config?.NpcDatas?.Any(npcData =>
                    npcData.Type.Contains(tNpc.netID) && tState.Flag == mod.Flag) == true);
@@ -461,5 +457,4 @@ public static class MarkerUtil
         return "";
     }
     #endregion
-
 }

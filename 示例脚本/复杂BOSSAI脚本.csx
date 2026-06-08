@@ -181,7 +181,12 @@ void ShootFanProjectiles()
             Npc.GetSpawnSourceForNPCFromNPCAI(),
             Npc.Center,
             vel,
-            113, 30, 5f, Main.myPlayer
+            113, 30, 5f, Main.myPlayer, modifer: p => 
+            {
+                p.hostile = true;
+                p.friendly = false;
+                p.netImportant = true;
+            }
         );
     }
 }
@@ -263,7 +268,12 @@ void ScreenExplosion()
                 Npc.GetSpawnSourceForNPCFromNPCAI(),
                 player.Center,
                 Vector2.Zero,
-                134, 50, 10f, Main.myPlayer
+                134, 50, 10f, Main.myPlayer, modifer: p =>
+                {
+                    p.hostile = true;
+                    p.friendly = false;
+                    p.netImportant = true;
+                }
             );
         }
     }

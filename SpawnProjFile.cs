@@ -52,6 +52,28 @@ public class SpawnProjFile
             {
                 new ProjData
                 {
+                    Name = "测试弹幕",
+                    Description = "测试弹幕",
+                    Projectiles = new List<SpawnProjData>
+                    {
+                        new SpawnProjData()
+                        {
+                            Condition = "默认配置",
+                            Type = 5,
+                            Damage = 10,
+                            Stack = 10,
+                            Interval = 60,
+                            KnockBack = 8,
+                            Velocity = 10,
+                            AI = new Dictionary<int, float>(),
+                            Life = 120,
+                        }
+
+                    }
+                },
+
+                new ProjData
+                {
                     Name = "默认弹幕",
                     Description = "基础弹幕配置",
                     Projectiles = new List<SpawnProjData>

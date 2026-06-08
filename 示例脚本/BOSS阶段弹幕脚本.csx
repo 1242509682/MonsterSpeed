@@ -85,7 +85,13 @@ switch (stage)
             var v = homingVel.RotatedBy(MathHelper.ToRadians(-15 + i * 10));
             int proj = Projectile.NewProjectile(
                 Npc.GetSpawnSourceForNPCFromNPCAI(),
-                npcPos, v, 440, 30, 5f, Main.myPlayer, 0f, 1f);
+                npcPos, v, 440, 30, 5f, Main.myPlayer, 0f, 1f, modifer: p =>
+                {
+                    p.hostile = true;
+                    p.friendly = false;
+                    p.netImportant = true;
+                });
+
             if (proj >= 0)
             {
                 Main.projectile[proj].timeLeft = 300;
@@ -117,7 +123,13 @@ switch (stage)
         // 爆炸弹幕
         int expl = Projectile.NewProjectile(
             Npc.GetSpawnSourceForNPCFromNPCAI(),
-            tarPos, Vector2.Zero, 134, 60, 12f, Main.myPlayer);
+            tarPos, Vector2.Zero, 134, 60, 12f, Main.myPlayer, modifer: p =>
+            {
+                p.hostile = true;
+                p.friendly = false;
+                p.netImportant = true;
+            });
+
         if (expl >= 0)
         {
             Main.projectile[expl].timeLeft = 30;

@@ -1,8 +1,9 @@
-﻿using System.Reflection;
+﻿using System.Collections.Concurrent;
+using System.Reflection;
 using System.Text;
-using AutoCompile;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
@@ -17,14 +18,14 @@ public class MonsterSpeed : TerrariaPlugin
     public override string Name => "怪物加速";
     public static readonly string LogName = "[怪物加速]";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 7, 5);
+    public override Version Version => new Version(1, 3, 8, 0);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
     #region 注册与释放   
     public MonsterSpeed(Main game) : base(game)
     {
-        UpProj.UpdateState = new UpdateProjState[1001];
+        UpProj.UpdateState = new UpdProjState[1001];
     }
 
     public override void Initialize()
@@ -37,10 +38,14 @@ public class MonsterSpeed : TerrariaPlugin
         LoadConfig();
         GeneralHooks.ReloadEvent += ReloadConfig;
         GetDataHandlers.KillMe += KillMe!;
+        ServerApi.Hooks.NpcSpawn.Register(this, OnNpcSpawn);
         ServerApi.Hooks.NpcKilled.Register(this, this.OnNPCKilled);
         ServerApi.Hooks.NpcStrike.Register(this, this.OnNpcStrike);
         ServerApi.Hooks.NpcAIUpdate.Register(this, this.OnNpcAiUpdate);
-        TShockAPI.Commands.ChatCommands.Add(new TShockAPI.Command("mos.admin", Command.CMD, "怪物加速", "mos"));
+        On.Terraria.Projectile.AI += OnProjAI;
+        On.Terraria.Projectile.Kill += OnProjKill;
+        On.Terraria.Projectile.NewProjectile_IEntitySource_float_float_float_float_int_int_float_int_float_float_float_NewProjectileModifier += OnNewProj;
+        Commands.ChatCommands.Add(new Command("mos.admin", MyCmd.CMD, "怪物加速", "mos"));
         ServerApi.Hooks.GamePostInitialize.Register(this, this.GamePost);
     }
 
@@ -51,11 +56,15 @@ public class MonsterSpeed : TerrariaPlugin
             CSExecutor.Clear(); // 清理脚本执行器
             GeneralHooks.ReloadEvent -= ReloadConfig;
             GetDataHandlers.KillMe -= KillMe!;
+            ServerApi.Hooks.NpcSpawn.Deregister(this, OnNpcSpawn);
             ServerApi.Hooks.NpcKilled.Deregister(this, this.OnNPCKilled);
             ServerApi.Hooks.NpcStrike.Deregister(this, this.OnNpcStrike);
             ServerApi.Hooks.NpcAIUpdate.Deregister(this, this.OnNpcAiUpdate);
             ServerApi.Hooks.GamePostInitialize.Deregister(this, this.GamePost);
-            TShockAPI.Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == Command.CMD);
+            On.Terraria.Projectile.AI -= OnProjAI;
+            On.Terraria.Projectile.Kill -= OnProjKill;
+            On.Terraria.Projectile.NewProjectile_IEntitySource_float_float_float_float_int_int_float_int_float_float_float_NewProjectileModifier -= OnNewProj;
+            Commands.ChatCommands.RemoveAll(x => x.CommandDelegate == MyCmd.CMD);
         }
         base.Dispose(disposing);
     }
@@ -99,10 +108,10 @@ public class MonsterSpeed : TerrariaPlugin
         SpawnProjFile.Init(); // 新增：初始化弹幕文件系统
         UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
         MoveFile.Init(); // 新增：初始化移动模式文件系统
+        DeadFile.Init();   // 新增: 初始化死亡事件
 
         // 决定初始化脚本执行器或释放内嵌文件
-        var has = ServerApi.Plugins.Any(p => p.Plugin.Name == "自动编译插件");
-        if (has)
+        if (ServerApi.Plugins.Any(p => p.Plugin.Name == "自动编译插件"))
         {
             CSExecutor.Register();
         }
@@ -189,7 +198,7 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 创建新数据
-    internal static NpcData NewData(string name = null)
+    internal static NpcData NewData(string? name = null)
     {
         var newData = new Configuration.NpcData()
         {
@@ -233,18 +242,40 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
+        // 获取配置数据
+        var data = Config.NpcDatas!.FirstOrDefault(d => d.Type.Contains(npc.netID));
+        if (data != null)
+        {
+            var st = StateApi.GetState(npc);
+
+            // 执行死亡事件
+            if (data.DeadEvt != null && data.DeadEvt.Count > 0)
+            {
+                var mess = new StringBuilder(); //用于存储广播内容
+                foreach (string evtName in data.DeadEvt)
+                {
+                    var events = DeadFile.Load(evtName);
+                    foreach (var timerEvt in events)
+                    {
+                        bool handled = false;
+                        TimerEvents.StartEvent(data, npc, timerEvt, mess, st, ref handled);
+                        Broadcast(mess, npc, data); //监控广播
+                        npc.netUpdate = true;
+                    }
+                }
+            }
+
+            data.DeadCount += 1;
+            st.ActiveTime = 0;
+            st.LastPlrCnt = -1;
+            st.DefLifeMax = 0;
+            Config.Write();
+        }
+
         StateApi.ClearState(npc); // 清理指定npc所有状态
         UpProj.ClearStates(npc.whoAmI); // 清理弹幕更新状态
         Teleport.Remove(npc.whoAmI);    // 清理传送和回血记录
         HealTimes.Remove(npc.whoAmI);
-
-        // 修改：更新配置数据 - 查找对应的NpcData
-        var data = Config.NpcDatas!.FirstOrDefault(d => d.Type.Contains(npc.netID));
-        if (data != null)
-        {
-            data.DeadCount += 1;
-            Config.Write();
-        }
     }
     #endregion
 
@@ -256,21 +287,55 @@ public class MonsterSpeed : TerrariaPlugin
 
         e.PlayerDeathReason.TryGetCausingEntity(out var entity);
 
-        var whoAmI = entity?.whoAmI ?? -1;
-
-        if (entity is NPC npc)
+        NPC? npc = null;
+        if (entity is NPC direct)
+            npc = direct;
+        else if (entity is Projectile proj)
         {
-            if (npc is null || !npc.active || !Config.NpcList.Contains(npc.netID))
-            {
-                return;
-            }
-
-            var state = StateApi.GetState(npc);
-            if (state is not null)
-            {
-                state.KillPlay++;
-            }
+            if (ProjMap.TryGetValue(proj.whoAmI, out int npcIdx) && npcIdx >= 0 && npcIdx < Main.maxNPCs)
+                npc = Main.npc[npcIdx];
         }
+
+        if (npc != null && npc.active && Config.NpcList.Contains(npc.netID))
+        {
+            var state = StateApi.GetState(npc);
+            state.KillPlay++;
+        }
+    }
+    #endregion
+
+    #region 弹幕映射（用于死亡归因）
+    private static ConcurrentDictionary<int, int> ProjMap = new(); // 弹幕索引 → 发射者NPC索引
+    private int OnNewProj(On.Terraria.Projectile.orig_NewProjectile_IEntitySource_float_float_float_float_int_int_float_int_float_float_float_NewProjectileModifier orig,
+        IEntitySource src, float x, float y, float spx, float spy,
+        int type, int dmg, float kb, int owner, float ai0, float ai1, float ai2, NewProjectileModifier modifer)
+    {
+        int idx = orig(src, x, y, spx, spy, type, dmg, kb, owner, ai0, ai1, ai2, modifer);
+        Projectile p = Main.projectile[idx];
+
+        if (!p.active) return idx;
+
+        // 发射源是NPC实体时记录映射
+        if (src is EntitySource_Parent parent &&
+            parent.Entity is NPC npc && npc.active)
+            ProjMap[idx] = npc.whoAmI;
+
+        return idx;
+    }
+
+    private void OnProjKill(On.Terraria.Projectile.orig_Kill orig, Projectile proj)
+    {
+        ProjMap.TryRemove(proj.whoAmI, out _);
+        orig(proj);
+    }
+
+    private void OnProjAI(On.Terraria.Projectile.orig_AI orig, Projectile proj)
+    {
+        // 由 NPC 发射的弹幕（通过映射表判断）
+        if (ProjMap.ContainsKey(proj.whoAmI) && !proj.active)
+            ProjMap.TryRemove(proj.whoAmI, out _);
+
+        orig(proj);
     }
     #endregion
 
@@ -290,24 +355,26 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
+        var st = StateApi.GetState(npc);
+
+        // 动态血量
+        DynLife(npc, data, st);
+
         // 自动回血
         if (data.AutoHeal > 0)
-        {
             AutoHeal(npc, data);
-        }
 
         #region 怪物活跃秒数统计
-        Timer++;
-        if (Timer >= 60)
+        if (++Timer >= 60)
         {
-            StateApi.GetState(npc).ActiveTime++;
+            st.ActiveTime++;
             Timer = 0;
         }
         #endregion
 
         var handled = false;
         TimerEvents.TimerEvent(npc, mess, data, ref handled); //时间事件
-        FilePlayManager.HandleAll(npc, mess, data, StateApi.GetState(npc), ref handled); // 执行文件（并行处理）
+        FilePlayManager.HandleAll(npc, mess, data, st, ref handled); // 执行文件（并行处理）
 
         TrackMode(npc, data); //超距离追击
         npc.netUpdate = true;
@@ -339,8 +406,8 @@ public class MonsterSpeed : TerrariaPlugin
         if (data.TrackRange != 0)
         {
             // 修复2：使用PxUtil进行距离转换
-            float TrackRange = PxUtil.ToPx(data.TrackRange);
-            float TrackStopRange = PxUtil.ToPx(data.TrackStopRange);
+            float TrackRange = data.TrackRange * 16;
+            float TrackStopRange = data.TrackStopRange * 16;
             float SmoothRange = TrackStopRange + (TrackRange - TrackStopRange) * 0.5f;
 
             if (range > TrackRange)
@@ -388,7 +455,7 @@ public class MonsterSpeed : TerrariaPlugin
             return false;
 
         var plr = Main.player[npc.target];
-        return PxUtil.IsValidPlr(plr) && plr.Center != Vector2.Zero;
+        return plr != null && plr.active && !plr.dead && plr.statLife > 0 && plr.Center != Vector2.Zero;
     }
 
     // 修复：安全的自动目标
@@ -398,22 +465,20 @@ public class MonsterSpeed : TerrariaPlugin
         {
             float SpeedX = npc.velocity.X;
 
-            // 使用PxUtil寻找最近的有效玩家
-            Player plr2 = new Player();
+            Player? plr2 = null;
             float Distance = float.MaxValue;
-            float maxDistance = PxUtil.ToPx(data.TrackRange * 3f);
+            float maxDistance = data.TrackRange * 3f * 16;
 
             for (int i = 0; i < Main.maxPlayers; i++)
             {
                 var plr = Main.player[i];
-                if (plr is null || !plr.active || plr.dead ||
-                    !PxUtil.IsValidPlr(plr) || plr.Center == Vector2.Zero)
+                if (plr == null || !plr.active || plr.dead || plr.statLife <= 0 || plr.Center == Vector2.Zero)
                     continue;
 
-                float distance = PxUtil.DistanceSquared(npc.Center, plr.Center);
-                if (distance < Distance && distance <= maxDistance * maxDistance)
+                float distSq = Vector2.DistanceSquared(npc.Center, plr.Center);
+                if (distSq < Distance && distSq <= maxDistance * maxDistance)
                 {
-                    Distance = distance;
+                    Distance = distSq;
                     plr2 = plr;
                 }
             }
@@ -422,14 +487,8 @@ public class MonsterSpeed : TerrariaPlugin
             {
                 npc.target = plr2.whoAmI;
                 npc.netSpam = 0;
-
-                // 保持原有的移动方向逻辑
                 npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
-
-                if (SpeedX * npc.velocity.X < 0)
-                {
-                    npc.velocity.X *= 0.7f;
-                }
+                if (SpeedX * npc.velocity.X < 0) npc.velocity.X *= 0.7f;
             }
         }
     }
@@ -437,58 +496,57 @@ public class MonsterSpeed : TerrariaPlugin
     // 修复：安全的传送方法
     private void SafeTeleport(NPC npc, NpcData data, Player plr, float range, float trackRange)
     {
-        // 检查传送冷却
         bool canTp = !Teleport.ContainsKey(npc.whoAmI) ||
                       (DateTime.UtcNow - Teleport[npc.whoAmI]).TotalSeconds >= data.Teleport;
 
-        // 只在足够远的距离传送，避免频繁传送
         if (canTp && range > trackRange * 20f)
         {
-            // 使用PxUtil寻找安全位置
-            Vector2 safePos = FindSafePos(plr.Center, PxUtil.ToPx(data.TrackStopRange));
-            if (safePos != Vector2.Zero && PxUtil.InWorldBounds(safePos))
+            Vector2 safePos = FindSafePos(plr.Center, data.TrackStopRange * 16f);
+            if (safePos != Vector2.Zero && InWorldBounds(safePos))
             {
                 npc.Teleport(safePos, 10);
                 Teleport[npc.whoAmI] = DateTime.UtcNow;
-
-                // 传送后重新寻找目标
                 SafeAutoTarget(npc, data);
             }
         }
     }
 
-    // 查找安全传送位置
+    // 查找安全传送位置（修正随机数生成）
     private Vector2 FindSafePos(Vector2 center, float dice)
     {
-        // 在目标周围随机寻找安全位置
-        for (int i = 0; i < 10; i++) // 增加尝试次数
+        for (int i = 0; i < 10; i++)
         {
-            // 使用PxUtil生成随机偏移
-            Vector2 offset = PxUtil.RandomOffset(dice * 0.8f, dice * 1.2f);
-            Vector2 testPos = center + offset;
+            float minOff = dice * 0.8f;
+            float maxOff = dice * 1.2f;
 
-            // 使用PxUtil检查世界边界和位置有效性
-            if (PxUtil.InWorldBounds(testPos) && IsPositionSafe(testPos))
-            {
+            float offX = (minOff + Main.rand.NextFloat() * (maxOff - minOff)) * (Main.rand.Next(2) == 0 ? -1 : 1);
+            float offY = (minOff + Main.rand.NextFloat() * (maxOff - minOff)) * (Main.rand.Next(2) == 0 ? -1 : 1);
+
+            Vector2 testPos = center + new Vector2(offX, offY);
+            if (InWorldBounds(testPos) && IsPositionSafe(testPos))
                 return testPos;
-            }
         }
 
-        // 没找到安全位置就返回一个相对安全的位置（不在0,0）
         Vector2 fallbackPos = center + new Vector2(dice, dice);
-        return PxUtil.InWorldBounds(fallbackPos) ? fallbackPos : center;
+        return InWorldBounds(fallbackPos) ? fallbackPos : center;
     }
 
     // 检查传送位置安全性
     private bool IsPositionSafe(Vector2 pos)
     {
-        // 检查是否在固体方块内
         Point tilePos = pos.ToTileCoordinates();
         if (tilePos.X < 0 || tilePos.X >= Main.maxTilesX || tilePos.Y < 0 || tilePos.Y >= Main.maxTilesY)
             return false;
+        ITile tile = Main.tile[tilePos.X, tilePos.Y];
+        return tile != null && !(tile.active() && Main.tileSolid[tile.type]);
+    }
 
-        Tile tile = (Tile)Main.tile[tilePos.X, tilePos.Y];
-        return !(tile.active() && Main.tileSolid[tile.type]);
+    private bool InWorldBounds(Vector2 pos, float margin = 16f)
+    {
+        float maxX = Main.maxTilesX * 16f;
+        float maxY = Main.maxTilesY * 16f;
+        return pos.X >= margin && pos.X <= maxX - margin &&
+               pos.Y >= margin && pos.Y <= maxY - margin;
     }
     #endregion
 
@@ -515,21 +573,125 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
+    #region 怪物生成事件(怪物难度方法）
+    private void OnNpcSpawn(NpcSpawnEventArgs args)
+    {
+        NPC npc = Main.npc[args.NpcId];
+        if (npc == null || !npc.active) return;
+
+        var data = Config.NpcDatas?.FirstOrDefault(d => d.Type.Contains(npc.netID));
+        if (data == null) return;
+
+        // 难度乘数不能小于1
+        var Multiplier = data.DifficultyMultiplier >= 1 ? data.DifficultyMultiplier : 1;
+
+        var st = StateApi.GetState(npc);
+        if (st.DefLifeMax == 0)
+        {
+            // 从静态模板获取原始基础血量
+            NPC template = new NPC();
+            template.SetDefaults(npc.netID);
+            st.DefLifeMax = template.defLifeMax;
+        }
+
+        if (data.HpPerPlr > 0f)
+        {
+            int cur = TShock.Utils.GetActivePlayerCount();
+            st.LastPlrCnt = cur;   // 记录当前玩家数，避免首次 DynLife 重复计算
+            int newMax = (int)(st.DefLifeMax * (1f + data.HpPerPlr * cur));
+            if (newMax < 1) newMax = 1;
+            if (npc.lifeMax != newMax)
+            {
+                double ratio = (double)npc.life / npc.lifeMax;
+                npc.lifeMax = newMax;
+                npc.life = Math.Max(1, (int)(newMax * ratio));
+                npc.netUpdate = true;
+            }
+            return;
+        }
+
+        NPCSpawnParams newParams = default;
+        bool needScale = false;
+        if (data.PlayerCountForDifficulty > 0)
+        {
+            newParams.playerCountForMultiplayerDifficultyOverride = data.PlayerCountForDifficulty;
+            needScale = true;
+        }
+        if (Math.Abs(Multiplier - 1f) > 0.01f)
+        {
+            newParams.difficultyOverride = Multiplier;
+            needScale = true;
+        }
+
+        if (needScale)
+        {
+            int oldLifeMax = npc.lifeMax;
+            npc.SetDefaults(npc.netID, newParams);
+            double ratio = (double)npc.life / oldLifeMax;
+            npc.life = Math.Max(1, (int)(npc.lifeMax * ratio));
+            npc.netUpdate = true;
+        }
+        else
+        {
+            // 未指定任何难度参数时，强制恢复为原始单人血量
+            if (npc.lifeMax != st.DefLifeMax)
+            {
+                double ratio = (double)npc.life / npc.lifeMax;
+                npc.lifeMax = st.DefLifeMax;
+                npc.life = Math.Max(1, (int)(st.DefLifeMax * ratio));
+                npc.netUpdate = true;
+            }
+        }
+    }
+    #endregion
+
+    #region 动态血量方法
+    private void DynLife(NPC npc, NpcData data, NpcState st)
+    {
+        if (data.HpPerPlr <= 0f) return;
+        if (st.DefLifeMax <= 0) return;   // 基准未初始化，跳过
+
+        int cur = TShock.Utils.GetActivePlayerCount();
+        if (cur == st.LastPlrCnt) return;
+        st.LastPlrCnt = cur;
+
+        int newMax = (int)(st.DefLifeMax * (1f + data.HpPerPlr * cur));
+        if (newMax < 1) newMax = 1;
+        if (newMax == npc.lifeMax) return;
+
+        int oldMax = npc.lifeMax;
+        int delta = newMax - oldMax;
+
+        // 按比例调整当前血量
+        double ratio = (double)npc.life / npc.lifeMax;
+        npc.lifeMax = newMax;
+        npc.life = Math.Max(1, (int)(newMax * ratio));
+        npc.netUpdate = true;
+
+        string msg = $"[怪物加速] {npc.FullName} 因玩家人数变化({cur}人)，血量{(delta > 0 ? "提升" : "降低")} {Math.Abs(delta)} 点 ({oldMax} → {newMax})";
+        TSPlayer.All.SendMessage(msg, 255, 200, 100);
+    }
+    #endregion
+
     #region 自动回血
     public static Dictionary<int, DateTime> HealTimes = new Dictionary<int, DateTime>(); // 跟踪每个NPC上次回血的时间
     internal static void AutoHeal(NPC npc, NpcData data)
     {
-        if (!HealTimes.ContainsKey(npc.whoAmI))
-        {
-            HealTimes[npc.whoAmI] = DateTime.UtcNow.AddSeconds(-data.AutoHealInterval); // 初始化为1秒前，确保第一次调用时立即回血
-        }
+        int heal = data.AutoHeal;
+        if (heal <= 0) return;
 
-        // 回血间隔
+        if (!HealTimes.ContainsKey(npc.whoAmI))
+            HealTimes[npc.whoAmI] = DateTime.UtcNow.AddSeconds(-data.AutoHealInterval);
+
         if ((DateTime.UtcNow - HealTimes[npc.whoAmI]).TotalMilliseconds >= data.AutoHealInterval * 1000)
         {
-            // 将AutoHeal视为百分比并计算相应的生命值恢复量
-            var num = (int)(npc.lifeMax * (data.AutoHeal / 100.0f));
-            npc.life = (int)Math.Min(npc.lifeMax, npc.life + num);
+            int add = (int)(npc.lifeMax * (heal / 100.0f));
+
+            // 如果本次恢复会导致满血，则跳过本次回血（避免满血重置）
+            if (npc.life + add >= npc.lifeMax) return;
+
+            npc.life += add;
+            if (npc.life > npc.lifeMax) npc.life = npc.lifeMax;
             HealTimes[npc.whoAmI] = DateTime.UtcNow;
         }
     }

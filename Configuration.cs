@@ -38,6 +38,12 @@ public class Configuration
     {
         [JsonProperty("怪物ID", Order = -9)]
         public List<int> Type { get; set; } = new List<int>();
+        [JsonProperty("难度人数", Order = -6)]
+        public int PlayerCountForDifficulty { get; set; } = 2;   // 0=使用原版逻辑，>0=强制当作这么多玩家
+        [JsonProperty("难度乘数", Order = -5)]
+        public float DifficultyMultiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
+        [JsonProperty("动态血量", Order = -4)]
+        public float HpPerPlr { get; set; } = 1f;   // 每人增加1倍血量
         [JsonProperty("死亡次数", Order = -3)]
         public int DeadCount { get; set; }
         [JsonProperty("自动仇恨", Order = -2)]
@@ -64,7 +70,9 @@ public class Configuration
         public int TextRange { get; set; } = 16;
         [JsonProperty("执行文件", Order = 26)]
         public List<FilePlayData> FilePlay { get; set; } = new List<FilePlayData>();
-        [JsonProperty("时间事件", Order = 27)]
+        [JsonProperty("死亡事件", Order = 27)]
+        public List<string> DeadEvt { get; set; } = new List<string>();
+        [JsonProperty("时间事件", Order = 28)]
         public List<TimerData> TimerEvent { get; set; }
 
         public NpcData() { }
@@ -112,7 +120,7 @@ public class Configuration
                     var value = Info.GetValue(instance);
 
                     // 安全地获取默认值
-                    object deValue = GetDefaultValue(Info.PropertyType);
+                    object? deValue = GetDefaultValue(Info.PropertyType);
 
                     // 只有当值不等于默认值时才序列化
                     return !Equals(value, deValue);
@@ -123,7 +131,7 @@ public class Configuration
         }
 
         // 安全地获取各种类型的默认值
-        private object GetDefaultValue(Type type)
+        private object? GetDefaultValue(Type type)
         {
             if (type == typeof(string))
                 return null; // 字符串的默认值是 null
@@ -186,8 +194,17 @@ public class Configuration
             {
                 Type = new List<int> { 4, 50 },
                 AutoHealInterval = 5,
+                DeadEvt = [ "召唤噬魂怪" ],
                 TimerEvent = new List<TimerData>()
                 {
+
+                    new TimerData
+                    {
+                        CoolTime = 5,
+                        Condition = "默认配置",
+                        SendProj = new List<string>() { "测试弹幕" },
+                    },
+
                     new TimerData
                     {
                         CoolTime = 5,

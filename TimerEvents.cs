@@ -125,7 +125,7 @@ public class TimerEvents
     #endregion
 
     #region 执行事件逻辑
-    public static void StartEvent(NpcData data, NPC npc, TimerData Event, StringBuilder mess, NpcState state, ref bool handled)
+    public static void StartEvent(NpcData data, NPC npc, TimerData Event, StringBuilder? mess, NpcState state, ref bool handled)
     {
         // 执行C#脚本 - 每个事件周期只执行一次
         if (!string.IsNullOrEmpty(Event.CsScript))
@@ -158,7 +158,7 @@ public class TimerEvents
             int Count = MarkerUtil.SetMstMarkers(Event.MarkerList, npc, ref rand);
             if (Count > 0)
             {
-                mess.Append($" 成功修改 {Count} 个指示物\n");
+                mess?.Append($" 成功修改 {Count} 个指示物\n");
             }
         }
 

@@ -57,7 +57,7 @@ public class UpProjFile
                         new UpdateProjData
                         {
                             NewType = 1,
-                            UpdateTime = 250f,
+                            UpdInterval = 250f,
                             ExtraTime = 60,
                             HomingMode = new HomingData()
                             {
@@ -67,7 +67,7 @@ public class UpProjFile
                         new UpdateProjData
                         {
                             NewType = 2,
-                            UpdateTime = 500f,
+                            UpdInterval = 500f,
                             ExtraTime = 60,
                             HomingMode = new HomingData()
                             {
@@ -77,7 +77,7 @@ public class UpProjFile
                         new UpdateProjData
                         {
                             NewType = -1,
-                            UpdateTime = 250f,
+                            UpdInterval = 250f,
                             ExtraTime = 60,
                             HomingMode = new HomingData()
                             {

@@ -27,6 +27,9 @@ public class NpcState
     public int SendProjIdx { get; set; } = 0; // 发射弹幕组的索引号
     public Dictionary<int, int> SendCnt { get; set; } = new(); // 本组弹幕发射计数
     public Dictionary<int, float> SendCD { get; set; } = new();  // 本组弹幕发射间隔
+    public int LastPlrCnt { get; set; } = -1;  // 最后在线的玩家数（用于统计动态血量）
+    public int DefLifeMax { get; set; } = 0;   // 原版默认最大血量（不受动态影响）
+
     // 其他模式状态
     public AIState AIState { get; set; } = new AIState();  // AI赋值状态
     public MoveModeState MoveState { get; set; } = new();  // 行动模式状态
@@ -38,7 +41,7 @@ public class NpcState
     {
         if (npc != null)
         {
-            MoveState = new MoveModeState { DashStartPosition = npc.Center };
+            MoveState = new MoveModeState { DashStart = npc.Center };
         }
     }
     #endregion

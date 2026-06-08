@@ -83,7 +83,7 @@ public static class CSExecutor
 
     #region 选择执行
     // 提供给TimerEvents.StartEvent方法使用
-    public static void SelExec(string csxName, NPC npc, NpcData data, NpcState state, StringBuilder msg)
+    public static void SelExec(string csxName, NPC npc, NpcData data, NpcState state, StringBuilder? msg)
     {
         if (npc == null || !npc.active || string.IsNullOrEmpty(csxName))
             return;
@@ -114,14 +114,14 @@ public static class CSExecutor
         try
         {
             var asm = Asm;
-            var asmName = asm.GetName().Name;
+            string? asmName = asm.GetName().Name;
 
             foreach (string res in asm.GetManifestResourceNames())
             {
                 if (!res.StartsWith($"{asmName}.示例脚本."))
                     continue;
 
-                var fName = res.Substring(asmName.Length + "示例脚本.".Length + 1);
+                var fName = res.Substring(asmName!.Length + "示例脚本.".Length + 1);
                 var tPath = Path.Combine(Dir, fName);
 
                 if (File.Exists(tPath)) continue;
