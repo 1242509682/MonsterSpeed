@@ -424,7 +424,7 @@ public class FilePlayManager
         pState.EvtIdx = 0;
         pState.Events.Clear();
         pState.Played = 0;
-        pState.Markers.Clear(); // 清理指示物防止内存泄露
+        pState.Markers.Clear();
     }
 
     private static bool LoadFile(FilePlayState pState, FilePlayData play)
@@ -445,7 +445,7 @@ public class FilePlayManager
             var fileName = pState.FileSeq[pState.FileIdx];
 
             // 修改：不再需要 moreTime 和 soloCD 参数
-            var events = LoadEventsFromFile(fileName);
+            var events = Load(fileName);
 
             if (events == null || events.Count == 0)
             {
@@ -465,7 +465,7 @@ public class FilePlayManager
     }
 
     // 新增：简化版文件加载方法
-    private static List<TimerData> LoadEventsFromFile(int fileNumber)
+    private static List<TimerData> Load(int fileNumber)
     {
         try
         {

@@ -82,7 +82,6 @@ public class UpProjFile
                             HomingMode = new HomingData()
                             {
                                 Homing = true,
-                                Avoid = true,
                             }
                         }
                     }
@@ -104,7 +103,11 @@ public class UpProjFile
                         {
                             NewType = 454,
                             Velocity = 20,
-                            Condition = "默认配置"
+                            Condition = "默认配置",
+                            HomingMode = new HomingData()
+                            {
+                                Homing = true,
+                            }
                         },
                     }
                 },

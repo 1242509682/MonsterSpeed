@@ -418,7 +418,7 @@ public static class MarkerUtil
     }
     #endregion
 
-    #region 验证目标（替换 PxUtil.InRangeTiles 和 PxUtil.ParseRange）
+    #region 验证目标
     private static bool ValidTarget(int idx, MstMarkerMod mod, NPC npc)
     {
         if (idx < 0 || idx >= Main.maxNPCs) return false;

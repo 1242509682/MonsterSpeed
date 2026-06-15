@@ -6,6 +6,7 @@ using Terraria.DataStructures;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.UpProj;
+using static MonsterSpeed.PxUtil;
 
 namespace MonsterSpeed;
 
@@ -223,12 +224,25 @@ public class SpawnProj
         int idx = st.SendCnt.ContainsKey(st.SendProjIdx) ? st.SendCnt[st.SendProjIdx] : 0;
         vel = ApplyAng(vel, data.AngleCfg, idx, data.Stack);
 
-        // 获取目标位置（用于以弹为位）
+        // 获取目标位置（用于以弹为位或锁定范围）
         Vector2 tgtPos = Vector2.Zero;
-        if (data.UseProjPos || data.LockRange > 0)
+        if (data.UseProjPos)
         {
-            int tgtIdx = GetLockTgt(npc, data);
-            tgtPos = GetTgtPos(npc, data, tgtIdx);
+            // 以弹为位：使用当前仇恨目标位置 + 偏移
+            if (!tar.Invalid)
+            {
+                Vector2 off = data.SpawnXY.GetVector2();
+                tgtPos = tar.Center + off;
+            }
+        }
+        else if (data.LockRange > 0)
+        {
+            // 仅当目标在锁定范围内时才使用目标位置
+            if (!tar.Invalid && tar.Center.Distance(npc.Center) <= data.LockRange * 16f)
+            {
+                Vector2 off = data.SpawnXY.GetVector2();
+                tgtPos = tar.Center + off;
+            }
         }
 
         // 获取AI值
@@ -371,23 +385,24 @@ public class SpawnProj
         if (d.Type <= 0) return;
         vel = FixVel(d, pos, vel, tgt, idx);
 
-        // 弹幕的 NewProjectileModifier 是单次更新 并非周期性 所以可以在创建时就定义
+        var dmg = d.Damage > 0 ? Math.Max(1, d.Damage) : npc.damage;
+
         int pid = Projectile.NewProjectile(
             npc.GetSpawnSourceForNPCFromNPCAI(),
             pos.X, pos.Y, vel.X, vel.Y, d.Type,
-            Math.Max(0, d.Damage), d.KnockBack, Main.myPlayer, ai0, ai1, ai2, modifer: p => 
+            dmg, d.KnockBack, Main.myPlayer, ai0, ai1, ai2, modifer: p => 
             {
                 p.damage = d.Damage;
                 p.knockBack = d.KnockBack;
-                p.hostile = true;   // 对玩家造成伤害
-                p.friendly = false; // 不对其他NPC造成伤害（可选）
-                p.netImportant = true; // 标记为重要确保网络同步
+                p.hostile = true;
+                p.friendly = false;
+                p.netImportant = true;
                 p.netUpdate = true;
             }); 
 
         if (pid < 0 || pid >= Main.maxProjectiles) return;
         var proj = Main.projectile[pid];
-        if (d.Life > 0) proj.timeLeft = d.Life;
+        proj.timeLeft = d.Life > 0 ? d.Life : proj.timeLeft;
 
         // 范围Buff
         if (d.BuffRng > 0 && d.BuffTypes != null && d.BuffTypes.Count > 0 && d.BuffTime > 0)
@@ -411,107 +426,6 @@ public class SpawnProj
             !AddState(pid, npc.whoAmI, d.Type, flag, ang, idx, pos, vel,
                       d.CircleRad * 16f, d.LineOff, d.SprAngInc))
             TShock.Log.ConsoleWarn($"[怪物加速] 注册弹幕更新状态失败: {pid}");
-    }
-    #endregion
-
-    #region 辅助方法（短命名 ≤10字符）
-    /// <summary>查找下一个有效的弹幕组</summary>
-    public static int FindNxt(List<SpawnProjData> projs, int start)
-    {
-        if (projs == null || projs.Count == 0) return -1;
-        for (int i = 0; i < projs.Count; i++)
-        {
-            int idx = (start + i) % projs.Count;
-            if (projs[idx].Type > 0) return idx;
-        }
-        return -1;
-    }
-
-    /// <summary>获取锁定目标玩家索引</summary>
-    private static int GetLockTgt(NPC npc, SpawnProjData d)
-    {
-        if (d.LockRange <= 0) return npc.target;
-        int tgt = npc.target;
-        float min = float.MaxValue;
-        for (int i = 0; i < 255; i++)
-        {
-            var plr = Main.player[i];
-            if (plr == null || !plr.active || plr.dead) continue;
-            float dist = Vector2.Distance(npc.Center, plr.Center);
-            if (dist <= d.LockRange * 16f && dist < min)
-            {
-                min = dist;
-                tgt = i;
-            }
-        }
-        return tgt;
-    }
-
-    /// <summary>获取目标位置（考虑偏移）</summary>
-    private static Vector2 GetTgtPos(NPC npc, SpawnProjData d, int tgtIdx)
-    {
-        var plr = Main.player[tgtIdx];
-        if (plr == null || !plr.active) return npc.Center;
-        Vector2 off = d.SpawnXY.GetVector2(); // 已是像素
-        return plr.Center + off;
-    }
-
-    /// <summary>获取基础速度向量</summary>
-    private static Vector2 GetVel(SpawnProjData d, NPC npc, NPCAimedTarget tar)
-    {
-        Vector2 vel = d.VelXY.GetVector2();
-        if (vel != Vector2.Zero) return vel;
-        if (d.Velocity > 0)
-        {
-            var dir = tar.Center - npc.Center;
-            if (dir != Vector2.Zero)
-                vel = dir.SafeNormalize(Vector2.Zero) * d.Velocity;
-        }
-        if (!string.IsNullOrWhiteSpace(d.SpdFix) && d.SpdFix != "0,0")
-            vel += d.SpdFix.GetVector2();
-        return vel;
-    }
-
-    /// <summary>应用角度配置（支持单值或范围）</summary>
-    private static Vector2 ApplyAng(Vector2 v, string cfg, int idx, int total)
-    {
-        if (string.IsNullOrWhiteSpace(cfg) || cfg == "0" || v == Vector2.Zero) return v;
-        try
-        {
-            string[] parts = cfg.Split(',');
-            if (parts.Length == 1 && float.TryParse(parts[0], out float a))
-                return v.RotatedBy(MathHelper.ToRadians(a));
-            if (parts.Length == 2 && float.TryParse(parts[0], out float min) && float.TryParse(parts[1], out float max))
-            {
-                if (total > 0 && idx >= 0 && idx < total)
-                {
-                    float range = max - min;
-                    float step = range / Math.Max(1, total - 1);
-                    float ang = min + step * idx;
-                    return v.RotatedBy(MathHelper.ToRadians(ang));
-                }
-                else
-                {
-                    float ang = (min + max) / 2f;
-                    return v.RotatedBy(MathHelper.ToRadians(ang));
-                }
-            }
-        }
-        catch { }
-        return v;
-    }
-
-    /// <summary>速度修正+锁定目标重定向</summary>
-    private static Vector2 FixVel(SpawnProjData d, Vector2 pos, Vector2 vel, Vector2 tgt, int idx)
-    {
-        if (!d.UseProjPos || tgt == Vector2.Zero) return vel;
-        Vector2 toTgt = tgt - pos;
-        if (toTgt == Vector2.Zero) return vel;
-        float spd = d.LockSpd > 0 ? d.LockSpd : vel.Length();
-        Vector2 nv = toTgt.SafeNormalize(Vector2.Zero) * spd;
-        if (!string.IsNullOrWhiteSpace(d.SpdFix) && d.SpdFix != "0,0")
-            nv += d.SpdFix.GetVector2();
-        return ApplyAng(nv, d.AngleCfg, idx, d.Stack);
     }
     #endregion
 }

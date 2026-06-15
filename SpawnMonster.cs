@@ -70,10 +70,10 @@ public class SpawnMonster
 
                     if (npc2.type != 113 && npc2.type != 0 && npc2.type < Terraria.ID.NPCID.Count)
                     {
-                        //以"玩家为中心"为true 以玩家为中心,否则以被击中的npc为中心
-                        var plr = Main.player[npc.target];
+                        //以"玩家为中心"为true 以目标为中心,否则以被击中的npc为中心
+                        var tar = npc.GetTargetData();
                         var pos = mos.TarCenter
-                                ? new Vector2(plr.Center.X, plr.Center.Y)
+                                ? new Vector2(tar.Center.X, tar.Center.Y)
                                 : new Vector2(npc.Center.X, npc.Center.Y);
 
                         // 新的生成位置

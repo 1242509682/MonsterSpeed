@@ -10,6 +10,7 @@ using TShockAPI;
 using TShockAPI.Hooks;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.Utils;
+using static MonsterSpeed.PxUtil;
 
 namespace MonsterSpeed;
 
@@ -20,7 +21,7 @@ public class MonsterSpeed : TerrariaPlugin
     public override string Name => "怪物加速";
     public static readonly string LogName = "[怪物加速]";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 8, 2);
+    public override Version Version => new Version(1, 3, 8, 3);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -110,8 +111,7 @@ public class MonsterSpeed : TerrariaPlugin
         SpawnProjFile.Init(); // 新增：初始化弹幕文件系统
         UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
         MoveFile.Init(); // 新增：初始化移动模式文件系统
-        DeadFile.Init();   // 新增: 初始化死亡事件
-        HitFile.Init();   // 新增: 初始化弹幕命中事件
+        EvtFile.Init();   // 新增: 初始化时间事件文件夹
 
         // 决定初始化脚本执行器或释放内嵌文件
         if (ServerApi.Plugins.Any(p => p.Plugin.Name == "自动编译插件"))
@@ -194,7 +194,13 @@ public class MonsterSpeed : TerrariaPlugin
         }
         else if (StateApi.NpcStates.ContainsKey(npc.whoAmI))
         {
-            StateApi.GetState(npc).Struck++;
+            var st = StateApi.GetState(npc);
+            st.Struck++;
+
+            // 记录所有攻击者
+            var plr = args.Player;
+            if (plr != null && plr.active && !plr.dead && !st.Attack.Contains(plr.whoAmI))
+                st.Attack.Add(plr.whoAmI);
         }
     }
     #endregion
@@ -256,11 +262,22 @@ public class MonsterSpeed : TerrariaPlugin
                 var mess = new StringBuilder(); //用于存储广播内容
                 foreach (string evtName in data.DeadEvt)
                 {
-                    var events = DeadFile.Load(evtName);
-                    foreach (var timerEvt in events)
+                    var events = EvtFile.Load(evtName);
+                    foreach (var Event in events)
                     {
+                        // 条件检查
+                        bool allow = true;
+
+                        if (!string.IsNullOrEmpty(Event.Condition))
+                        {
+                            var cond = ConditionFile.GetCondData(Event.Condition);
+                            Conditions.Condition(npc, mess, data, cond, ref allow);
+                        }
+
+                        if (!allow) continue;
+
                         bool handled = false;
-                        TimerEvents.StartEvent(data, npc, timerEvt, mess, st, ref handled);
+                        TimerEvents.StartEvent(data, npc, Event, mess, st, ref handled);
                         Broadcast(mess, npc, data); //监控广播
                         npc.netUpdate = true;
                     }
@@ -274,10 +291,11 @@ public class MonsterSpeed : TerrariaPlugin
             Config.Write();
         }
 
+        DelProjMap(npc.whoAmI);   // 清理属于该 NPC 的弹幕映射
         StateApi.ClearState(npc); // 清理指定npc所有状态
         UpProj.ClearStates(npc.whoAmI); // 清理弹幕更新状态
-        Teleport.Remove(npc.whoAmI);    // 清理传送和回血记录
-        HealTimes.Remove(npc.whoAmI);
+        TpTime.Remove(npc.whoAmI);    // 清理传送和回血记录
+        HealTimes.Remove(npc.whoAmI); // 移除自动回血
     }
     #endregion
 
@@ -310,6 +328,12 @@ public class MonsterSpeed : TerrariaPlugin
 
     #region 弹幕映射（用于死亡归因）
     private static ConcurrentDictionary<int, int> ProjMap = new(); // 弹幕索引 → 发射者NPC索引
+    private void DelProjMap(int npcIdx)
+    {
+        var del = ProjMap.Where(kv => kv.Value == npcIdx).Select(kv => kv.Key).ToList();
+        foreach (int pid in del)
+            ProjMap.TryRemove(pid, out _);
+    }
     private int OnNewProj(On.Terraria.Projectile.orig_NewProjectile_IEntitySource_float_float_float_float_int_int_float_int_float_float_float_NewProjectileModifier orig,
         IEntitySource src, float x, float y, float spx, float spy,
         int type, int dmg, float kb, int owner, float ai0, float ai1, float ai2, NewProjectileModifier modifer)
@@ -351,7 +375,6 @@ public class MonsterSpeed : TerrariaPlugin
                         kb = pd.KnockBack;
                         p.hostile = true;
                         p.friendly = false;
-                        p.npcProj = true;
                     }
                 }
             }
@@ -362,7 +385,11 @@ public class MonsterSpeed : TerrariaPlugin
 
     private void OnProjKill(On.Terraria.Projectile.orig_Kill orig, Projectile proj)
     {
+        // 清理弹幕→发射者映射
         ProjMap.TryRemove(proj.whoAmI, out _);
+        // 清理弹幕更新状态（包括 UpdateState 和 UpdateTimer）
+        UpProj.Remove(proj.whoAmI);
+
         orig(proj);
     }
 
@@ -377,7 +404,7 @@ public class MonsterSpeed : TerrariaPlugin
         // 修改后的友好弹幕伤害玩家方法
         if (Config.Enabled)
         {
-            if (proj.active && proj.npcProj && proj.hostile && !proj.friendly && ProjMap.TryGetValue(proj.whoAmI, out var npcIdx))
+            if (proj.active && proj.hostile && !proj.friendly && ProjMap.TryGetValue(proj.whoAmI, out var npcIdx))
             {
                 var dmg = proj.damage > 0 ? proj.damage : 1;
                 var reason = PlayerDeathReason.ByNPC(npcIdx);
@@ -403,14 +430,27 @@ public class MonsterSpeed : TerrariaPlugin
         if (data == null || data.HitEvt == null || data.HitEvt.Count == 0) return;
 
         var st = StateApi.GetState(npc);
+        var mess = new StringBuilder(); //用于存储广播内容
 
         foreach (string evtName in data.HitEvt)
         {
-            var events = HitFile.Load(evtName);
-            foreach (var timerEvt in events)
+            var events = EvtFile.Load(evtName);
+            foreach (var Event in events)
             {
+                // 条件检查
+                bool allow = true;
+
+                if (!string.IsNullOrEmpty(Event.Condition))
+                {
+                    var cond = ConditionFile.GetCondData(Event.Condition);
+                    Conditions.Condition(npc, mess, data, cond, ref allow);
+                }
+
+                if (!allow) continue;
+
                 bool handled = false;
-                TimerEvents.StartEvent(data, npc, timerEvt, new StringBuilder(), st, ref handled);
+                TimerEvents.StartEvent(data, npc, Event, mess, st, ref handled);
+                Broadcast(mess, npc, data); //监控广播
             }
         }
     }
@@ -430,18 +470,32 @@ public class MonsterSpeed : TerrariaPlugin
 
         var st = StateApi.GetState(npc);
         var data = Config.NpcDatas!.FirstOrDefault(npcData => npcData.Type.Contains(npc.netID));
+
+        int cur = TShock.Utils.GetActivePlayerCount();
+        if (cur == 0)
+        {
+            st.ActiveTime = 0;
+            st.LastPlrCnt = -1;
+            st.DefLifeMax = 0;
+            DelProjMap(npc.whoAmI);   // 清理属于该 NPC 的弹幕映射
+            StateApi.ClearState(npc); // 清理指定npc所有状态
+            UpProj.ClearStates(npc.whoAmI); // 清理弹幕更新状态
+            TpTime.Remove(npc.whoAmI);    // 清理传送和回血记录
+            HealTimes.Remove(npc.whoAmI); // 移除自动回血
+            return;
+        }
+
         // 只有无数据表且在排除表中时才跳过全局配置
         bool skip = data == null && Config.IgnoreNpc.Contains(npc.type);
 
         // 动态血量
         float plrHp = data != null ? data.PlrHp : (skip ? 0f : Config.PlrHp);
-        DynLife(npc, st, plrHp);
+        DynLife(npc, st, plrHp, cur);
 
         // 自动回血：优先数据表，否则统一配置
-        int heal = data != null ? data.AutoHeal : (skip ? 0 : Config.AutoHeal);
+        double heal = data != null ? data.AutoHeal : (skip ? 0 : Config.AutoHeal);
         int healInt = data != null ? data.HealInt : (skip ? 10 : Config.HealInt);
-        if (heal > 0)
-            AutoHeal(npc, heal, healInt);
+        if (heal > 0) AutoHeal(npc, heal, healInt);
 
         if (data == null) return; // 无数据表则不执行后续事件
 
@@ -458,199 +512,114 @@ public class MonsterSpeed : TerrariaPlugin
         TimerEvents.TimerEvent(npc, mess, data, ref handled); //时间事件
         FilePlayManager.HandleAll(npc, mess, data, st, ref handled); // 执行文件（并行处理）
 
-        TrackMode(npc, data); //超距离追击
+        Track(npc, data); //超距离追击
         npc.netUpdate = true;
         Broadcast(mess, npc, data); //监控广播
         args.Handled = handled;
     }
     #endregion
 
-    #region 修复：超距离追击模式（解决传送到0,0问题）
-    private Dictionary<int, DateTime> Teleport = new Dictionary<int, DateTime>();
-    private void TrackMode(NPC npc, NpcData data)
+    #region 超距离追击模式
+    private Dictionary<int, DateTime> TpTime = new Dictionary<int, DateTime>();
+    private void Track(NPC npc, NpcData data)
     {
+        // 无配置或未开启自动追击则返回
         if (data == null || !data.AutoTrack) return;
 
-        // 修复1：检查目标有效性
-        if (!IsValidTarget(npc, data))
+        // 校验当前目标是否有效
+        if (!ValidTarg(npc, data))
         {
-            // 尝试寻找有效目标
-            SafeAutoTarget(npc, data);
-            // 如果仍然没有有效目标，直接返回
-            if (!IsValidTarget(npc, data))
-                return;
+            AutoTar(npc, data);                 // 尝试重新寻找目标
+            if (!ValidTarg(npc, data)) return;  // 仍无效则退出
         }
 
-        var plr = Main.player[npc.target];
-        var dict = plr.Center - npc.Center;
-        var range = Vector2.Distance(plr.Center, npc.Center);
+        NPCAimedTarget tar = npc.GetTargetData();      // 获取当前追击目标
+        var diff = tar.Center - npc.Center;     // 目标与NPC的向量差
+        var dist = tar.Center.Distance(npc.Center); // 欧氏距离
 
         if (data.TrackRange != 0)
         {
-            // 修复2：使用PxUtil进行距离转换
-            float TrackRange = data.TrackRange * 16;
-            float TrackStopRange = data.TrackStopRange * 16;
-            float SmoothRange = TrackStopRange + (TrackRange - TrackStopRange) * 0.5f;
+            // 将配置的格数转换为像素（1格=16像素）
+            float trRange = data.TrackRange * 16;       // 追击触发距离(px)
+            float tsRange = data.TrackStopRange * 16;   // 停止追击距离(px)
+            float smRange = tsRange + (trRange - tsRange) * 0.5f; // 平滑过渡区中点
 
-            if (range > TrackRange)
+            if (dist > trRange) // 超出追击范围
             {
-                // 动态速度调整
-                float dicRatio = (range - TrackRange) / TrackRange;
-                float dySpeed = data.TrackSpeed * (1f + Math.Min(dicRatio, 1f) * 0.5f);
+                // 动态速度：超出越多速度越快，上限+50%
+                float ratio = (dist - trRange) / trRange;
+                float dySpd = data.TrackSpeed * (1f + Math.Min(ratio, 1f) * 0.5f);
 
-                Vector2 speedMax = dict * dySpeed + plr.velocity * 0.3f;
-                if (speedMax.Length() > dySpeed)
+                // 期望速度 = 朝向玩家的向量 * 动态速度 + 玩家速度的30%作为惯性
+                Vector2 aimVel = diff * dySpd + tar.Velocity * 0.3f;
+                if (aimVel.Length() > dySpd) // 限制最大速度
                 {
-                    speedMax.Normalize();
-                    speedMax *= dySpeed;
+                    aimVel.Normalize();
+                    aimVel *= dySpd;
                 }
 
-                npc.velocity = Vector2.Lerp(npc.velocity, speedMax, 0.6f);
+                // 平滑移动到期望速度（系数0.6）
+                npc.velocity = Vector2.Lerp(npc.velocity, aimVel, 0.6f);
 
-                // 智能目标切换
-                if (range > TrackRange * 1.5f)
-                {
-                    SafeAutoTarget(npc, data);
-                }
+                // 超出距离1.5倍时强制刷新目标（避免跟丢）
+                if (dist > trRange * 1.5f)
+                    AutoTar(npc, data);
 
-                // 修复3：安全的传送逻辑
+                // 若配置了传送冷却，尝试传送
                 if (data.Teleport > 0)
-                {
-                    SafeTeleport(npc, data, plr, range, TrackRange);
-                }
+                    SafeTP(npc, data, tar, dist, trRange);
             }
-            else if (range > TrackStopRange && range <= SmoothRange)
+            else if (dist > tsRange && dist <= smRange) // 进入减速区
             {
-                npc.velocity *= 0.95f;
+                npc.velocity *= 0.95f; // 每帧减速5%
             }
-            else if (range < TrackStopRange)
+            else if (dist < tsRange) // 太近时不主动移动
             {
                 return;
             }
         }
     }
 
-    // 修复：目标有效性检查
-    private bool IsValidTarget(NPC npc, NpcData data)
+    // 安全传送方法
+    private void SafeTP(NPC npc, NpcData data, NPCAimedTarget plr, float range, float trackRange)
     {
-        if (npc.target < 0 || npc.target >= Main.maxPlayers)
-            return false;
-
-        var plr = Main.player[npc.target];
-        return plr != null && plr.active && !plr.dead && plr.statLife > 0 && plr.Center != Vector2.Zero;
-    }
-
-    // 修复：安全的自动目标
-    private void SafeAutoTarget(NPC npc, NpcData data)
-    {
-        if (data.AutoTarget)
-        {
-            float SpeedX = npc.velocity.X;
-
-            Player? plr2 = null;
-            float Distance = float.MaxValue;
-            float maxDistance = data.TrackRange * 3f * 16;
-
-            for (int i = 0; i < Main.maxPlayers; i++)
-            {
-                var plr = Main.player[i];
-                if (plr == null || !plr.active || plr.dead || plr.statLife <= 0 || plr.Center == Vector2.Zero)
-                    continue;
-
-                float distSq = Vector2.DistanceSquared(npc.Center, plr.Center);
-                if (distSq < Distance && distSq <= maxDistance * maxDistance)
-                {
-                    Distance = distSq;
-                    plr2 = plr;
-                }
-            }
-
-            if (plr2 != null && !plr2.dead && plr2.active)
-            {
-                npc.target = plr2.whoAmI;
-                npc.netSpam = 0;
-                npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
-                if (SpeedX * npc.velocity.X < 0) npc.velocity.X *= 0.7f;
-            }
-        }
-    }
-
-    // 修复：安全的传送方法
-    private void SafeTeleport(NPC npc, NpcData data, Player plr, float range, float trackRange)
-    {
-        bool canTp = !Teleport.ContainsKey(npc.whoAmI) ||
-                      (DateTime.UtcNow - Teleport[npc.whoAmI]).TotalSeconds >= data.Teleport;
+        bool canTp = !TpTime.ContainsKey(npc.whoAmI) ||
+                      (DateTime.UtcNow - TpTime[npc.whoAmI]).TotalSeconds >= data.Teleport;
 
         if (canTp && range > trackRange * 20f)
         {
-            Vector2 safePos = FindSafePos(plr.Center, data.TrackStopRange * 16f);
-            if (safePos != Vector2.Zero && InWorldBounds(safePos))
+            Vector2 safePos = FindPos(plr.Center, data.TrackStopRange * 16f);
+            if (safePos != Vector2.Zero && InWorld(safePos))
             {
                 npc.Teleport(safePos, 10);
-                Teleport[npc.whoAmI] = DateTime.UtcNow;
-                SafeAutoTarget(npc, data);
+                npc.NetUpdateIgnoreSpamLimit();  // 替换 npc.netUpdate = true;
+                TpTime[npc.whoAmI] = DateTime.UtcNow;
+                AutoTar(npc, data);
             }
         }
-    }
-
-    // 查找安全传送位置（修正随机数生成）
-    private Vector2 FindSafePos(Vector2 center, float dice)
-    {
-        for (int i = 0; i < 10; i++)
-        {
-            float minOff = dice * 0.8f;
-            float maxOff = dice * 1.2f;
-
-            float offX = (minOff + Main.rand.NextFloat() * (maxOff - minOff)) * (Main.rand.Next(2) == 0 ? -1 : 1);
-            float offY = (minOff + Main.rand.NextFloat() * (maxOff - minOff)) * (Main.rand.Next(2) == 0 ? -1 : 1);
-
-            Vector2 testPos = center + new Vector2(offX, offY);
-            if (InWorldBounds(testPos) && IsPositionSafe(testPos))
-                return testPos;
-        }
-
-        Vector2 fallbackPos = center + new Vector2(dice, dice);
-        return InWorldBounds(fallbackPos) ? fallbackPos : center;
-    }
-
-    // 检查传送位置安全性
-    private bool IsPositionSafe(Vector2 pos)
-    {
-        Point tilePos = pos.ToTileCoordinates();
-        if (tilePos.X < 0 || tilePos.X >= Main.maxTilesX || tilePos.Y < 0 || tilePos.Y >= Main.maxTilesY)
-            return false;
-        ITile tile = Main.tile[tilePos.X, tilePos.Y];
-        return tile != null && !(tile.active() && Main.tileSolid[tile.type]);
-    }
-
-    private bool InWorldBounds(Vector2 pos, float margin = 16f)
-    {
-        float maxX = Main.maxTilesX * 16f;
-        float maxY = Main.maxTilesY * 16f;
-        return pos.X >= margin && pos.X <= maxX - margin &&
-               pos.Y >= margin && pos.Y <= maxY - margin;
     }
     #endregion
 
-    #region 自动仇恨方法（优化）
+    #region 自动仇恨方法
     internal static void AutoTar(NPC npc, NpcData data)
     {
-        if (data.AutoTarget)
+        if (!data.AutoTarget)
         {
-            // 保存当前速度方向
-            float SpeedX = npc.velocity.X;
+            return;
+        }
+        // 保存当前速度方向
+        float SpeedX = npc.velocity.X;
 
-            npc.TargetClosest(true);
-            npc.netSpam = 0;
+        npc.TargetClosest(true);
+        npc.netSpam = 0;
 
-            // 保持原有的移动方向逻辑
-            npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
+        // 保持原有的移动方向逻辑
+        npc.spriteDirection = npc.direction = Terraria.Utils.ToDirectionInt(npc.velocity.X > 0f);
 
-            // 如果速度方向改变，平滑过渡
-            if (SpeedX * npc.velocity.X < 0)
-            {
-                npc.velocity.X *= 0.7f;
-            }
+        // 如果速度方向改变，平滑过渡
+        if (SpeedX * npc.velocity.X < 0)
+        {
+            npc.velocity.X *= 0.7f;
         }
     }
     #endregion
@@ -719,14 +688,18 @@ public class MonsterSpeed : TerrariaPlugin
             double oldRatio = (double)npc.life / oldMax;
             npc.SetDefaults(npc.netID, spawn);
             npc.life = Math.Max(1, (int)(npc.lifeMax * oldRatio));
-            npc.netUpdate = true;
+            // npc.netUpdate = true 实际发送频率仍受 netSpam 限制（普通 NPC 约每 30 帧发一次，Boss 约每 5 帧一次）。
+            // npc.NetUpdateIgnoreSpamLimit() 内部会主动减少 netSpam（减少 30 或 5），然后设置 netUpdate = true。
+            // 使下次网络更新可以立即发送（绕过限流）。
+            // 但同一个 NPC 在同一帧内多次调用，会让 netSpam 负得更多，不过原版逻辑中负值无害（后续会自然回升）
+            npc.NetUpdateIgnoreSpamLimit();  // 替换 npc.netUpdate = true;
         }
 
         // 动态血量（覆盖生命上限）
         if (plrHp > 0f)
         {
             int cur = TShock.Utils.GetActivePlayerCount();
-            st.LastPlrCnt = cur;
+            st.LastPlrCnt = cur > 0 ? cur : 1;
 
             int newMax = (int)(st.DefLifeMax * (1f + plrHp * cur));
             if (newMax < 1) newMax = 1;
@@ -737,7 +710,7 @@ public class MonsterSpeed : TerrariaPlugin
                 double ratio = (double)npc.life / npc.lifeMax;
                 npc.lifeMax = newMax;
                 npc.life = Math.Max(1, (int)(newMax * ratio));
-                npc.netUpdate = true;
+                npc.NetUpdateIgnoreSpamLimit();  // 替换 npc.netUpdate = true;
             }
 
         }
@@ -747,19 +720,18 @@ public class MonsterSpeed : TerrariaPlugin
             double ratio = (double)npc.life / npc.lifeMax;
             npc.lifeMax = st.DefLifeMax;
             npc.life = Math.Max(1, (int)(st.DefLifeMax * ratio));
-            npc.netUpdate = true;
+            npc.NetUpdateIgnoreSpamLimit();  // 替换 npc.netUpdate = true;
         }
     }
     #endregion
 
     #region 动态血量方法
     private static DateTime LifeMessTime = DateTime.MinValue;
-    private void DynLife(NPC npc, NpcState st, float plrHp)
+    private void DynLife(NPC npc, NpcState st, float plrHp, int cur)
     {
         if (plrHp <= 0f || st.DefLifeMax <= 0) return;
 
-        int cur = TShock.Utils.GetActivePlayerCount();
-        if (cur == st.LastPlrCnt) return;
+        if (cur == st.LastPlrCnt || cur <= 0 || st.LastPlrCnt <= 0) return;
         st.LastPlrCnt = cur;
 
         int newMax = (int)(st.DefLifeMax * (1f + plrHp * cur));
@@ -773,11 +745,12 @@ public class MonsterSpeed : TerrariaPlugin
         double ratio = (double)npc.life / npc.lifeMax;
         npc.lifeMax = newMax;
         npc.life = Math.Max(1, (int)(newMax * ratio));
-        npc.netUpdate = true;
+        npc.NetUpdateIgnoreSpamLimit();  // 替换 npc.netUpdate = true;
 
+        // 限制发送频率
         if (Config.LfBcInt > 0 && (DateTime.UtcNow - LifeMessTime).TotalMilliseconds >= Config.LfBcInt)
         {
-            string msg = $"{LogName} {npc.FullName} 因[c/F26F6B:{cur}]人 {(delta > 0 ? "[c/5FD769:上升]" : "[c/F26F6B:降低]")}{Math.Abs(delta)}点生命 ({oldMax} > {newMax})";
+            string msg = $"{LogName} {npc.FullName} 因[c/F26F6B:{cur}]人 生命{(delta > 0 ? "[c/5FD769:上升]" : "[c/F26F6B:降低]")}{Math.Abs(delta)}点 ({oldMax} > {newMax})";
             TSPlayer.All.SendMessage(Grad(msg), color);
             LifeMessTime = DateTime.UtcNow;
         }
@@ -786,7 +759,7 @@ public class MonsterSpeed : TerrariaPlugin
 
     #region 自动回血
     public static Dictionary<int, DateTime> HealTimes = new Dictionary<int, DateTime>(); // 跟踪每个NPC上次回血的时间
-    internal static void AutoHeal(NPC npc, int heal, int healInt)
+    internal static void AutoHeal(NPC npc, double heal, int healInt)
     {
         if (heal <= 0) return;
 
@@ -795,10 +768,15 @@ public class MonsterSpeed : TerrariaPlugin
 
         if ((DateTime.UtcNow - HealTimes[npc.whoAmI]).TotalMilliseconds >= healInt * 1000)
         {
+            // 计算回复量：最大生命值 * (heal / 100)
             int add = (int)(npc.lifeMax * (heal / 100.0f));
+            if (add < 1) add = 1; // 至少回复 1 点生命，避免无效
+
             if (npc.life + add >= npc.lifeMax) return; // 避免满血重置
             npc.life += add;
-            if (npc.life > npc.lifeMax) npc.life = npc.lifeMax;
+            if (npc.life > npc.lifeMax) npc.life = npc.lifeMax - 1;
+
+            npc.NetUpdateIgnoreSpamLimit();  // 替换 npc.netUpdate = true;
             HealTimes[npc.whoAmI] = DateTime.UtcNow;
         }
     }

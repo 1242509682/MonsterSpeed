@@ -33,11 +33,11 @@ public class Configuration
     [JsonProperty("统一难度乘数", Order = 11)]
     public float Multiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
     [JsonProperty("统一动态血量", Order = 12)]
-    public float PlrHp { get; set; } = 0.1f;         // 每人增加10%血量
+    public float PlrHp { get; set; } = 0.1f;       // 每人增加10%血量
     [JsonProperty("统一回血间隔", Order = 13)]
     public int HealInt { get; set; } = 10;
     [JsonProperty("统一回血比例", Order = 14)]
-    public int AutoHeal { get; set; } = 1;
+    public double AutoHeal { get; set; } = 1;      // 原 int 改为 double
     [JsonProperty("统一排除怪物", Order = 15)]
     public List<int> IgnoreNpc { get; set; } = new();
 
@@ -60,24 +60,26 @@ public class Configuration
         public float Multiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
         [JsonProperty("动态血量", Order = -4)]
         public float PlrHp { get; set; } = 1f;   // 每人增加1倍血量
-        [JsonProperty("死亡次数", Order = -3)]
-        public int DeadCount { get; set; }
-        [JsonProperty("自动仇恨", Order = -2)]
-        public bool AutoTarget { get; set; } = true;
-        [JsonProperty("追击模式", Order = -2)]
-        public bool AutoTrack { get; set; } = true;
-        [JsonProperty("追击距离", Order = -1)]
-        public float TrackRange { get; set; } = 62f;
-        [JsonProperty("停追距离", Order = 0)]
-        public float TrackStopRange { get; set; } = 25f;
-        [JsonProperty("追击速度", Order = 1)]
-        public int TrackSpeed { get; set; }
-        [JsonProperty("传送冷却", Order = 1)]
-        public int Teleport { get; set; } = -1;
-        [JsonProperty("回血比例", Order = 18)]
-        public int AutoHeal { get; set; } = 1;
-        [JsonProperty("回血间隔", Order = 19)]
+        [JsonProperty("回血比例", Order = -3)]
+        public double AutoHeal { get; set; } = 0.1;
+        [JsonProperty("回血间隔", Order = -2)]
         public int HealInt { get; set; } = 10;
+
+        [JsonProperty("死亡次数", Order = 10)]
+        public int DeadCount { get; set; }
+        [JsonProperty("自动仇恨", Order = 11)]
+        public bool AutoTarget { get; set; } = true;
+        [JsonProperty("追击模式", Order = 12)]
+        public bool AutoTrack { get; set; } = true;
+        [JsonProperty("追击距离", Order = 13)]
+        public float TrackRange { get; set; } = 62f;
+        [JsonProperty("停追距离", Order = 14)]
+        public float TrackStopRange { get; set; } = 25f;
+        [JsonProperty("追击速度", Order = 15)]
+        public int TrackSpeed { get; set; }
+        [JsonProperty("传送冷却", Order = 16)]
+        public int Teleport { get; set; } = -1;
+
         [JsonProperty("倒时间隔", Order = 23)]
         public double TextInterval { get; set; } = 1000f;
         [JsonProperty("倒时渐变", Order = 23)]

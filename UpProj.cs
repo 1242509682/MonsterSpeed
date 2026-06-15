@@ -2,6 +2,7 @@
 using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
+using Terraria.ID;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.MonsterSpeed;
@@ -153,7 +154,17 @@ public class UpProj
     /// </summary>
     public static void ChkUpdates(NpcData set, NPC npc, List<SpawnProjData> datas)
     {
-        if (npc == null || !npc.active || datas == null || UpdateState == null) return;
+        if (npc == null) return;
+
+        if (!npc.active)
+        {
+            // 清理该怪物所有残留的弹幕状态（不杀死弹幕）
+            ClearStates(npc.whoAmI, killProj: false);
+            return;
+        }
+
+        if (datas == null || UpdateState == null) return;
+
         var st = StateApi.GetState(npc);
         if (st == null || st.SendProjIdx < 0 || st.SendProjIdx >= datas.Count) return;
         var data = datas[st.SendProjIdx];
@@ -237,9 +248,10 @@ public class UpProj
 
         // 速度计算
         Vector2 newVel = cur.GetFinalVel(p);
+
         // 追踪模式
         if (cur.HomingMode != null && cur.HomingMode.Homing)
-            newVel = AutoHoming.ApplyAll(newVel, p, cur.HomingMode, npc, updList);
+            newVel = AutoHoming.ApplyAll(newVel, p, cur.HomingMode, st, npc, updList);
 
         // 角度旋转
         if (cur.Angle != 0f || cur.Rotate != 0f)
@@ -382,18 +394,41 @@ public class UpProj
     public static UpdProjState? GetState(int pid) => (pid >= 0 && pid < Main.maxProjectiles) ? UpdateState[pid] : null;
 
     /// <summary>清除某个怪物关联的所有弹幕状态</summary>
-    public static void ClearStates(int who)
+    public static void ClearStates(int who, bool killProj = true)
     {
         for (int i = 0; i < UpdateState.Length; i++)
-            if (UpdateState[i] != null && UpdateState[i]?.Who == who)
-            { UpdateState[i] = null; UpdateTimer.Remove(i); }
+        {
+            var state = UpdateState[i];
+            if (state != null && state.Who == who)
+            {
+                if (killProj)
+                    KillProj(i);
+                UpdateState[i] = null;
+                UpdateTimer.Remove(i);
+            }
+        }
     }
 
     /// <summary>移除单个弹幕的更新状态</summary>
     public static void Remove(int idx)
     {
-        if (idx >= 0 && idx < Main.maxProjectiles)
-        { UpdateState[idx] = null; UpdateTimer.Remove(idx); }
+        if (idx < 0 || idx >= Main.maxProjectiles) return;
+        UpdateState[idx] = null;
+        UpdateTimer.Remove(idx);
+    }
+
+    /// <summary>强制销毁单个弹幕并发送网络包</summary>
+    private static void KillProj(int idx)
+    {
+        if (idx < 0 || idx >= Main.maxProjectiles) return;
+        var p = Main.projectile[idx];
+        if (p == null || !p.active) return;
+        p.active = false;
+        p.type = ProjectileID.None;
+        p.timeLeft = 0;
+        NetMessage.SendData((int)PacketTypes.ProjectileDestroy, -1, -1, null, idx);
+        NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, idx);
+        TSPlayer.All.RemoveProjectile(idx, -1);
     }
 
     /// <summary>添加新的弹幕更新状态（在弹幕生成时调用）</summary>

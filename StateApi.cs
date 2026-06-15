@@ -29,6 +29,7 @@ public class NpcState
     public Dictionary<int, float> SendCD { get; set; } = new();  // 本组弹幕发射间隔
     public int LastPlrCnt { get; set; } = -1;  // 最后在线的玩家数（用于统计动态血量）
     public int DefLifeMax { get; set; } = 0;   // 原版默认最大血量（不受动态影响）
+    public List<int> Attack { get; set; } = new();   // 攻击过该 NPC 的玩家索引列表
 
     // 其他模式状态
     public AIState AIState { get; set; } = new AIState();  // AI赋值状态
