@@ -24,10 +24,12 @@ public class Configuration
     [JsonProperty("强制隐藏配置项", Order = 1)]
     public List<string> CustomHideList { get; set; } = new List<string>();
     [JsonProperty("监控间隔", Order = 2)]
-    public double Monitorinterval { get; set; } = 0;
+    public double BcInt { get; set; } = 0;
 
+    [JsonProperty("报血间隔", Order = 9)]
+    public double LfBcInt { get; set; } = 1000;
     [JsonProperty("统一难度人数", Order = 10)]
-    public int Difficulty { get; set; } = 4;       // 0=使用原版逻辑，>0=强制当作这么多玩家
+    public int Difficulty { get; set; } = 2;       // 0=使用原版逻辑，>0=强制当作这么多玩家
     [JsonProperty("统一难度乘数", Order = 11)]
     public float Multiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
     [JsonProperty("统一动态血量", Order = 12)]

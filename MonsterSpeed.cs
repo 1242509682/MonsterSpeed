@@ -753,6 +753,7 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 动态血量方法
+    private static DateTime LifeMessTime = DateTime.MinValue;
     private void DynLife(NPC npc, NpcState st, float plrHp)
     {
         if (plrHp <= 0f || st.DefLifeMax <= 0) return;
@@ -774,8 +775,12 @@ public class MonsterSpeed : TerrariaPlugin
         npc.life = Math.Max(1, (int)(newMax * ratio));
         npc.netUpdate = true;
 
-        string msg = $"{LogName} {npc.FullName} 因[c/F26F6B:{cur}]人 血量{(delta > 0 ? "[c/5FD769:提升]" : "[c/F26F6B:降低]")} {Math.Abs(delta)}点 {oldMax} -> {newMax}";
-        TSPlayer.All.SendMessage(Grad(msg), color);
+        if (Config.LfBcInt > 0 && (DateTime.UtcNow - LifeMessTime).TotalMilliseconds >= Config.LfBcInt)
+        {
+            string msg = $"{LogName} {npc.FullName} 因[c/F26F6B:{cur}]人 {(delta > 0 ? "[c/5FD769:上升]" : "[c/F26F6B:降低]")}{Math.Abs(delta)}点生命 ({oldMax} > {newMax})";
+            TSPlayer.All.SendMessage(Grad(msg), color);
+            LifeMessTime = DateTime.UtcNow;
+        }
     }
     #endregion
 
@@ -802,7 +807,7 @@ public class MonsterSpeed : TerrariaPlugin
     #region 监控广播方法
     private static void Broadcast(StringBuilder mess, NPC npc, NpcData data)
     {
-        if (Config.Monitorinterval > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.Monitorinterval)
+        if (Config.BcInt > 0 && (DateTime.UtcNow - BroadcastTime).TotalMilliseconds >= Config.BcInt)
         {
             // 使用新的状态管理方法获取当前事件索引
             var state = StateApi.GetState(npc);
