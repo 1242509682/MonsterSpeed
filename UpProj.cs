@@ -213,7 +213,13 @@ public class UpProj
         var updList = new List<int>();
 
         // 取消友善标记
-        if (p.friendly) { p.friendly = false; Add(updList, ups.Index); }
+        if (p.friendly)
+        {
+            p.friendly = false;
+            p.hostile = true;
+            p.npcProj = true;
+            Add(updList, ups.Index);
+        }
 
         // 指示物注入AI
         if (cur.MarkerToAI != null && cur.MarkerToAI.Count > 0)

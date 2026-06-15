@@ -18,7 +18,7 @@ public class MonsterSpeed : TerrariaPlugin
     public override string Name => "怪物加速";
     public static readonly string LogName = "[怪物加速]";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 8, 0);
+    public override Version Version => new Version(1, 3, 8, 1);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -109,6 +109,7 @@ public class MonsterSpeed : TerrariaPlugin
         UpProjFile.Init(); // 新增：初始化更新弹幕文件系统
         MoveFile.Init(); // 新增：初始化移动模式文件系统
         DeadFile.Init();   // 新增: 初始化死亡事件
+        HitFile.Init();   // 新增: 初始化弹幕命中事件
 
         // 决定初始化脚本执行器或释放内嵌文件
         if (ServerApi.Plugins.Any(p => p.Plugin.Name == "自动编译插件"))
@@ -316,9 +317,39 @@ public class MonsterSpeed : TerrariaPlugin
         if (!p.active) return idx;
 
         // 发射源是NPC实体时记录映射
-        if (src is EntitySource_Parent parent &&
-            parent.Entity is NPC npc && npc.active)
+        if (src is EntitySource_Parent par && par.Entity is NPC npc && npc.active)
+        {
             ProjMap[idx] = npc.whoAmI;
+
+            // 将友好弹幕转换成敌对弹幕 通过弹幕AI发送伤害
+            var data = Config.NpcDatas?.FirstOrDefault(d => d.Type.Contains(npc.netID));
+            if (data == null || data.TimerEvent == null || data.TimerEvent.Count <= 0) return idx;
+
+            var st = StateApi.GetState(npc);
+            if (st is null) return idx;
+
+            var Event = data.TimerEvent[st.EventIndex];
+            if (Event.SendProj != null && Event.SendProj.Count > 0)
+            {
+                foreach (var fileName in Event.SendProj)
+                {
+                    if (string.IsNullOrEmpty(fileName)) continue;
+                    var file = SpawnProjFile.GetData(fileName);
+                    if (file != null && file.Count > 0)
+                    {
+                        if (file == null || file.Count == 0 || st.SendProjIdx >= file.Count) continue;
+                        var pd = file[st.SendProjIdx];
+                        if (pd.Stack <= 0 || pd.Type != type) continue;
+
+                        dmg = pd.Damage;
+                        kb = pd.KnockBack;
+                        p.hostile = true;
+                        p.friendly = false;
+                        p.npcProj = true;
+                    }
+                }
+            }
+        }
 
         return idx;
     }
@@ -336,7 +367,44 @@ public class MonsterSpeed : TerrariaPlugin
             ProjMap.TryRemove(proj.whoAmI, out _);
 
         orig(proj);
+
+        // 修改后的友好弹幕伤害玩家方法
+        if (proj.active && proj.npcProj && proj.hostile && !proj.friendly && ProjMap.TryGetValue(proj.whoAmI, out var npcIdx))
+        {
+            var dmg = proj.damage > 0 ? proj.damage : 1;
+            var reason = PlayerDeathReason.ByNPC(npcIdx);
+            var plr = TShock.Players.FirstOrDefault(p => p != null && p.Active && p.TPlayer.Hitbox.Intersects(proj.Hitbox));
+
+            if (plr != null && plr.Active && !plr.Dead)
+            {
+                plr.DamagePlayer(dmg, reason);
+                HitEvent(npcIdx, plr);   // 触发命中事件
+            }
+        }
     }
+    #endregion
+
+    #region 弹幕命中玩家事件
+    private void HitEvent(int npcIdx, TSPlayer plr)
+    {
+        NPC npc = Main.npc[npcIdx];
+        if (npc == null || !npc.active) return;
+
+        var data = Config.NpcDatas?.FirstOrDefault(d => d.Type.Contains(npc.netID));
+        if (data == null || data.HitEvt == null || data.HitEvt.Count == 0) return;
+
+        var st = StateApi.GetState(npc);
+
+        foreach (string evtName in data.HitEvt)
+        {
+            var events = HitFile.Load(evtName);
+            foreach (var timerEvt in events)
+            {
+                bool handled = false;
+                TimerEvents.StartEvent(data, npc, timerEvt, new StringBuilder(), st, ref handled);
+            }
+        }
+    } 
     #endregion
 
     #region 怪物加速核心方法
@@ -583,15 +651,15 @@ public class MonsterSpeed : TerrariaPlugin
         if (data == null) return;
 
         // 难度乘数不能小于1
-        var Multiplier = data.DifficultyMultiplier >= 1 ? data.DifficultyMultiplier : 1;
+        var Multiplier = data.Multiplier >= 1 ? data.Multiplier : 1;
 
         var st = StateApi.GetState(npc);
         if (st.DefLifeMax == 0)
         {
             // 从静态模板获取原始基础血量
-            NPC template = new NPC();
-            template.SetDefaults(npc.netID);
-            st.DefLifeMax = template.defLifeMax;
+            NPC temp = new NPC();
+            temp.SetDefaults(npc.netID);
+            st.DefLifeMax = temp.defLifeMax;
         }
 
         if (data.HpPerPlr > 0f)
@@ -610,23 +678,23 @@ public class MonsterSpeed : TerrariaPlugin
             return;
         }
 
-        NPCSpawnParams newParams = default;
+        NPCSpawnParams spawn = default;
         bool needScale = false;
-        if (data.PlayerCountForDifficulty > 0)
+        if (data.Difficulty > 0)
         {
-            newParams.playerCountForMultiplayerDifficultyOverride = data.PlayerCountForDifficulty;
+            spawn.playerCountForMultiplayerDifficultyOverride = data.Difficulty;
             needScale = true;
         }
         if (Math.Abs(Multiplier - 1f) > 0.01f)
         {
-            newParams.difficultyOverride = Multiplier;
+            spawn.difficultyOverride = Multiplier;
             needScale = true;
         }
 
         if (needScale)
         {
             int oldLifeMax = npc.lifeMax;
-            npc.SetDefaults(npc.netID, newParams);
+            npc.SetDefaults(npc.netID, spawn);
             double ratio = (double)npc.life / oldLifeMax;
             npc.life = Math.Max(1, (int)(npc.lifeMax * ratio));
             npc.netUpdate = true;

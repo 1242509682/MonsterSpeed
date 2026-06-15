@@ -39,9 +39,9 @@ public class Configuration
         [JsonProperty("怪物ID", Order = -9)]
         public List<int> Type { get; set; } = new List<int>();
         [JsonProperty("难度人数", Order = -6)]
-        public int PlayerCountForDifficulty { get; set; } = 2;   // 0=使用原版逻辑，>0=强制当作这么多玩家
+        public int Difficulty { get; set; } = 2;   // 0=使用原版逻辑，>0=强制当作这么多玩家
         [JsonProperty("难度乘数", Order = -5)]
-        public float DifficultyMultiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
+        public float Multiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
         [JsonProperty("动态血量", Order = -4)]
         public float HpPerPlr { get; set; } = 1f;   // 每人增加1倍血量
         [JsonProperty("死亡次数", Order = -3)]
@@ -72,7 +72,9 @@ public class Configuration
         public List<FilePlayData> FilePlay { get; set; } = new List<FilePlayData>();
         [JsonProperty("死亡事件", Order = 27)]
         public List<string> DeadEvt { get; set; } = new List<string>();
-        [JsonProperty("时间事件", Order = 28)]
+        [JsonProperty("弹幕命中事件", Order = 28)]
+        public List<string> HitEvt { get; set; } = new List<string>();
+        [JsonProperty("时间事件", Order = 29)]
         public List<TimerData> TimerEvent { get; set; }
 
         public NpcData() { }
@@ -195,6 +197,7 @@ public class Configuration
                 Type = new List<int> { 4, 50 },
                 AutoHealInterval = 5,
                 DeadEvt = [ "召唤噬魂怪" ],
+                HitEvt = [ "召唤猩红喀迈拉" ],
                 TimerEvent = new List<TimerData>()
                 {
 

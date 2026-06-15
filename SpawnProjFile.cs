@@ -60,7 +60,7 @@ public class SpawnProjFile
                         {
                             Condition = "默认配置",
                             Type = 5,
-                            Damage = 10,
+                            Damage = 30,
                             Stack = 10,
                             Interval = 60,
                             KnockBack = 8,

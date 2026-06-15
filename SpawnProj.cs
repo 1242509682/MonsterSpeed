@@ -99,7 +99,7 @@ public class SpawnProj
     {
         if (projs == null || projs.Count == 0 || npc == null) return;
 
-        var tar = npc.GetTargetData(true);
+        NPCAimedTarget tar = npc.GetTargetData(true);
         var st = StateApi.GetState(npc);
         if (st == null) return;
 
@@ -206,11 +206,11 @@ public class SpawnProj
     private static void GenProj(SpawnProjData data, NPC npc, NPCAimedTarget tar, NpcState st)
     {
         if (data == null || npc == null || st == null) return;
-        var plr = Main.player[npc.target];
-        if (plr == null || data.Life <= 0 || data.Type <= 0) return;
+
+        if (data.Life <= 0 || data.Type <= 0) return;
 
         // 计算基础位置
-        Vector2 pos = data.TarCenter ? plr.Center : npc.Center;
+        Vector2 pos = data.TarCenter ? tar.Center : npc.Center;
 
         // 应用面向修正
         if (!string.IsNullOrWhiteSpace(data.FaceFix) && data.FaceFix != "0,0")
@@ -338,7 +338,7 @@ public class SpawnProj
     private static void GenLine(SpawnProjData d, NPC npc, Vector2 pos, Vector2 vel, Vector2 tgt,
         float ai0, float ai1, float ai2, NpcState st)
     {
-        Vector2 off = ParseOff(d.LineOff);
+        Vector2 off = d.LineOff.GetVector2();
         for (int i = 0; i < d.LineCnt; i++)
         {
             Vector2 npos = pos + off * i;
@@ -352,7 +352,7 @@ public class SpawnProj
     private static void GenLineAt(SpawnProjData d, NPC npc, Vector2 pos, Vector2 vel, Vector2 tgt,
         float ai0, float ai1, float ai2, NpcState st, string flag, float ang, int idx)
     {
-        Vector2 off = ParseOff(d.LineOff);
+        Vector2 off = d.LineOff.GetVector2();
         for (int i = 0; i < d.LineCnt; i++)
         {
             Vector2 npos = pos + off * i;
@@ -383,7 +383,6 @@ public class SpawnProj
                 p.friendly = false; // 不对其他NPC造成伤害（可选）
                 p.netImportant = true; // 标记为重要确保网络同步
                 p.netUpdate = true;
-                p.netUpdate2 = true;
             }); 
 
         if (pid < 0 || pid >= Main.maxProjectiles) return;
@@ -417,7 +416,7 @@ public class SpawnProj
 
     #region 辅助方法（短命名 ≤10字符）
     /// <summary>查找下一个有效的弹幕组</summary>
-    private static int FindNxt(List<SpawnProjData> projs, int start)
+    public static int FindNxt(List<SpawnProjData> projs, int start)
     {
         if (projs == null || projs.Count == 0) return -1;
         for (int i = 0; i < projs.Count; i++)
@@ -514,8 +513,5 @@ public class SpawnProj
             nv += d.SpdFix.GetVector2();
         return ApplyAng(nv, d.AngleCfg, idx, d.Stack);
     }
-
-    /// <summary>解析偏移字符串（格数->像素）</summary>
-    private static Vector2 ParseOff(string s) => s.GetVector2();
     #endregion
 }
