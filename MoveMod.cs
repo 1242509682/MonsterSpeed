@@ -117,11 +117,11 @@ internal class MoveMod
 
         switch (data.Mode)
         {
-            case MoveMode.Stay: StayMode(npc, data); handled = true; msg?.Append($"{Tool.TextGradient(" 行动模式:停留\n")}"); break;
-            case MoveMode.Orbit: OrbitMode(npc, data, st); handled = true; msg?.Append($"{Tool.TextGradient(" 行动模式:环绕\n")}"); break;
-            case MoveMode.Wander: WanderMode(npc, data, st); handled = true; msg?.Append($"{Tool.TextGradient(" 行动模式:徘徊\n")}"); break;
-            case MoveMode.Dash: DashMode(npc, data, st, ref handled); msg?.Append($"{Tool.TextGradient(" 行动模式:突进\n")}"); break;
-            case MoveMode.FaceTarget: FaceMode(npc, data, st); handled = true; msg?.Append($"{Tool.TextGradient(" 行动模式:对视\n")}"); break;
+            case MoveMode.Stay: StayMode(npc, data); handled = true; msg?.Append($"{Utils.Grad(" 行动模式:停留\n")}"); break;
+            case MoveMode.Orbit: OrbitMode(npc, data, st); handled = true; msg?.Append($"{Utils.Grad(" 行动模式:环绕\n")}"); break;
+            case MoveMode.Wander: WanderMode(npc, data, st); handled = true; msg?.Append($"{Utils.Grad(" 行动模式:徘徊\n")}"); break;
+            case MoveMode.Dash: DashMode(npc, data, st, ref handled); msg?.Append($"{Utils.Grad(" 行动模式:突进\n")}"); break;
+            case MoveMode.FaceTarget: FaceMode(npc, data, st); handled = true; msg?.Append($"{Utils.Grad(" 行动模式:对视\n")}"); break;
         }
     }
     #endregion

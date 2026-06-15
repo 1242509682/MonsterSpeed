@@ -294,7 +294,7 @@ internal class AISystem
         string result = info.ToString().Trim();
         if (!string.IsNullOrEmpty(result))
         {
-            return Tool.TextGradient(result);
+            return Utils.Grad(result);
         }
 
         return result;

@@ -11,26 +11,40 @@ public class Configuration
     [JsonProperty("插件开关", Order = -100)]
     public bool Enabled { get; set; } = true;
     [JsonProperty("指示物系统说明", Order = -13)]
-    public string[] MarkerSystemInfo { get; set; } = new string[0];
+    public string[] MarkerSystemInfo { get; set; } = Array.Empty<string>();
     [JsonProperty("播放文件模式说明", Order = -12)]
-    public string[] FileMess { get; set; } = new string[0];
+    public string[] FileMess { get; set; } = Array.Empty<string>();
     [JsonProperty("武器条件说明", Order = -11)]
     public string WeaponType { get; set; } = "无 | 未知 | 近战 | 远程 | 魔法 | 召唤 | 投掷物";
     [JsonProperty("进度条件说明", Order = -10)]
-    public string[] ProgID { get; set; } = new string[0];
+    public string[] ProgID { get; set; } = Array.Empty<string>();
 
-    [JsonProperty("隐藏默认配置项", Order = -2)]
+    [JsonProperty("隐藏默认配置项", Order = 0)]
     public bool HideConfig { get; set; } = false;
-    [JsonProperty("强制隐藏配置项", Order = -1)]
+    [JsonProperty("强制隐藏配置项", Order = 1)]
     public List<string> CustomHideList { get; set; } = new List<string>();
-    [JsonProperty("怪物ID表", Order = 0)]
-    public List<int> NpcList { get; set; }
-    [JsonProperty("监控间隔", Order = 1)]
+    [JsonProperty("监控间隔", Order = 2)]
     public double Monitorinterval { get; set; } = 0;
-    [JsonProperty("脚本配置", Order = 2)]
+
+    [JsonProperty("统一难度人数", Order = 10)]
+    public int Difficulty { get; set; } = 4;       // 0=使用原版逻辑，>0=强制当作这么多玩家
+    [JsonProperty("统一难度乘数", Order = 11)]
+    public float Multiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
+    [JsonProperty("统一动态血量", Order = 12)]
+    public float PlrHp { get; set; } = 0.1f;         // 每人增加10%血量
+    [JsonProperty("统一回血间隔", Order = 13)]
+    public int HealInt { get; set; } = 10;
+    [JsonProperty("统一回血比例", Order = 14)]
+    public int AutoHeal { get; set; } = 1;
+    [JsonProperty("统一排除怪物", Order = 15)]
+    public List<int> IgnoreNpc { get; set; } = new();
+
+    [JsonProperty("脚本配置", Order = 20)]
     public ScriptConfig ScriptCfg { get; set; } = new();
-    [JsonProperty("怪物数据表", Order = 3)]
+    [JsonProperty("怪物数据表", Order = 21)]
     public List<NpcData>? NpcDatas { get; set; } = new List<NpcData>();
+    [JsonProperty("怪物ID表", Order = 22)]
+    public List<int> NpcList { get; set; }
     #endregion
 
     #region 怪物数据结构
@@ -43,7 +57,7 @@ public class Configuration
         [JsonProperty("难度乘数", Order = -5)]
         public float Multiplier { get; set; } = 1f;    // 最终 lifeMax/damage 乘这个值
         [JsonProperty("动态血量", Order = -4)]
-        public float HpPerPlr { get; set; } = 1f;   // 每人增加1倍血量
+        public float PlrHp { get; set; } = 1f;   // 每人增加1倍血量
         [JsonProperty("死亡次数", Order = -3)]
         public int DeadCount { get; set; }
         [JsonProperty("自动仇恨", Order = -2)]
@@ -58,10 +72,10 @@ public class Configuration
         public int TrackSpeed { get; set; }
         [JsonProperty("传送冷却", Order = 1)]
         public int Teleport { get; set; } = -1;
-        [JsonProperty("回血间隔", Order = 18)]
-        public int AutoHealInterval { get; set; } = 10;
-        [JsonProperty("百分比回血", Order = 19)]
+        [JsonProperty("回血比例", Order = 18)]
         public int AutoHeal { get; set; } = 1;
+        [JsonProperty("回血间隔", Order = 19)]
+        public int HealInt { get; set; } = 10;
         [JsonProperty("倒时间隔", Order = 23)]
         public double TextInterval { get; set; } = 1000f;
         [JsonProperty("倒时渐变", Order = 23)]
@@ -195,7 +209,7 @@ public class Configuration
             new NpcData(0, 62, 25f, 35, 5)
             {
                 Type = new List<int> { 4, 50 },
-                AutoHealInterval = 5,
+                HealInt = 5,
                 DeadEvt = [ "召唤噬魂怪" ],
                 HitEvt = [ "召唤猩红喀迈拉" ],
                 TimerEvent = new List<TimerData>()
