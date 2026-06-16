@@ -61,7 +61,7 @@ public class ConditionFile
                     Progress = new List<string>(){ "史莱姆王" },
                     NpcLift = "0,30", // BOSS血量在0%-30%之间
                     Range = 84, // 与玩家距离在84格内
-                    RangeMonsters =  new Conditions.RangeMonsterCondition() 
+                    NpcRange =  new Conditions.MstCond() 
                     {
                         MstID = 50 , // 史莱姆王ID
                         Range = 84,

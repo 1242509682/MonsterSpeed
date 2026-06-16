@@ -65,6 +65,11 @@ public class SpawnProjFile
                             Interval = 60,
                             KnockBack = 8,
                             Velocity = 10,
+                            UseProjPos = true,
+                            CircleCnt = 5,
+                            CircleRad = 5f,
+                            CircleStAng = 2f,
+                            SprCnt = 5,
                             AI = new Dictionary<int, float>(),
                             Life = 120,
                         }

@@ -15,11 +15,33 @@ public static class EvtFile
         if (!Directory.Exists(Dir))
             Directory.CreateDirectory(Dir);
 
-        // 如果文件夹为空，创建两个默认事件文件
+
+        // 如果文件夹为空，创建三个默认事件文件
         if (Directory.GetFiles(Dir, "*.json").Length == 0)
         {
-            CreateDefault("召唤噬魂怪", GetDeadEvents());
-            CreateDefault("召唤猩红喀迈拉", GetHitEvents());
+            CreateDefault("召唤噬魂怪",
+            [
+                new TimerData
+                {
+                    SpawnNPC = [ new SpawnNpcData { NPCID = [Terraria.ID.NPCID.EaterofSouls] }]
+                }
+            ]);
+
+            CreateDefault("召唤猩红喀迈拉",
+            [
+                new TimerData
+                { 
+                    SpawnNPC = [ new SpawnNpcData { NPCID = [Terraria.ID.NPCID.BigCrimera] }]
+                }
+            ]);
+
+            CreateDefault("召唤魔唾液",
+            [
+                new TimerData
+                {
+                    SpawnNPC = [ new SpawnNpcData { NPCID = [Terraria.ID.NPCID.VileSpit], Interval = 120, }]
+                }
+            ]);
         }
     }
 
@@ -32,32 +54,6 @@ public static class EvtFile
         };
         SaveFile(name, data);
     }
-
-    private static List<TimerData> GetDeadEvents() => new()
-    {
-        new TimerData
-        {
-            CoolTime = 0,
-            Condition = "默认配置",
-            SpawnNPC = new List<SpawnNpcData>
-            {
-                new SpawnNpcData { NPCID = [ Terraria.ID.NPCID.EaterofSouls ] }
-            }
-        }
-    };
-
-    private static List<TimerData> GetHitEvents() => new()
-    {
-        new TimerData
-        {
-            CoolTime = 0,
-            Condition = "默认配置",
-            SpawnNPC = new List<SpawnNpcData>
-            {
-                new SpawnNpcData { NPCID = [ Terraria.ID.NPCID.BigCrimera ] }
-            }
-        }
-    };
 
     public static List<TimerData> Load(string name)
     {

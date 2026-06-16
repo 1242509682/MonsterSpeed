@@ -11,7 +11,6 @@ public class AIModes
     public string Text2 = "0递增(从最小值加到最大值,回到最小值), 1递减(从最大值减到最小值,回到最大值), 2往复(从最小值到最大值,再从最大值回到最小值), 3随机(在最小值与最大值之间随机)";
     [JsonProperty("启用模式", Order = -2)]
     public bool Enabled { get; set; } = false;
-
     [JsonProperty("固定AI", Order = -1)]
     public Dictionary<int, float> FixedAI { get; set; } = new Dictionary<int, float>();
     [JsonProperty("步进AI", Order = 0)]
@@ -21,7 +20,7 @@ public class AIModes
     [JsonProperty("步进LocalAI", Order = 2)]
     public Dictionary<int, AISetting> StepLocalAI { get; set; } = new Dictionary<int, AISetting>();
     [JsonProperty("原版AI", Order = 2)]
-    public List<BossAI> BossAI { get; set; } = new List<BossAI>();
+    public BossAI BossAI { get; set; } = new();
 }
 
 // 步进AI的配置
@@ -39,7 +38,7 @@ public class AISetting
     public bool Loop { get; set; } = true;
 }
 
-// 新增：AI模式状态类
+// AI模式状态类
 public class AIState
 {
     public Dictionary<int, int> Directions { get; set; } = new Dictionary<int, int>();
@@ -168,7 +167,7 @@ internal class AISystem
             }
 
             // 修复：使用正确的字典获取当前值
-            float Value = val[Index]; 
+            float Value = val[Index];
             float newVal = Value;
 
             // 根据模式类型计算新值

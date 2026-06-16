@@ -156,7 +156,7 @@ public class SpawnProj
         {
             bool allow = true;
             var cond = ConditionFile.GetCondData(data.Condition);
-            Conditions.Condition(npc, new StringBuilder(), set, cond, ref allow);
+            Conditions.CondWork(npc, new StringBuilder(), set, cond, ref allow);
 
             if (!allow)
             {

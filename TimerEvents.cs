@@ -2,10 +2,10 @@
 using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using Terraria;
+using Terraria.Utilities;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.MonsterSpeed;
-using Terraria.Utilities;
 
 namespace MonsterSpeed;
 
@@ -13,7 +13,7 @@ namespace MonsterSpeed;
 public class TimerData
 {
     [JsonProperty("冷却时间", Order = -1)]  // 改为独立冷却时间
-    public double CoolTime { get; set; } = 5.0;
+    public double CD { get; set; } = 5.0;
     [JsonProperty("触发条件", Order = 0)]
     public string Condition { get; set; } = "默认配置";
     [JsonProperty("修改防御", Order = 1)]
@@ -25,7 +25,7 @@ public class TimerData
     [JsonProperty("脚本只跑一次", Order = 2)]
     public bool ScriptOnce { get; set; } = false;
     [JsonProperty("指示物修改", Order = 3)]
-    public List<MstMarkerMod> MarkerList { get; set; } = new List<MstMarkerMod>();
+    public List<MarkData> MarkerList { get; set; } = new List<MarkData>();
     [JsonProperty("发射物品", Order = 4)]
     public HashSet<int> ShootItemList { get; set; } = new HashSet<int>();
     [JsonProperty("行动模式", Order = 5)]
@@ -45,174 +45,194 @@ public class TimerEvents
     {
         if (data?.TimerEvent == null || data.TimerEvent.Count <= 0) return;
 
-        var state = StateApi.GetState(npc);
-        if (state is null) return;
+        var st = StateApi.GetState(npc);
+        if (st is null) return;
 
-        var Event = data.TimerEvent[state.EventIndex];
-
-        // 检查事件索引有效性
-        if (state.EventIndex < 0 || state.EventIndex >= data.TimerEvent.Count)
-        {
-            state.EventIndex = 0;
-            return;
-        }
-
-        // 初始化冷却时间
-        if (!state.CooldownTime.ContainsKey(state.EventIndex))
-            state.CooldownTime[state.EventIndex] = DateTime.UtcNow;
-
-        // 使用文件中定义的冷却时间
-        var time = state.CooldownTime[state.EventIndex];
-        TimeSpan elapsed = DateTime.UtcNow - time;
-        double remaining = Math.Max(0, Event.CoolTime - elapsed.TotalSeconds);
-
-        // 显示冷却文本
-        ShowCoolText(npc, data, state,remaining);
-
-        // 检查主事件冷却 - 使用事件的独立冷却时间
-        if (elapsed >= TimeSpan.FromSeconds(Event.CoolTime))
-        {
-            state.LastTextTime = DateTime.UtcNow; // 重置悬浮文本计时
-            NextEvent(data, npc, state); // 切换到下个事件
-        }
-        else
-        {
-            // 条件检查
-            bool allow = true;
-
-            if (!string.IsNullOrEmpty(Event.Condition))
-            {
-                var cond = ConditionFile.GetCondData(Event.Condition);
-                Conditions.Condition(npc, mess, data, cond, ref allow);
-            }
-
-            if (allow) // 满足条件则执行事件
-            {
-                StartEvent(data, npc, Event, mess, state, ref handled);
-            }
-            else
-            {
-                state.LastTextTime = DateTime.UtcNow; // 重置悬浮文本计时
-                NextEvent(data, npc, state); // 切换到下个事件（默认循环）
-            }
-        }
-
-        // 状态信息显示
-        AppendStatusInfo(npc, mess, data, state, Event);
+        // 直接调用统一处理器（显示文本）
+        Process(npc, data, data.TimerEvent, ref st.EventIndex, st.Cooldown,
+            ref st.LastTextTime, data.TextInterval, data.TextGradient, data.TextRange,
+            ref handled, mess, showText: true);
     }
     #endregion
 
-    #region 下个事件
-    public static void NextEvent(NpcData data, NPC npc, NpcState state)
+    #region 处理一个事件列表
+    /// <summary>
+    /// 处理一个事件列表（支持冷却、条件检查、自动循环）
+    /// </summary>
+    /// <param name="npc">当前NPC</param>
+    /// <param name="data">NPC数据配置</param>
+    /// <param name="events">事件列表</param>
+    /// <param name="idxRef">当前索引引用</param>
+    /// <param name="cdDict">冷却时间字典</param>
+    /// <param name="lastText">上次显示文本时间（可为 null，表示不显示）</param>
+    /// <param name="txtInt">文本显示间隔（毫秒，0则不显示）</param>
+    /// <param name="grad">是否渐变</param>
+    /// <param name="range">渐变字距</param>
+    /// <param name="handled">是否已处理原版AI</param>
+    /// <param name="showText">是否显示冷却文本（默认 true）</param>
+    public static void Process(NPC npc,
+        NpcData data,
+        List<TimerData> events,
+        ref int idxRef,
+        Dictionary<int, DateTime> cdDict,
+        ref DateTime? lastText,
+        double txtInt, bool grad, int range,
+        ref bool handled, StringBuilder? mess = null, bool showText = true)
     {
-        // 更新当前事件的执行次数
-        if (state.EventCounts.ContainsKey(state.EventIndex))
+        if (events == null || events.Count == 0) return;
+
+        var st = StateApi.GetState(npc);
+        if (st == null) return;
+
+        // 索引范围修正
+        if (idxRef < 0 || idxRef >= events.Count)
         {
-            state.EventCounts[state.EventIndex]++;
+            idxRef = 0;
+            return;
+        }
+
+        var evt = events[idxRef];
+
+        // 初始化冷却
+        if (!cdDict.ContainsKey(idxRef))
+            cdDict[idxRef] = DateTime.UtcNow;
+
+        var elapsed = DateTime.UtcNow - cdDict[idxRef];
+        double remain = Math.Max(0, evt.CD - elapsed.TotalSeconds);
+
+        // 显示冷却文本（如果开启且 lastText 不为 null）
+        if (showText && lastText.HasValue && txtInt > 0)
+        {
+            ShowText(npc, idxRef, events.Count, remain, ref lastText, txtInt, grad, range);
+        }
+
+        // 冷却完成 -> 进入下一个事件
+        if (elapsed.TotalSeconds >= evt.CD)
+        {
+            if (lastText.HasValue) lastText = DateTime.UtcNow;
+            Next(npc, data, events, ref idxRef, cdDict, st);
+            return;
+        }
+
+        // 条件检查
+        bool allow = true;
+        if (!string.IsNullOrEmpty(evt.Condition))
+        {
+            var cond = ConditionFile.GetCondData(evt.Condition);
+            Conditions.CondWork(npc, new StringBuilder(), data, cond, ref allow);
+        }
+
+        if (allow)
+        {
+            // 执行事件
+            StartEvent(data, npc, evt, null, st, ref handled);
         }
         else
         {
-            state.EventCounts[state.EventIndex] = 1;
+            // 条件不满足 -> 跳到下一个事件
+            if (lastText.HasValue) lastText = DateTime.UtcNow;
+            Next(npc, data, events, ref idxRef, cdDict, st);
         }
 
-        state.ScriptLoop.Remove(state.EventIndex); // 重置当前事件的脚本执行标记
-        state.ScriptOnec.Remove(state.EventIndex);
-        state.MoveState = new MoveModeState(); // 重置移动状态
-        state.AIState = new AIState(); // 重置AI赋值
-        state.EventIndex = (state.EventIndex + 1) % data.TimerEvent.Count; // 移动到下个事件（自动循环）
-        state.CooldownTime[state.EventIndex] = DateTime.UtcNow;
+        if (mess != null)
+            AppendStatusInfo(npc, mess, data, st, evt);
+    }
+    #endregion
+
+    #region 切换到下一个事件
+    /// <summary>切换到下一个事件（循环）</summary>
+    public static void Next(NPC npc, NpcData data, List<TimerData> events, ref int idx, Dictionary<int, DateTime> cd, NpcState st)
+    {
+        // 记录执行次数
+        if (st.EventCounts.ContainsKey(idx))
+            st.EventCounts[idx]++;
+        else
+            st.EventCounts[idx] = 1;
+
+        // 重置脚本标记
+        st.ScriptLoop.Remove(idx);
+        st.ScriptOnec.Remove(idx);
+        // 重置移动/AI状态（可根据需要调整）
+        st.MoveState = new MoveState();
+        st.AIState = new AIState();
+
+        idx = (idx + 1) % events.Count;
+        cd[idx] = DateTime.UtcNow;
     }
     #endregion
 
     #region 执行事件逻辑
-    public static void StartEvent(NpcData data, NPC npc, TimerData Event, StringBuilder? mess, NpcState state, ref bool handled)
+    public static void StartEvent(NpcData data, NPC npc, TimerData evt, StringBuilder? mess, NpcState st, ref bool handled)
     {
         // 执行C#脚本 - 每个事件周期只执行一次
-        if (!string.IsNullOrEmpty(Event.CsScript))
+        if (!string.IsNullOrEmpty(evt.CsScript))
         {
             // 检查当前事件的脚本是否已执行过
-            var Once = state.ScriptOnec.TryGetValue(state.EventIndex, out bool ok) && ok;
-            bool has = state.ScriptLoop.ContainsKey(state.EventIndex);
-            if (!has) state.ScriptLoop[state.EventIndex] = 0; // 标记为已执行
-            if (!Event.ScriptOnce)
+            var Once = st.ScriptOnec.TryGetValue(st.EventIndex, out bool ok) && ok;
+            bool has = st.ScriptLoop.ContainsKey(st.EventIndex);
+            if (!has) st.ScriptLoop[st.EventIndex] = 0; // 标记为已执行
+            if (!evt.ScriptOnce)
             {
-                state.ScriptLoop[state.EventIndex]++;
-                if (state.ScriptLoop[state.EventIndex] % Event.ScriptTime == 0)
+                st.ScriptLoop[st.EventIndex]++;
+                if (st.ScriptLoop[st.EventIndex] % evt.ScriptTime == 0)
                 {
-                    mess?.AppendLine($"循环执行脚本:{Event.CsScript}");
-                    CSExecutor.SelExec(Event.CsScript, npc, data, state, mess);
+                    mess?.AppendLine($"循环执行脚本:{evt.CsScript}");
+                    CSExecutor.SelExec(evt.CsScript, npc, data, st, mess);
                 }
             }
-            else if(!Once)
+            else if (!Once)
             {
-                mess?.AppendLine($"仅执行1次脚本:{Event.CsScript}");
-                CSExecutor.SelExec(Event.CsScript, npc, data, state, mess);
-                state.ScriptOnec[state.EventIndex] = true;
+                mess?.AppendLine($"仅执行1次脚本:{evt.CsScript}");
+                CSExecutor.SelExec(evt.CsScript, npc, data, st, mess);
+                st.ScriptOnec[st.EventIndex] = true;
             }
         }
 
         // 统一处理指示物修改（包括自身和其他NPC）
-        if (Event.MarkerList != null && Event.MarkerList.Count > 0)
+        if (evt.MarkerList != null && evt.MarkerList.Count > 0)
         {
             var rand = new UnifiedRandom();
-            int Count = MarkerUtil.SetMstMarkers(Event.MarkerList, npc, ref rand);
+            int Count = MarkManager.SetMstMks(evt.MarkerList, npc, ref rand);
             if (Count > 0)
-            {
                 mess?.Append($" 成功修改 {Count} 个指示物\n");
-            }
         }
 
         // 行动模式处理
-        if (!string.IsNullOrEmpty(Event.MoveMode))
-        {
-            MoveMod.MoveModes(npc, data, mess, Event.MoveMode, ref handled);
-        }
-
+        if (!string.IsNullOrEmpty(evt.MoveMode))
+            MoveManager.MoveWork(npc, data, mess, evt.MoveMode, ref handled);
+        
         // 发射物品
-        if (Event.ShootItemList != null)
-        {
-            foreach (var item in Event.ShootItemList)
-            {
+        if (evt.ShootItemList != null && evt.ShootItemList.Count > 0)
+            foreach (var item in evt.ShootItemList)
                 npc.AI_87_BigMimic_ShootItem(item);
-            }
-        }
 
         // AI赋值
-        if (Event.AIMode != null)
-            AISystem.AIPairs(npc, Event.AIMode, npc.FullName, ref handled);
+        if (evt.AIMode != null)
+            AISystem.AIPairs(npc, evt.AIMode, npc.FullName, ref handled);
 
         // 生成怪物
-        if (Event.SpawnNPC != null && Event.SpawnNPC.Count > 0)
-            SpawnMonster.SpawnMonsters(data, Event.SpawnNPC, npc);
+        if (evt.SpawnNPC != null && evt.SpawnNPC.Count > 0)
+            SpawnMonster.SpawnMonsters(data, evt.SpawnNPC, npc);
 
         // 生成弹幕
-        if (Event.SendProj != null && Event.SendProj.Count > 0)
-        {
-            foreach (var projName in Event.SendProj)
+        if (evt.SendProj != null && evt.SendProj.Count > 0)
+            foreach (var projName in evt.SendProj)
             {
                 if (string.IsNullOrEmpty(projName)) continue;
 
-                var projfile = SpawnProjFile.GetData(projName);
-                if (projfile != null && projfile.Count > 0)
-                {
-                    SpawnProj.Spawn(data, projfile, npc);
-                }
+                var file = SpawnProjFile.GetData(projName);
+                if (file != null && file.Count > 0)
+                    SpawnProj.Spawn(data, file, npc);
                 else
-                {
-                    TShock.Log.ConsoleError($"{LogName} 弹幕文件不存在或为空: {projName}\n");
-                }
+                    TShock.Log.ConsoleError($"{LogName} 弹幕文件不存在: {projName}\n");
             }
-        }
 
         // Boss AI处理
-        if (Event.AIMode?.BossAI != null)
-        {
-            foreach (var bossAI in Event.AIMode.BossAI)
-                AISystem.TR_AI(bossAI, npc, ref handled);
-        }
+        if (evt.AIMode?.BossAI != null)
+            AISystem.TR_AI(evt.AIMode.BossAI, npc, ref handled);
 
         // 修改防御
-        npc.defense = Event.Defense > 0 ? Event.Defense : npc.defDefense;
+        npc.defense = evt.Defense > 0 ? evt.Defense : npc.defDefense;
     }
     #endregion
 
@@ -231,15 +251,16 @@ public class TimerEvents
     #endregion
 
     #region 时间事件冷却倒计时方法（悬浮文本）
-    public static void ShowCoolText(NPC npc, NpcData data, NpcState state, double remaining)
+    /// <summary>显示冷却悬浮文本</summary>
+    public static void ShowText(NPC npc, int idx, int? total, double remain, ref DateTime? last, double interval, bool grad, int range)
     {
-        if ((DateTime.UtcNow - state.LastTextTime).TotalMilliseconds < data.TextInterval)
-            return;
+        if (!last.HasValue) return;
+        if ((DateTime.UtcNow - last.Value).TotalMilliseconds < interval) return;
 
-        string text = $"Time {remaining:F2} [{state.EventIndex + 1}/{data.TimerEvent?.Count ?? 1}]";
+        string text = $"Time {remain:F2} [{idx + 1}/{total ?? 1}]";
         Color color = Color.LightGoldenrodYellow;
 
-        if (!data.TextGradient)
+        if (!grad)
         {
             TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, text,
                 (int)color.PackedValue, npc.position.X, npc.position.Y - 3, 0f, 0);
@@ -251,16 +272,15 @@ public class TimerEvents
                 var start = new Color(166, 213, 234);
                 var end = new Color(245, 247, 175);
                 float ratio = (float)i / (text.Length - 1);
-                var gradColor = Color.Lerp(start, end, ratio);
-
+                var gc = Color.Lerp(start, end, ratio);
                 TSPlayer.All.SendData(PacketTypes.CreateCombatTextExtended, text[i].ToString(),
-                                     (int)gradColor.PackedValue,
-                                     npc.position.X + (i * data.TextRange),
+                                     (int)gc.PackedValue,
+                                     npc.position.X + (i * range),
                                      npc.position.Y - 3, 0f, 0);
             }
         }
 
-        state.LastTextTime = DateTime.UtcNow;
+        last = DateTime.UtcNow;
     }
     #endregion
 }

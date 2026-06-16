@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.ID;
+using Terraria.Enums;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
@@ -21,7 +22,7 @@ public class MonsterSpeed : TerrariaPlugin
     public override string Name => "怪物加速";
     public static readonly string LogName = "[怪物加速]";
     public override string Author => "羽学";
-    public override Version Version => new Version(1, 3, 8, 3);
+    public override Version Version => new Version(1, 3, 8, 4);
     public override string Description => "使boss拥有高速追击能力，并支持修改其弹幕、随从、Ai、防御等功能";
     #endregion
 
@@ -186,9 +187,9 @@ public class MonsterSpeed : TerrariaPlugin
             st.Struck = 0;
             st.KillPlay = 0;
             st.ActiveTime = 0;
-            st.CooldownTime = new Dictionary<int, DateTime>();
+            st.Cooldown = new Dictionary<int, DateTime>();
             st.LastTextTime = DateTime.UtcNow;
-            st.MoveState = new MoveModeState();
+            st.MoveState = new MoveState();
             st.EventCounts = new Dictionary<int, int>();
             st.PlayCounts = new Dictionary<string, int>();
         }
@@ -230,7 +231,7 @@ public class MonsterSpeed : TerrariaPlugin
             {
                 new TimerData()
                 {
-                    CoolTime = 5,
+                    CD = 5,
                     Condition = "默认配置"
                 }
             },
@@ -259,29 +260,17 @@ public class MonsterSpeed : TerrariaPlugin
             // 执行死亡事件
             if (data.DeadEvt != null && data.DeadEvt.Count > 0)
             {
-                var mess = new StringBuilder(); //用于存储广播内容
+                var all = new List<TimerData>();
                 foreach (string evtName in data.DeadEvt)
-                {
-                    var events = EvtFile.Load(evtName);
-                    foreach (var Event in events)
-                    {
-                        // 条件检查
-                        bool allow = true;
+                    all.AddRange(EvtFile.Load(evtName));
 
-                        if (!string.IsNullOrEmpty(Event.Condition))
-                        {
-                            var cond = ConditionFile.GetCondData(Event.Condition);
-                            Conditions.Condition(npc, mess, data, cond, ref allow);
-                        }
-
-                        if (!allow) continue;
-
-                        bool handled = false;
-                        TimerEvents.StartEvent(data, npc, Event, mess, st, ref handled);
-                        Broadcast(mess, npc, data); //监控广播
-                        npc.netUpdate = true;
-                    }
-                }
+                bool handled = false;
+                TimerEvents.Process(
+                    npc, data, all,
+                    ref st.DeadIdx, st.DeadCD, ref st.DeadLastText,
+                    data.TextInterval, data.TextGradient, data.TextRange,
+                    ref handled, showText: false
+                );
             }
 
             data.DeadCount += 1;
@@ -296,6 +285,7 @@ public class MonsterSpeed : TerrariaPlugin
         UpProj.ClearStates(npc.whoAmI); // 清理弹幕更新状态
         TpTime.Remove(npc.whoAmI);    // 清理传送和回血记录
         HealTimes.Remove(npc.whoAmI); // 移除自动回血
+        NpcMap.Remove(npc.whoAmI); // 移除缓存NPC
     }
     #endregion
 
@@ -327,7 +317,7 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 弹幕映射（用于死亡归因）
-    private static ConcurrentDictionary<int, int> ProjMap = new(); // 弹幕索引 → 发射者NPC索引
+    public static ConcurrentDictionary<int, int> ProjMap = new(); // 弹幕索引 → 发射者NPC索引
     private void DelProjMap(int npcIdx)
     {
         var del = ProjMap.Where(kv => kv.Value == npcIdx).Select(kv => kv.Key).ToList();
@@ -430,29 +420,18 @@ public class MonsterSpeed : TerrariaPlugin
         if (data == null || data.HitEvt == null || data.HitEvt.Count == 0) return;
 
         var st = StateApi.GetState(npc);
-        var mess = new StringBuilder(); //用于存储广播内容
-
+        var all = new List<TimerData>();
         foreach (string evtName in data.HitEvt)
-        {
-            var events = EvtFile.Load(evtName);
-            foreach (var Event in events)
-            {
-                // 条件检查
-                bool allow = true;
+            all.AddRange(EvtFile.Load(evtName));
 
-                if (!string.IsNullOrEmpty(Event.Condition))
-                {
-                    var cond = ConditionFile.GetCondData(Event.Condition);
-                    Conditions.Condition(npc, mess, data, cond, ref allow);
-                }
+        bool handled = false;
 
-                if (!allow) continue;
-
-                bool handled = false;
-                TimerEvents.StartEvent(data, npc, Event, mess, st, ref handled);
-                Broadcast(mess, npc, data); //监控广播
-            }
-        }
+        TimerEvents.Process(
+            npc, data, all,
+            ref st.HitIdx, st.HitCD, ref st.HitLastText,
+            data.TextInterval, data.TextGradient, data.TextRange,
+            ref handled, showText: false   // 命中事件通常不需要显示文本
+        );
     }
     #endregion
 
@@ -482,6 +461,7 @@ public class MonsterSpeed : TerrariaPlugin
             UpProj.ClearStates(npc.whoAmI); // 清理弹幕更新状态
             TpTime.Remove(npc.whoAmI);    // 清理传送和回血记录
             HealTimes.Remove(npc.whoAmI); // 移除自动回血
+            NpcMap.Clear(); // 清理附近NPC缓存
             return;
         }
 
@@ -497,7 +477,11 @@ public class MonsterSpeed : TerrariaPlugin
         int healInt = data != null ? data.HealInt : (skip ? 10 : Config.HealInt);
         if (heal > 0) AutoHeal(npc, heal, healInt);
 
-        if (data == null) return; // 无数据表则不执行后续事件
+        // 无数据表则不执行后续事件
+        if (data == null) return;
+
+        // 碰撞事件（仅当与目标玩家碰撞时触发）
+        CollideEvt(npc, st, data);
 
         #region 怪物活跃秒数统计
         if (++Timer >= 60)
@@ -519,6 +503,34 @@ public class MonsterSpeed : TerrariaPlugin
     }
     #endregion
 
+    #region 碰撞事件
+    private static void CollideEvt(NPC npc, NpcState st, NpcData data)
+    {
+        if (data.CollideEvt != null && data.CollideEvt.Count > 0)
+        {
+            var tar = npc.GetTargetData(false);
+
+            if (!tar.Invalid && tar.Type == NPCTargetType.Player)
+            {
+                if (npc.Hitbox.Intersects(tar.Hitbox))
+                {
+                    var all = new List<TimerData>();
+                    foreach (string evtName in data.CollideEvt)
+                        all.AddRange(EvtFile.Load(evtName));
+
+                    bool collHandled = false;
+                    TimerEvents.Process(
+                        npc, data, all,
+                        ref st.CollideIdx, st.CollideCD, ref st.CollideLastText,
+                        data.TextInterval, data.TextGradient, data.TextRange,
+                        ref collHandled, showText: false
+                    );
+                }
+            }
+        }
+    }
+    #endregion
+
     #region 超距离追击模式
     private Dictionary<int, DateTime> TpTime = new Dictionary<int, DateTime>();
     private void Track(NPC npc, NpcData data)
@@ -526,14 +538,13 @@ public class MonsterSpeed : TerrariaPlugin
         // 无配置或未开启自动追击则返回
         if (data == null || !data.AutoTrack) return;
 
-        // 校验当前目标是否有效
-        if (!ValidTarg(npc, data))
-        {
-            AutoTar(npc, data);                 // 尝试重新寻找目标
-            if (!ValidTarg(npc, data)) return;  // 仍无效则退出
-        }
+        // 获取当前追击目标
+        NPCAimedTarget tar = npc.GetTargetData(false);
 
-        NPCAimedTarget tar = npc.GetTargetData();      // 获取当前追击目标
+        // 当前目标无效 尝试重新寻找目标
+        if (tar.Invalid || tar.Type == NPCTargetType.None)
+            AutoTar(npc, data);
+
         var diff = tar.Center - npc.Center;     // 目标与NPC的向量差
         var dist = tar.Center.Distance(npc.Center); // 欧氏距离
 
@@ -625,6 +636,7 @@ public class MonsterSpeed : TerrariaPlugin
     #endregion
 
     #region 怪物生成事件(怪物难度方法）
+    public static List<int> NpcMap = new List<int>(); // 缓存当前活跃的敌对 NPC 索引
     private void OnNpcSpawn(NpcSpawnEventArgs args)
     {
         if (!Config.Enabled) return;
@@ -652,9 +664,9 @@ public class MonsterSpeed : TerrariaPlugin
                 s.Struck = 0;
                 s.KillPlay = 0;
                 s.ActiveTime = 0;
-                s.CooldownTime = new Dictionary<int, DateTime>();
+                s.Cooldown = new Dictionary<int, DateTime>();
                 s.LastTextTime = DateTime.UtcNow;
-                s.MoveState = new MoveModeState();
+                s.MoveState = new MoveState();
                 s.EventCounts = new Dictionary<int, int>();
                 s.PlayCounts = new Dictionary<string, int>();
             }
@@ -722,6 +734,10 @@ public class MonsterSpeed : TerrariaPlugin
             npc.life = Math.Max(1, (int)(st.DefLifeMax * ratio));
             npc.NetUpdateIgnoreSpamLimit();  // 替换 npc.netUpdate = true;
         }
+
+        // 将有效 NPC 加入缓存
+        if (!NpcMap.Contains(npc.whoAmI))
+            NpcMap.Add(npc.whoAmI);
     }
     #endregion
 

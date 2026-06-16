@@ -5,8 +5,9 @@ using Terraria;
 using Terraria.GameContent.Events;
 using Terraria.ID;
 using TShockAPI;
+using static MonsterSpeed.MonsterSpeed;
 using static MonsterSpeed.Configuration;
-using static MonsterSpeed.UpProj;
+using static MonsterSpeed.PxUtil;
 
 namespace MonsterSpeed;
 
@@ -41,31 +42,31 @@ public class Conditions
     [JsonProperty("事件执行次数", Order = -10)]
     public Dictionary<int, int> ExecuteCount { get; set; } = new();
     [JsonProperty("累计播放次数", Order = -9)]
-    public int TotalPlayCount { get; set; } = -1;
+    public int PlayTotal { get; set; } = -1;
     [JsonProperty("文件播放次数", Order = -8)]
-    public Dictionary<string, int> FilePlayCount { get; set; } = new();
+    public Dictionary<string, int> PlayCount { get; set; } = new();
 
     [JsonProperty("指示物条件", Order = 90)]
     public Dictionary<string, string[]> MarkerConds { get; set; } = new();
 
     [JsonProperty("范围内玩家检查", Order = 100)]
-    public RangePlayerCondition RangePlayers { get; set; } = new();
+    public PlrCond PlrRange { get; set; } = new();
     [JsonProperty("范围内怪物检查", Order = 110)]
-    public RangeMonsterCondition RangeMonsters { get; set; } = new();
+    public MstCond NpcRange { get; set; } = new();
     [JsonProperty("范围内弹幕检查", Order = 120)]
-    public RangeProjectileCondition RangeProjectiles { get; set; } = new();
+    public ProjCond PorjRange { get; set; } = new();
 
     #region 增强条件子类
-    public class RangePlayerCondition
+    public class PlrCond
     {
         [JsonProperty("范围格数")] public string Range { get; set; } = "0,0";
         [JsonProperty("需要玩家数量")] public int MatchCnt { get; set; } = 0;
         [JsonProperty("玩家生命值")] public int HP { get; set; } = -1;
         [JsonProperty("玩家生命百分比")] public int HPRatio { get; set; } = -1;
-        [JsonProperty("需要Buff列表")] public int[] Buffs { get; set; } = new int[0];
+        [JsonProperty("需要Buff列表")] public int[] Buffs { get; set; } = Array.Empty<int>();
     }
 
-    public class RangeMonsterCondition
+    public class MstCond
     {
         [JsonProperty("怪物标志")] public string Flag { get; set; } = "";
         [JsonProperty("怪物ID")] public int MstID { get; set; } = 0;
@@ -74,7 +75,7 @@ public class Conditions
         [JsonProperty("怪物血量百分比")] public int HPRatio { get; set; } = 0;
     }
 
-    public class RangeProjectileCondition
+    public class ProjCond
     {
         [JsonProperty("弹幕标志")] public string Flag { get; set; } = "";
         [JsonProperty("弹幕ID")] public int ProjID { get; set; } = 0;
@@ -84,127 +85,328 @@ public class Conditions
     }
     #endregion
 
-    #region 触发条件主入口
-    public static void Condition(NpcData data, NPC npc, Conditions Cond, ref bool allow)
+    #region 主入口
+    /// <summary>条件检查主入口（无 StringBuilder 版本）</summary>
+    public static void CondWork(NpcData data, NPC npc, Conditions Cond, ref bool allow)
     {
         var mess = new StringBuilder();
-        Condition(npc, mess, data, Cond, ref allow);
+        CondWork(npc, mess, data, Cond, ref allow);
     }
 
-    public static void Condition(NPC npc, StringBuilder mess, NpcData? data, Conditions Cond, ref bool allow)
+    /// <summary>条件检查主入口（含 StringBuilder 日志）</summary>
+    public static void CondWork(NPC npc, StringBuilder mess, NpcData? data, Conditions Cond, ref bool allow)
     {
         if (data is null || Cond is null) return;
-        bool flag = true;
-        flag &= CheckConditions(npc, data, Cond, mess);
-        flag &= CheckConditions2(npc, Cond, mess);
-        allow = flag;
+        allow = Check(npc, data, Cond, mess);
     }
     #endregion
 
     #region 基础条件检查
-    private static bool CheckConditions(NPC npc, NpcData data, Conditions Cond, StringBuilder mess)
+    private static bool Check(NPC npc, NpcData data, Conditions Cond, StringBuilder mess)
     {
         bool all = true;
+
+        NpcState? st = StateApi.GetState(npc);
+        if (st == null) return false;
 
         // 标志条件
         if (!string.IsNullOrEmpty(Cond.CheckFlag))
         {
-            bool ok = StateApi.GetState(npc).Flag == Cond.CheckFlag;
-            if (!ok) { all = false; mess.Append($" 标志条件未满足: 需要 '{Cond.CheckFlag}'\n"); }
+            bool ok = st.Flag == Cond.CheckFlag;
+            if (!ok)
+            {
+                all = false;
+                mess.Append($" 标志条件未满足: 需要 '{Cond.CheckFlag}'\n");
+            }
         }
 
         // 指示物条件
-        if (Cond.MarkerConds?.Count > 0 && !MarkerUtil.CheckMarkers(StateApi.GetState(npc), Cond.MarkerConds, npc))
-        { all = false; mess.Append(" 指示物条件未满足\n"); }
-
-        // 血量条件
-        float lifePct = GetLifePct(npc);
-        var (hpOk, hpMin, hpMax) = PxUtil.ParseRng(Cond.NpcLift);
-        if (hpOk && !(lifePct >= hpMin && lifePct <= hpMax))
-        { all = false; mess.Append($" 血量条件未满足: {lifePct:F0}% 不在 {Cond.NpcLift}%\n"); }
-
-        // 目标玩家
-        Player? plr = GetTarPlr(npc);
-        if (plr == null) return false;
-
-        // 武器
-        if (Cond.WeaponName != "无" && Cond.WeaponName != GetWeapon(plr))
-        { all = false; mess.Append($" 武器条件未满足: {GetWeapon(plr)} ≠ {Cond.WeaponName}\n"); MonsterSpeed.AutoTar(npc, data); }
-
-        // 进度
-        if (!CheckGroup(plr, Cond.Progress))
-        { all = false; mess.Append(" 进度条件未满足\n"); }
-
-        var st = StateApi.GetState(npc);
-
-        // 数量条件
-        if (!CheckCnt(Cond.MonsterCount, st?.SNCount ?? 0, "召怪", mess)) all = false;
-        if (!CheckCnt(Cond.ProjectileCount, st?.SPCount ?? 0, "弹发", mess)) all = false;
-        if (!CheckCnt(Cond.DeadCount, data.DeadCount, "死亡", mess)) all = false;
-
-        // 距离条件
-        if (Cond.Range != -1)
+        if (Cond.MarkerConds?.Count > 0 && !MarkManager.ChkMks(st, Cond.MarkerConds, npc))
         {
-            float distTile = Vector2.Distance(plr.Center, npc.Center) / 16f;
-            if (distTile > Cond.Range)
-            { all = false; mess.Append($" 距离条件未满足: {distTile:F1} > {Cond.Range}格\n"); MonsterSpeed.AutoTar(npc, data); }
+            all = false;
+            mess.Append(" 指示物条件未满足\n");
         }
 
-        // 速度条件
+        // 血量条件
+        float lifePct = MathHelper.Clamp(npc.life * 100f / npc.lifeMax, 0f, 100f);
+        var (hpOk, hpMin, hpMax) = ParseRng(Cond.NpcLift);
+        if (hpOk && !(lifePct >= hpMin && lifePct <= hpMax))
+        {
+            all = false;
+            mess.Append($" 血量条件未满足: {lifePct:F0}% 不在 {Cond.NpcLift}%\n");
+        }
+
+        // 怪物速度条件
         if (Cond.Speed != -1)
         {
             float maxSpd = Math.Max(Math.Abs(npc.velocity.X), Math.Abs(npc.velocity.Y));
             if (maxSpd < Cond.Speed)
-            { all = false; mess.Append($" 速度条件未满足: {maxSpd:F0} < {Cond.Speed}\n"); }
+            {
+                all = false;
+                mess.Append($" 速度条件未满足: {maxSpd:F0} < {Cond.Speed}\n");
+            }
+        }
+
+        // AI条件
+        if (Cond.AIPairs?.Count > 0 && !CheckNpcAi(npc, mess, Cond))
+            all = false;
+
+        // ---- 时间范围 ----
+        if (Cond.Timer != "0,0")
+        {
+            var (ok, min, max) = ParseRng(Cond.Timer);
+            if (ok)
+            {
+                double elapsed = (DateTime.UtcNow - st.Cooldown[st.EventIndex]).TotalSeconds;
+                if (!(elapsed >= min && elapsed <= max))
+                { all = false; mess.Append($" 时间条件未满足: {elapsed:F1}s 不在 {Cond.Timer}\n"); }
+            }
+            else
+                mess.Append($" 时间格式错误: {Cond.Timer}\n");
+        }
+
+        // 事件执行次数
+        if (Cond.ExecuteCount.Count > 0)
+        {
+            foreach (var kv in Cond.ExecuteCount)
+            {
+                int actual = st.EventCounts?.GetValueOrDefault(kv.Key) ?? 0;
+                if (!CheckStack(kv.Value, actual, $"事件[{kv.Key}]", mess))
+                    all = false;
+            }
+        }
+
+        // 文件累计播放
+        if (Cond.PlayTotal != -1)
+        {
+            int total = st.EventCounts?.Values.Sum() ?? 0;
+            if (!CheckStack(Cond.PlayTotal, total, "累计播放", mess))
+                all = false;
+        }
+
+        // 文件播放
+        if (Cond.PlayCount.Count > 0)
+        {
+            foreach (var kv in Cond.PlayCount)
+            {
+                int actual = st.PlayCounts?.GetValueOrDefault(kv.Key) ?? 0;
+                if (!CheckStack(kv.Value, actual, $"文件{kv.Key}", mess)) all = false;
+            }
+        }
+
+        // 范围条件（玩家、怪物、弹幕）
+        if (Cond.PlrRange.MatchCnt > 0)
+        {
+            var (ok, min, max) = ParseRng(Cond.PlrRange.Range);
+            if (ok && max > 0 && !CheckPlayer(npc, Cond.PlrRange, st, min, max, mess))
+                all = false;
+        }
+
+        if (Cond.NpcRange.MatchCnt > 0 &&
+            !CheckNpc(npc, Cond.NpcRange, mess))
+            all = false;
+
+        if (Cond.PorjRange.MatchCnt > 0 &&
+            !CheckProj(npc, Cond.PorjRange, mess))
+            all = false;
+
+        // 目标玩家
+        Player? plr = GetTarg(npc);
+        if (plr == null) return false;
+
+        // 武器
+        if (Cond.WeaponName != "无" && Cond.WeaponName != GetWeapon(plr))
+        {
+            all = false;
+            mess.Append($" 武器条件未满足: {GetWeapon(plr)} ≠ {Cond.WeaponName}\n");
+            AutoTar(npc, data);
+        }
+
+        // 进度
+        if (!ProgGroup(plr, Cond.Progress))
+        {
+            all = false;
+            mess.Append(" 进度条件未满足\n");
+        }
+
+        // 数量条件
+        if (!CheckStack(Cond.MonsterCount, st.SNCount, "召怪", mess)) all = false;
+        if (!CheckStack(Cond.ProjectileCount, st.SPCount, "弹发", mess)) all = false;
+        if (!CheckStack(Cond.DeadCount, data.DeadCount, "死亡", mess)) all = false;
+
+        // 距离条件
+        if (Cond.Range != -1)
+        {
+            float distTile = plr.Center.Distance(npc.Center) / 16f;
+            if (distTile > Cond.Range)
+            {
+                all = false;
+                mess.Append($" 距离条件未满足: {distTile:F1} > {Cond.Range}格\n");
+                AutoTar(npc, data);
+            }
         }
 
         // 玩家生命
-        if (Cond.PlayerLife != -1 && !CheckPlrHP(plr, Cond.PlayerLife, -1))
-        { all = false; mess.Append(" 生命条件未满足\n"); MonsterSpeed.AutoTar(npc, data); }
+        if (Cond.PlayerLife != -1)
+        {
+            bool LifeOk = Cond.PlayerLife > 0 ? plr.statLife >= Cond.PlayerLife : plr.statLife < Math.Abs(Cond.PlayerLife);
+            if (!LifeOk)
+            {
+                all = false;
+                mess.Append(" 生命条件未满足\n");
+                AutoTar(npc, data);
+            }
+        }
 
         // 防御
         if (Cond.PlrDefense != -1 && plr.statDefense > Cond.PlrDefense)
-        { all = false; mess.Append($" 防御条件未满足: {plr.statDefense} > {Cond.PlrDefense}\n"); MonsterSpeed.AutoTar(npc, data); }
-
-        // AI条件
-        if (Cond.AIPairs?.Count > 0 && !AICond(npc, mess, Cond)) all = false;
-
-        // 时间
-        if (Cond.Timer != "0,0" && !TimerCond(npc, data, Cond, mess)) all = false;
-
-        // 执行次数
-        if (Cond.ExecuteCount.Count > 0 && !ExecCntCond(npc, Cond, mess)) all = false;
-
-        // 累计播放
-        if (Cond.TotalPlayCount != -1 && !TotalPlayCond(npc, Cond, mess)) all = false;
-
-        // 文件播放
-        if (Cond.FilePlayCount.Count > 0 && !FilePlayCond(npc, Cond, mess)) all = false;
-
-        return all;
-    }
-    #endregion
-
-    #region 增强条件检查
-    private static bool CheckConditions2(NPC npc, Conditions Cond, StringBuilder mess)
-    {
-        bool all = true;
-        if (Cond.RangePlayers.MatchCnt != 0)
         {
-            var (ok, min, max) = PxUtil.ParseRng(Cond.RangePlayers.Range);
-            if (ok && max > 0 && !CheckPlrRng(npc, Cond.RangePlayers, min, max, mess))
-                all = false;
+            all = false;
+            mess.Append($" 防御条件未满足: {plr.statDefense} > {Cond.PlrDefense}\n");
+            AutoTar(npc, data);
         }
-        if (Cond.RangeMonsters.MatchCnt != 0 && !CheckMstRng(npc, Cond.RangeMonsters, mess))
-            all = false;
-        if (Cond.RangeProjectiles.MatchCnt != 0 && !CheckProjRng(npc, Cond.RangeProjectiles, mess))
-            all = false;
+
         return all;
     }
     #endregion
 
-    #region 私有辅助方法
-    private static bool CheckCnt(int need, int actual, string name, StringBuilder msg)
+    #region 范围条件检查（玩家、怪物、弹幕）
+    /// <summary>检查范围内玩家条件</summary>
+    private static bool CheckPlayer(NPC npc, PlrCond c, NpcState st, float rMin, float rMax, StringBuilder msg)
+    {
+        int cnt = 0;
+        float minPx = rMin * 16f;
+        float maxPx = rMax * 16f;
+        if(st.Attack.Count == 0) return false;
+
+        // 从攻击者列表里遍历
+        for (int i = st.Attack.Count - 1; i >= 0; i--)
+        {
+            int pid = st.Attack[i];
+            var plr = Main.player[pid];
+            if (plr == null || !plr.active || plr.dead || plr.statLife <= 0)
+            {
+                st.Attack.RemoveAt(i);
+                continue;
+            }
+
+            // Buff 检查
+            if (c.Buffs.Length > 0 && !c.Buffs.All(b => plr.buffType.Contains(b))) continue;
+
+            // 生命值/百分比检查
+            bool hpOk = c.HP == -1 || (c.HP > 0 ? plr.statLife >= c.HP : plr.statLife < Math.Abs(c.HP));
+            if (!hpOk) continue;
+            if (c.HPRatio != -1)
+            {
+                float ratio = plr.statLife * 100f / plr.statLifeMax2;
+                bool ratioOk = c.HPRatio > 0 ? ratio >= c.HPRatio : ratio < Math.Abs(c.HPRatio);
+                if (!ratioOk) continue;
+            }
+
+            float distSq = npc.Center.DistanceSQ(plr.Center);
+            bool inRange = rMin > 0 ? (distSq > minPx * minPx &&
+                           distSq <= maxPx * maxPx) : distSq <= maxPx * maxPx;
+
+            if (inRange)
+                cnt++;
+        }
+
+        return CheckStack(c.MatchCnt, cnt, "范围内玩家", msg);
+    }
+
+    /// <summary>检查范围内怪物条件（使用 NpcMap 缓存）</summary>
+    private static bool CheckNpc(NPC npc, MstCond c, StringBuilder msg)
+    {
+        int cnt = 0;
+        float rangePx = c.Range * 16f;
+
+        // 只检查敌对NPC 条件筛选已在NpcSpawn完成(排除友好NPC)
+        var npcMap = NpcMap;
+        for (int i = npcMap.Count - 1; i >= 0; i--)
+        {
+            int idx = npcMap[i];
+            var n = Main.npc[idx];
+            if (n == null || !n.active || n.whoAmI == npc.whoAmI)
+            {
+                npcMap.RemoveAt(i);
+                continue;
+            }
+
+            // 怪物ID检查
+            if (c.MstID != 0 && n.netID != c.MstID) continue;
+
+            // 距离检查
+            if (c.Range > 0 && npc.Center.DistanceSQ(n.Center) > rangePx * rangePx) continue;
+
+            // 怪物血量百分比检查
+            if (c.HPRatio != 0)
+            {
+                float r = n.lifeMax > 0 ? MathHelper.Clamp(n.life * 100f / n.lifeMax, 0f, 100f) : 0f;
+                bool hpOk = c.HPRatio > 0 ? r >= c.HPRatio : r < Math.Abs(c.HPRatio);
+                if (!hpOk) continue;
+            }
+
+            // 标志检查
+            if (!string.IsNullOrEmpty(c.Flag))
+            {
+                if (Config.NpcDatas == null) continue;
+
+                if (!Config.NpcDatas.Any(d => d.Type != null &&
+                    d.Type.Contains(n.netID) &&
+                    StateApi.GetState(n).Flag == c.Flag)) continue;
+            }
+
+            cnt++;
+        }
+
+        return CheckStack(c.MatchCnt, cnt, "范围内怪物", msg);
+    }
+
+    /// <summary>检查范围内弹幕条件（仅遍历 ProjMap 中由 NPC 发射的弹幕）</summary>
+    private static bool CheckProj(NPC npc, ProjCond c, StringBuilder msg)
+    {
+        int cnt = 0;
+        float rangePx = c.Range * 16f;
+
+        if (ProjMap.Count == 0) return false;
+
+        // kv.Key = 弹幕索引, kv.Value = 发射者 NPC 索引
+        foreach (var kv in ProjMap)
+        {
+            // 如果要求仅当前 NPC 的弹幕，跳过其它 NPC 的
+            if (c.IsGlobal && kv.Value != npc.whoAmI)
+                continue;
+
+            // 弹幕索引
+            int idx = kv.Key;
+
+            // 检查弹幕有效性
+            var p = Main.projectile[idx];
+            if (p == null || !p.active || p.owner != Main.myPlayer) continue;
+
+            // 标志检查
+            if (!string.IsNullOrEmpty(c.Flag))
+            {
+                var state = UpProj.GetState(idx);
+                if (state == null || state.Notes != c.Flag)
+                    continue;
+            }
+
+            // 弹幕类型检查
+            if (c.ProjID > 0 && p.type != c.ProjID) continue;
+
+            // 弹幕距离NPC范围检查
+            if (c.Range > 0 && npc.Center.DistanceSQ(p.Center) > rangePx * rangePx) continue;
+            cnt++;
+        }
+
+        return CheckStack(c.MatchCnt, cnt, "范围内弹幕", msg);
+    }
+    #endregion
+
+    #region 辅助方法
+    /// <summary>通用计数条件检查（need >0 需不少于，need <0 需小于绝对值）</summary>
+    private static bool CheckStack(int need, int actual, string name, StringBuilder msg)
     {
         if (need == 0) return true;
         if (need > 0 && actual < need) { msg.AppendLine($" {name}不足: {need}需{actual}"); return false; }
@@ -212,106 +414,8 @@ public class Conditions
         return true;
     }
 
-    private static bool CheckPlrHP(Player p, int hpVal, int hpRatio)
-    {
-        if (p == null || p.statLifeMax2 <= 0) return false;
-        bool hpOk = hpVal == -1 || (hpVal > 0 ? p.statLife >= hpVal : p.statLife < Math.Abs(hpVal));
-        bool ratioOk = true;
-        if (hpRatio != -1)
-        {
-            float r = p.statLife * 100f / p.statLifeMax2;
-            ratioOk = hpRatio > 0 ? r >= hpRatio : r < Math.Abs(hpRatio);
-        }
-        return hpOk && ratioOk;
-    }
-
-    private static float GetLifePct(NPC npc)
-    {
-        if (npc?.active != true || npc.lifeMax <= 0) return 0f;
-        return MathHelper.Clamp(npc.life * 100f / npc.lifeMax, 0f, 100f);
-    }
-
-    private static Player? GetTarPlr(NPC npc)
-    {
-        if (npc?.active != true || npc.target < 0 || npc.target >= Main.maxPlayers) return null;
-        var p = Main.player[npc.target];
-        return (p != null && p.active && !p.dead && p.statLife > 0) ? p : null;
-    }
-
-    private static bool CheckPlrRng(NPC npc, RangePlayerCondition c, float rMin, float rMax, StringBuilder msg)
-    {
-        int cnt = 0;
-        float minPx = rMin * 16f;
-        float maxPx = rMax * 16f;
-        foreach (TSPlayer tp in TShock.Players)
-        {
-            if (tp == null || !tp.Active || tp.Dead || tp.TPlayer == null || tp.TPlayer.statLife <= 0)
-                continue;
-            if (c.Buffs.Length > 0 && !c.Buffs.All(b => tp.TPlayer.buffType.Contains(b))) continue;
-            if (!CheckPlrHP(tp.TPlayer, c.HP, c.HPRatio)) continue;
-            float distSq = Vector2.DistanceSquared(npc.Center, tp.TPlayer.Center);
-            bool inside = rMin > 0 ? distSq > minPx * minPx && distSq <= maxPx * maxPx : distSq <= maxPx * maxPx;
-            if (inside) cnt++;
-        }
-        return CheckCnt(c.MatchCnt, cnt, "范围内玩家", msg);
-    }
-
-    private static bool CheckMstRng(NPC npc, RangeMonsterCondition c, StringBuilder msg)
-    {
-        int cnt = 0;
-        float rangePx = c.Range * 16f;
-        for (int i = 0; i < Main.maxNPCs; i++)
-        {
-            var m = Main.npc[i];
-            if (m == null || !m.active || m.whoAmI == npc.whoAmI) continue;
-            if (c.MstID != 0 && m.netID != c.MstID) continue;
-            if (c.Range > 0 && Vector2.DistanceSquared(npc.Center, m.Center) > rangePx * rangePx) continue;
-            if (!CheckMstHP(m, c.HPRatio)) continue;
-            if (!CheckMstFlag(m, c.Flag)) continue;
-            cnt++;
-        }
-        return CheckCnt(c.MatchCnt, cnt, "范围内怪物", msg);
-    }
-
-    private static bool CheckMstHP(NPC m, int hpRatio)
-    {
-        if (hpRatio == 0) return true;
-        float r = GetLifePct(m);
-        return hpRatio > 0 ? r >= hpRatio : r < Math.Abs(hpRatio);
-    }
-
-    private static bool CheckMstFlag(NPC m, string flag)
-    {
-        if (string.IsNullOrEmpty(flag)) return true;
-        var cfg = MonsterSpeed.Config;
-        if (cfg?.NpcDatas != null)
-            return cfg.NpcDatas.Any(d => d.Type != null && d.Type.Contains(m.netID) && StateApi.GetState(m).Flag == flag);
-        return false;
-    }
-
-    private static bool CheckProjRng(NPC npc, RangeProjectileCondition c, StringBuilder msg)
-    {
-        int cnt = 0;
-        float rangePx = c.Range * 16f;
-        for (int i = 0; i < Main.maxProjectiles; i++)
-        {
-            var p = Main.projectile[i];
-            if (!IsValidProjForRng(p, npc, c)) continue;
-            if (c.ProjID != 0 && p.type != c.ProjID) continue;
-            if (c.Range > 0 && Vector2.DistanceSquared(npc.Center, p.Center) > rangePx * rangePx) continue;
-            cnt++;
-        }
-        return CheckCnt(c.MatchCnt, cnt, "范围内弹幕", msg);
-    }
-
-    private static bool IsValidProjForRng(Projectile p, NPC npc, RangeProjectileCondition c)
-    {
-        if (!p.active || p.owner != Main.myPlayer) return false;
-        if (c.IsGlobal && UpdateState[p.whoAmI]?.Who != npc.whoAmI) return false;
-        return string.IsNullOrEmpty(c.Flag) || UpdateState[p.whoAmI]?.Notes == c.Flag;
-    }
-
-    private static bool AICond(NPC npc, StringBuilder mess, Conditions c)
+    /// <summary>AI 条件检查</summary>
+    private static bool CheckNpcAi(NPC npc, StringBuilder mess, Conditions c)
     {
         bool all = true;
         foreach (var kv in c.AIPairs)
@@ -321,14 +425,15 @@ public class Conditions
             foreach (string expr in kv.Value)
             {
                 if (string.IsNullOrWhiteSpace(expr)) continue;
-                if (!ParseAIExpr(expr, val))
+                if (!ParseAI(expr, val))
                 { all = false; mess.Append($" AI[{kv.Key}] {expr} 不成立 (当前{val:F2})\n"); }
             }
         }
         return all;
     }
 
-    private static bool ParseAIExpr(string expr, float val)
+    /// <summary>解析单个 AI 表达式</summary>
+    private static bool ParseAI(string expr, float val)
     {
         if (expr.StartsWith("==")) return float.TryParse(expr[2..], out float a) && val == a;
         if (expr.StartsWith("!=")) return float.TryParse(expr[2..], out float b) && val != b;
@@ -340,50 +445,7 @@ public class Conditions
         return float.TryParse(expr, out float h) && val == h;
     }
 
-    private static bool TimerCond(NPC npc, NpcData data, Conditions c, StringBuilder mess)
-    {
-        var (ok, min, max) = PxUtil.ParseRng(c.Timer);
-        if (!ok) { mess.Append($" 时间格式错误: {c.Timer}\n"); return false; }
-        var st = StateApi.GetState(npc);
-        if (st == null) return false;
-        double elapsed = (DateTime.UtcNow - st.CooldownTime[st.EventIndex]).TotalSeconds;
-        return elapsed >= min && elapsed <= max;
-    }
-
-    private static bool ExecCntCond(NPC npc, Conditions c, StringBuilder mess)
-    {
-        var st = StateApi.GetState(npc);
-        if (st == null) return false;
-        bool all = true;
-        foreach (var kv in c.ExecuteCount)
-        {
-            int actual = st.EventCounts?.GetValueOrDefault(kv.Key) ?? 0;
-            if (!CheckCnt(kv.Value, actual, $"事件[{kv.Key}]", mess)) all = false;
-        }
-        return all;
-    }
-
-    private static bool TotalPlayCond(NPC npc, Conditions c, StringBuilder mess)
-    {
-        var st = StateApi.GetState(npc);
-        if (st == null) return false;
-        int total = st.EventCounts?.Values.Sum() ?? 0;
-        return CheckCnt(c.TotalPlayCount, total, "累计播放", mess);
-    }
-
-    private static bool FilePlayCond(NPC npc, Conditions c, StringBuilder mess)
-    {
-        var st = StateApi.GetState(npc);
-        if (st == null) return false;
-        bool all = true;
-        foreach (var kv in c.FilePlayCount)
-        {
-            int actual = st.PlayCounts?.GetValueOrDefault(kv.Key) ?? 0;
-            if (!CheckCnt(kv.Value, actual, $"文件{kv.Key}", mess)) all = false;
-        }
-        return all;
-    }
-
+    /// <summary>获取玩家当前手持武器类型</summary>
     public static string GetWeapon(Player p)
     {
         var it = p.HeldItem;
@@ -397,14 +459,16 @@ public class Conditions
         return "未知";
     }
 
-    public static bool CheckGroup(Player p, List<string> conds)
+    /// <summary>检查一组进度条件</summary>
+    public static bool ProgGroup(Player p, List<string> conds)
     {
         foreach (string c in conds)
-            if (!CheckCond(p, c)) return false;
+            if (!CheckProg(p, c)) return false;
         return true;
     }
 
-    public static bool CheckCond(Player p, string cond)
+    /// <summary>检查单个进度条件</summary>
+    public static bool CheckProg(Player p, string cond)
     {
         switch (cond)
         {
@@ -504,7 +568,7 @@ public class Conditions
             case "84": case "娥眉月": return Main.moonPhase == 5;
             case "85": case "上弦月": return Main.moonPhase == 6;
             case "86": case "盈凸月": return Main.moonPhase == 7;
-            default: TShock.Log.ConsoleWarn($"[怪物加速] 未知条件: {cond}"); return false;
+            default: TShock.Log.ConsoleWarn($"{LogName} 未知条件: {cond}"); return false;
         }
     }
 

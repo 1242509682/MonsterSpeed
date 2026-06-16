@@ -92,7 +92,9 @@ public class Configuration
         public List<string> DeadEvt { get; set; } = new List<string>();
         [JsonProperty("弹幕命中事件", Order = 28)]
         public List<string> HitEvt { get; set; } = new List<string>();
-        [JsonProperty("时间事件", Order = 29)]
+        [JsonProperty("碰撞事件", Order = 29)]
+        public List<string> CollideEvt { get; set; } = new List<string>();
+        [JsonProperty("时间事件", Order = 30)]
         public List<TimerData> TimerEvent { get; set; }
 
         public NpcData() { }
@@ -202,46 +204,48 @@ public class Configuration
     #region 预设参数方法
     public void SetDefault()
     {
-        ScriptCfg.Usings = new List<string>()
-        {
+        ScriptCfg.Usings =
+        [
             "using MonsterSpeed;",
             "using static MonsterSpeed.MonsterSpeed;"
-        };
+        ];
 
-        NpcDatas = new List<NpcData>()
-        {
+        NpcDatas =
+        [
             new NpcData(0, 62, 25f, 35, 5)
             {
-                Type = new List<int> { 4, 50 },
+                Type = [4, 50],
                 HealInt = 5,
+
                 DeadEvt = [ "召唤噬魂怪" ],
                 HitEvt = [ "召唤猩红喀迈拉" ],
-                TimerEvent = new List<TimerData>()
-                {
+                CollideEvt = [ "召唤魔唾液" ],
 
+                TimerEvent =
+                [
                     new TimerData
                     {
-                        CoolTime = 5,
+                        CD = 5,
                         Condition = "默认配置",
-                        SendProj = new List<string>() { "测试弹幕" },
+                        SendProj = ["测试弹幕"],
                     },
 
                     new TimerData
                     {
-                        CoolTime = 5,
+                        CD = 5,
                         Condition = "默认配置",
                         CsScript = "BOSS阶段弹幕脚本",
-                        SendProj = new List<string>() { "克眼二更弹幕" },
+                        SendProj = ["克眼二更弹幕"],
                     },
 
                     new TimerData
                     {
-                        CoolTime = 10,
+                        CD = 10,
                         Defense = 50,
                         Condition = "半血",
                         CsScript = "定时弹幕脚本",
                         ScriptTime = 1,
-                        SendProj = new List<string>(){ "默认弹幕" },
+                        SendProj = ["默认弹幕"],
                         MoveMode = "顺时针环绕",
                     },
 
@@ -249,33 +253,34 @@ public class Configuration
                     {
                         Defense = 50,
                         Condition = "史王不在场",
-                        SpawnNPC = new List<SpawnNpcData>()
-                        {
+                        SpawnNPC =
+                        [
                             new SpawnNpcData()
                             {
-                                NPCID = new List<int>{ 50 },
+                                NPCID = [50],
                                 NpcStack = 1
                             }
-                        },
-                        MarkerList = new List<MstMarkerMod>()
-                        {
-                            new MstMarkerMod()
+                        ],
+
+                        MarkerList =
+                        [
+                            new MarkData()
                             {
                                 Flag = "",
-                                MarkerMods = new Dictionary<string, string[]>()
+                                MarkMod = new Dictionary<string, string[]>()
                                 {
                                     { "已召唤史王", new string[] { "=1" } }
                                 }
                             }
-                        }
+                        ]
                     }
-                }
+                ]
             },
 
-        };
+        ];
 
-        NpcList = new List<int>()
-        {
+        NpcList =
+        [
             4, 13, 35, 50, 113, 115,
             125, 126, 127, 134, 216,
             222, 243, 245, 262, 266,
@@ -283,10 +288,10 @@ public class Configuration
             370, 395, 398, 439, 477,
             491, 541, 551, 618, 620,
             621, 636, 657, 668
-        };
+        ];
 
-        MarkerSystemInfo = new string[]
-        {
+        MarkerSystemInfo =
+        [
             "【指示物系统】为怪物添加可追踪的状态标记，用于复杂行为控制",
             "【设置位置】时间事件/行动模式/弹幕生成/怪物生成/弹幕更新",
             "【操作表达式】支持：+1、-1、=5、+=2、-=3、*=2、/=2、%=3、random:1,10",
@@ -302,10 +307,10 @@ public class Configuration
             "【应用场景】阶段转换、技能计数、状态循环、冷却管理、随机行为",
             "【示例修改】{阶段:[+1],计数:[rm:1,5],状态:[=ref:基础值*2]}",
             "【示例条件】{阶段:[>=3,<10],计数:[!=0],状态:[>50]}"
-        };
+        ];
 
-        FileMess = new string[]
-        {
+        FileMess =
+        [
             "使用 /mos all 导出时间事件 再用/mos list 列出文件,在[文件播放器]填写文件【序号】",
             "导出的时间事件文件生成路径在: tshock/怪物加速_时间事件集 ",
             "播放类型 1并行播放:主事件运行同时可按次数循环播放文件 2同时播放:主事件运行同时点播所有文件",
@@ -315,10 +320,10 @@ public class Configuration
             "按次播放 每播放1个文件则算1次播放 3次规律为:1->2->1-> 回到主事件",
             "暂停间隔 无法干涉文件的【强制播放】,单位毫秒,0为不暂停,超过0则触发,会循环暂停释放直到本次时间事件结束",
             "释放间隔 【暂停间隔】为2000毫秒时,1:1默认释放2000毫秒,用于自定义暂停结束后释放时间"
-        };
+        ];
 
-        ProgID = new string[]
-        {
+        ProgID =
+        [
             "0 无 | 1 克眼 | 2 史王 | 3 世吞 | 4克脑 | 5世吞或克脑 | 6 巨鹿 | 7 蜂王 | 8 骷髅王前 | 9 骷髅王后",
             "10 肉前 | 11 肉后 | 12 毁灭者 | 13 双子魔眼 | 14 机械骷髅王 | 15 世花 | 16 石巨人 | 17 史后 | 18 光女 | 19 猪鲨",
             "20 拜月 | 21 月总 | 22 哀木 | 23 南瓜王 | 24 尖叫怪 | 25 冰雪女王 | 26 圣诞坦克 | 27 火星飞碟 | 28 小丑",
@@ -329,12 +334,12 @@ public class Configuration
             "59 森林 | 60 丛林 | 61 沙漠 | 62 雪原 | 63 洞穴 | 64 海洋 | 65 地表 | 66 太空 | 67 地狱 | 68 神圣 | 69 蘑菇",
             "70 腐化 | 71 猩红 | 72 邪恶 | 73 地牢 | 74 墓地 | 75 蜂巢 | 76 神庙 | 77 沙尘暴 | 78 天空",
             "79 满月 | 80 亏凸月 | 81 下弦月 | 82 残月 | 83 新月 | 84 娥眉月 | 85 上弦月 | 86 盈凸月"
-        };
+        ];
 
-        CustomHideList = new List<string>()
-        {
+        CustomHideList =
+        [
             "行动模式说明","步进说明","新弹幕ID说明","武器条件说明","进度条件说明","播放文件模式说明","指示物系统说明"
-        };
+        ];
     }
     #endregion
 }

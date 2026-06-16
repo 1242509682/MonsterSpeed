@@ -12,10 +12,10 @@ public class NpcState
     public ConcurrentDictionary<string, int> Marker { get; set; } = new(); // c#脚本里的指示物数据
     public Dictionary<string, int> Markers { get; set; } = new();  // 配置里指示物数据
     // 时间事件基础状态
-    public int EventIndex { get; set; } = 0; // 时间事件索引
+    public int EventIndex = 0; // 时间事件索引
     public Dictionary<int, int> EventCounts { get; set; } = new(); // 时间事件执行计数
-    public Dictionary<int,DateTime> CooldownTime { get; set; } = new Dictionary<int, DateTime>();   // 时间事件冷却时间
-    public DateTime LastTextTime { get; set; } = DateTime.UtcNow;   // 时间事件冷却倒计时（悬浮文本）
+    public Dictionary<int,DateTime> Cooldown { get; set; } = new Dictionary<int, DateTime>();   // 时间事件冷却时间
+    public DateTime? LastTextTime = DateTime.UtcNow;   // 时间事件冷却倒计时（悬浮文本）
     // 怪物全局计数状态
     public int SPCount { get; set; } = 0;    // 总计发射弹幕组次数
     public int SNCount { get; set; } = 0;    // 总计召唤随从组次数
@@ -31,9 +31,24 @@ public class NpcState
     public int DefLifeMax { get; set; } = 0;   // 原版默认最大血量（不受动态影响）
     public List<int> Attack { get; set; } = new();   // 攻击过该 NPC 的玩家索引列表
 
+    // 死亡事件状态
+    public int DeadIdx  = 0;
+    public Dictionary<int, DateTime> DeadCD { get; set; } = new();
+    public DateTime? DeadLastText = DateTime.UtcNow;
+
+    // 命中事件状态
+    public int HitIdx  = 0;
+    public Dictionary<int, DateTime> HitCD { get; set; } = new();
+    public DateTime? HitLastText = DateTime.UtcNow;
+
+    // 碰撞事件状态
+    public int CollideIdx = 0;
+    public Dictionary<int, DateTime> CollideCD { get; set; } = new();
+    public DateTime? CollideLastText = DateTime.UtcNow;
+
     // 其他模式状态
     public AIState AIState { get; set; } = new AIState();  // AI赋值状态
-    public MoveModeState MoveState { get; set; } = new();  // 行动模式状态
+    public MoveState MoveState { get; set; } = new();  // 行动模式状态
     public Dictionary<string, FilePlayState> IndieStates { get; set; } = new();  // 执行文件播放状态
 
     #region 构造函数
@@ -42,7 +57,7 @@ public class NpcState
     {
         if (npc != null)
         {
-            MoveState = new MoveModeState { DashStart = npc.Center };
+            MoveState = new MoveState { DStart = npc.Center };
         }
     }
     #endregion

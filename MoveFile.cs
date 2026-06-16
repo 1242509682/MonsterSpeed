@@ -13,7 +13,7 @@ public class MoveDatas
     [JsonProperty("模式描述")]
     public string Desc { get; set; } = "";
     [JsonProperty("行动模式")]
-    public MoveModeData MoveData { get; set; } = new MoveModeData();
+    public MoveData MoveData { get; set; } = new MoveData();
 }
 
 // 行动模式文件管理器
@@ -75,98 +75,98 @@ public class MoveFile
             {
                 Name = "原地停留",
                 Desc = "怪物停留在原地",
-                MoveData = new MoveModeData
+                MoveData = new MoveData
                 {
                     Mode = MoveMode.Stay,
-                    SmoothFactor = 0.15f
+                    Smooth = 0.15f
                 }
             },
             new MoveDatas
             {
                 Name = "顺时针环绕",
                 Desc = "围绕目标顺时针旋转",
-                MoveData = new MoveModeData
+                MoveData = new MoveData
                 {
                     Mode = MoveMode.Orbit,
-                    OrbitDir = OrbitDirection.Clockwise,
-                    OrbitRadius = 25f,
-                    OrbitSpeed = 2.5f,
-                    OrbitMoveSpeed = 15f,
-                    SmoothFactor = 0.15f
+                    ODir = OrbitDir.Clockwise,
+                    ORad = 25f,
+                    OSpd = 2.5f,
+                    OMove = 15f,
+                    Smooth = 0.15f
                 }
             },
             new MoveDatas
             {
                 Name = "逆时针环绕",
                 Desc = "围绕目标逆时针旋转",
-                MoveData = new MoveModeData
+                MoveData = new MoveData
                 {
                     Mode = MoveMode.Orbit,
-                    OrbitDir = OrbitDirection.CounterClockwise,
-                    OrbitRadius = 25f,
-                    OrbitSpeed = 2.5f,
-                    OrbitMoveSpeed = 15f,
-                    SmoothFactor = 0.15f
+                    ODir = OrbitDir.CounterClockwise,
+                    ORad = 25f,
+                    OSpd = 2.5f,
+                    OMove = 15f,
+                    Smooth = 0.15f
                 }
             },
             new MoveDatas
             {
                 Name = "交替环绕",
                 Desc = "定期切换环绕方向",
-                MoveData = new MoveModeData
+                MoveData = new MoveData
                 {
                     Mode = MoveMode.Orbit,
-                    OrbitDir = OrbitDirection.Alternate,
+                    ODir = OrbitDir.Alternate,
                     DirTimer = 180f,
-                    OrbitRadius = 25f,
-                    OrbitSpeed = 2.5f,
-                    OrbitMoveSpeed = 15f,
-                    SmoothFactor = 0.15f
+                    ORad = 25f,
+                    OSpd = 2.5f,
+                    OMove = 15f,
+                    Smooth = 0.15f
                 }
             },
             new MoveDatas
             {
                 Name = "随机徘徊",
                 Desc = "在目标周围随机移动",
-                MoveData = new MoveModeData
+                MoveData = new MoveData
                 {
                     Mode = MoveMode.Wander,
-                    WanderRadius = 30f,
-                    WanderSpeed = 10f,
-                    WanderChangeInterval = 120,
-                    WanderCloseDistance = 1f,
-                    SmoothFactor = 0.15f
+                    WRad = 30f,
+                    WSpd = 10f,
+                    WInt = 120,
+                    WClose = 1f,
+                    Smooth = 0.15f
                 }
             },
             new MoveDatas
             {
                 Name = "快速突进",
                 Desc = "向目标快速突进攻击",
-                MoveData = new MoveModeData
+                MoveData = new MoveData
                 {
                     Mode = MoveMode.Dash,
-                    DashSpeed = 50f,
-                    DashWindup = 30,
-                    DashDuration = 20,
-                    DashCooldown = 180,
-                    DashRetreatDistance = 2f,
-                    DashRetreatSpeedFactor = 0.3f,
-                    SmoothFactor = 0.15f
+                    DSpd = 50f,
+                    DWind = 30,
+                    DDur = 20,
+                    DCool = 180,
+                    DRet = 2f,
+                    DRetSpd = 0.3f,
+                    Smooth = 0.15f
                 }
             },
             new MoveDatas
             {
                 Name = "保持对视",
                 Desc = "在目标周围保持对视位置",
-                MoveData = new MoveModeData
+                MoveData = new MoveData
                 {
                     Mode = MoveMode.FaceTarget,
-                    FaceDistance = 30f,
-                    SwitchDistance = 20f,
-                    FaceSpeed = 10f,
-                    FaceSmooth = 0.1f,
-                    FaceSwitchChance = 4,
-                    SmoothFactor = 0.15f
+                    FDist = 30f,
+                    FSwitch = 20f,
+                    FSpd = 10f,
+                    FSmooth = 0.1f,
+                    FChance = 4,
+                    Smooth = 0.15f
                 }
             },
         };
@@ -200,13 +200,13 @@ public class MoveFile
         }
     }
 
-    public static MoveModeData GetData(string name)
+    public static MoveData GetData(string name)
     {
         var config = GetFile(name);
         if (config == null || config.MoveData == null)
         {
             TShock.Log.ConsoleError($"{LogName} 行动模式 '{name}' 不存在，使用默认停留模式");
-            return new MoveModeData { Mode = MoveMode.Stay };
+            return new MoveData { Mode = MoveMode.Stay };
         }
         return config.MoveData;
     }

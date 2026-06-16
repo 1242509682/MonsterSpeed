@@ -44,16 +44,6 @@ public static class PxUtil
         return (false, 0, 0);
     }
 
-    // 目标有效性检查
-    public static bool ValidTarg(NPC npc, NpcData data)
-    {
-        if (npc.target < 0 || npc.target >= Main.maxPlayers)
-            return false;
-
-        var tar = npc.GetTargetData();
-        return tar.Invalid && tar.Center != Vector2.Zero;
-    }
-
     // 获取有效的仇恨目标玩家（活跃且未死亡）
     public static Player? GetTarg(NPC n)
     {

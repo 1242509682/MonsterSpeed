@@ -27,8 +27,8 @@ public class HomingData
 
 public static class AutoHoming
 {
-    #region 处理追踪与躲避模式
-    public static Vector2 ApplyAll(Vector2 v, Projectile p, HomingData d, NpcState st, NPC n, List<int> lst)
+    #region 处理自动追踪
+    public static Vector2 Homing(Vector2 v, Projectile p, HomingData d, NpcState st, NPC n, List<int> lst)
     {
         if (!d.Homing) return v;
 
@@ -44,7 +44,7 @@ public static class AutoHoming
     {
         if (d.TrackNear)
         {
-            // 追踪最近攻击者模式
+            // 追踪最近攻击者
             if (st != null && st.Attack.Count > 0)
             {
                 Player? near = null;

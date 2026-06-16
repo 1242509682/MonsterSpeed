@@ -12,7 +12,7 @@ public class SpawnNpcData
     [JsonProperty("召怪条件", Order = -1)]
     public string Condition { get; set; } = "默认配置";
     [JsonProperty("怪物ID", Order = 0)]
-    public List<int> NPCID = new List<int>();
+    public List<int> NPCID = new();
     [JsonProperty("范围", Order = 1)]
     public int Range = 25;
     [JsonProperty("数量", Order = 2)]
@@ -46,7 +46,7 @@ public class SpawnMonster
             {
                 bool allow = true;
                 var cond = ConditionFile.GetCondData(mos.Condition);
-                Conditions.Condition(npc, new StringBuilder(), data, cond, ref allow);
+                Conditions.CondWork(npc, new StringBuilder(), data, cond, ref allow);
 
                 if (!allow) continue;
             }

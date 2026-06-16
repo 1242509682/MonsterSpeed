@@ -178,8 +178,8 @@ public class ScriptGlobals
     public void SetFlg(string flag) => StateApi.SetFlag(Npc, flag);
     public string GetFlg() => StateApi.GetFlag(Npc);
     // 3. 事件控制
-    public void NextEvt() => TimerEvents.NextEvent(Data, Npc, State);
-    public void ShowTxt(double rem) => TimerEvents.ShowCoolText(Npc, Data, State, rem);
+    public void NextEvt() => TimerEvents.Next(Npc, Data, Data.TimerEvent, ref State.EventIndex, State.Cooldown, State);
+    public void ShowTxt(double rem) => TimerEvents.ShowText(Npc, State.EventIndex, Data.TimerEvent?.Count ?? 1, rem, ref State.LastTextTime, Data.TextInterval, Data.TextGradient, Data.TextRange);
     public void SetEvtIdx(int idx) => State.EventIndex = idx;
     public int GetEvtIdx() => State.EventIndex;
     // 4. 弹幕控制

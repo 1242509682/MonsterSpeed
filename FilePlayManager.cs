@@ -113,7 +113,7 @@ public class FilePlayManager
             if (!string.IsNullOrEmpty(play.Cond) && !play.Force)
             {
                 var cond = ConditionFile.GetCondData(play.Cond);
-                Condition(npc, sb, data, cond, ref allow);
+                CondWork(npc, sb, data, cond, ref allow);
             }
 
             // 触发播放
@@ -143,7 +143,7 @@ public class FilePlayManager
         }
 
         // 使用文件中定义的冷却时间
-        double coolTime = evt.CoolTime;
+        double coolTime = evt.CD;
         TimeSpan elapsed = DateTime.UtcNow - pState.Timer;
         double remaining = Math.Max(0, coolTime - elapsed.TotalSeconds);
 
@@ -155,7 +155,7 @@ public class FilePlayManager
         if (!string.IsNullOrEmpty(evt.Condition) && !pState.NoCond)
         {
             var cond = ConditionFile.GetCondData(evt.Condition);
-            Condition(npc, sb, data, cond, ref allow);
+            CondWork(npc, sb, data, cond, ref allow);
         }
 
         // 强制播放或条件满足
@@ -198,7 +198,7 @@ public class FilePlayManager
 
     #region 开始执行文件动作
     private static void StartEvent(NpcData data, NPC npc, TimerData evt,
-        StringBuilder? sb, NpcState state, FilePlayState pState, FilePlayData play, ref bool handled)
+        StringBuilder? mess, NpcState st, FilePlayState pState, FilePlayData play, ref bool handled)
     {
         // 执行C#脚本 - 使用文件播放器专用键
         if (!string.IsNullOrEmpty(evt.CsScript))
@@ -208,15 +208,15 @@ public class FilePlayManager
             int hashKey = key.GetHashCode();
 
             // 检查是否已执行过
-            bool has = state.ScriptLoop.ContainsKey(hashKey);
-            if (!has) state.ScriptLoop[hashKey] = 0;
+            bool has = st.ScriptLoop.ContainsKey(hashKey);
+            if (!has) st.ScriptLoop[hashKey] = 0;
 
-            state.ScriptLoop[hashKey]++;
-            if (state.ScriptLoop[hashKey] % evt.ScriptTime == 0)
+            st.ScriptLoop[hashKey]++;
+            if (st.ScriptLoop[hashKey] % evt.ScriptTime == 0)
             {
-                sb?.AppendLine($" 执行脚本:{evt.CsScript}");
-                CSExecutor.SelExec(evt.CsScript, npc, data, state, sb);
-                state.ScriptLoop[hashKey] = 0;
+                mess?.AppendLine($" 执行脚本:{evt.CsScript}");
+                CSExecutor.SelExec(evt.CsScript, npc, data, st, mess);
+                st.ScriptLoop[hashKey] = 0;
             }
         }
 
@@ -224,27 +224,20 @@ public class FilePlayManager
         if (evt.MarkerList != null && evt.MarkerList.Count > 0)
         {
             var rand = new UnifiedRandom();
-            int count = MarkerUtil.SetMstMarkers(evt.MarkerList, npc, ref rand);
+            int count = MarkManager.SetMstMks(evt.MarkerList, npc, ref rand);
             if (count > 0)
-            {
-                sb?.Append($" 指示物修改: 成功修改 {count} 个目标\n");
-            }
+                mess?.Append($" 指示物修改: 成功修改 {count} 个目标\n");
         }
 
         // 行动模式处理
         if (!string.IsNullOrEmpty(evt.MoveMode))
-        {
-            MoveMod.MoveModes(npc, data, sb, evt.MoveMode, ref handled);
-        }
+            MoveManager.MoveWork(npc, data, mess, evt.MoveMode, ref handled);
 
         // 发射物品
-        if (evt.ShootItemList != null)
-        {
+        if (evt.ShootItemList != null && evt.ShootItemList.Count > 0)
             foreach (var item in evt.ShootItemList)
-            {
                 npc.AI_87_BigMimic_ShootItem(item);
-            }
-        }
+        
 
         // AI赋值
         if (evt.AIMode != null)
@@ -263,27 +256,18 @@ public class FilePlayManager
             {
                 var file = SpawnProjFile.GetData(proj);
                 if (file != null && file.Count > 0)
-                {
                     allProj.AddRange(file);
-                }
                 else
-                {
-                    sb?.Append($" 弹幕文件不存在: {proj}\n");
-                }
+                   mess?.Append($" 弹幕文件不存在: {proj}\n");
             }
 
             if (allProj.Count > 0)
-            {
                 SpawnProj.Spawn(data, allProj, npc);
-            }
         }
 
         // Boss AI
         if (evt.AIMode?.BossAI != null)
-        {
-            foreach (var bossAI in evt.AIMode.BossAI)
-                AISystem.TR_AI(bossAI, npc, ref handled);
-        }
+            AISystem.TR_AI(evt.AIMode.BossAI, npc, ref handled);
 
         // 修改防御
         npc.defense = evt.Defense > 0 ? evt.Defense : npc.defDefense;
@@ -370,7 +354,7 @@ public class FilePlayManager
             }
 
             pState.Playing = true;
-            pState.FileSeq = new List<int>(play.Files);
+            pState.FileSeq = [.. play.Files];
             pState.FileIdx = 0;
             pState.EvtIdx = 0;
             pState.Timer = DateTime.UtcNow;

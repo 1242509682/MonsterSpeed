@@ -199,7 +199,7 @@ public class UpProj
             {
                 bool ok = true;
                 var cond = ConditionFile.GetCondData(cur.Condition);
-                Conditions.Condition(npc, new StringBuilder(), set, cond, ref ok);
+                Conditions.CondWork(npc, new StringBuilder(), set, cond, ref ok);
                 if (!ok) continue;
             }
 
@@ -234,7 +234,7 @@ public class UpProj
 
         // 指示物注入AI
         if (cur.MarkerToAI != null && cur.MarkerToAI.Count > 0)
-        { MarkerUtil.InjectToAI(st, cur.MarkerToAI, p); Add(updList, ups.Index); }
+        { MarkManager.InjectAI(st, cur.MarkerToAI, p); Add(updList, ups.Index); }
 
         // 类型转换
         if (cur.NewType != 0)
@@ -251,7 +251,7 @@ public class UpProj
 
         // 追踪模式
         if (cur.HomingMode != null && cur.HomingMode.Homing)
-            newVel = AutoHoming.ApplyAll(newVel, p, cur.HomingMode, st, npc, updList);
+            newVel = AutoHoming.Homing(newVel, p, cur.HomingMode, st, npc, updList);
 
         // 角度旋转
         if (cur.Angle != 0f || cur.Rotate != 0f)
