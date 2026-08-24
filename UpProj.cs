@@ -339,7 +339,7 @@ public class UpProj
                     }
                     break;
                 default:
-                    float rndAng = (p.identity * 137.508f + st.SPCount * 0.5f) % 360f;
+                    float rndAng = (p.key.Index * 137.508f + st.SPCount * 0.5f) % 360f;
                     delta = new Vector2((float)Math.Cos(MathHelper.ToRadians(rndAng)),
                                         (float)Math.Sin(MathHelper.ToRadians(rndAng))) * incRad;
                     p.position += delta;
