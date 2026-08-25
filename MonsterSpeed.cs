@@ -304,7 +304,7 @@ public class MonsterSpeed : TerrariaPlugin
             npc = direct;
         else if (entity is Projectile proj)
         {
-            if (ProjMap.TryGetValue(proj.whoAmI, out int npcIdx) && npcIdx >= 0 && npcIdx < Main.maxNPCs)
+            if (ProjMap.TryGetValue(proj.key.Index, out int npcIdx) && npcIdx >= 0 && npcIdx < Main.maxNPCs)
                 npc = Main.npc[npcIdx];
         }
 
@@ -376,9 +376,9 @@ public class MonsterSpeed : TerrariaPlugin
     private void OnProjKill(On.Terraria.Projectile.orig_Kill orig, Projectile proj)
     {
         // 清理弹幕→发射者映射
-        ProjMap.TryRemove(proj.whoAmI, out _);
+        ProjMap.TryRemove(proj.key.Index, out _);
         // 清理弹幕更新状态（包括 UpdateState 和 UpdateTimer）
-        UpProj.Remove(proj.whoAmI);
+        UpProj.Remove(proj.key.Index);
 
         orig(proj);
     }
@@ -386,15 +386,15 @@ public class MonsterSpeed : TerrariaPlugin
     private void OnProjAI(On.Terraria.Projectile.orig_AI orig, Projectile proj)
     {
         // 由 NPC 发射的弹幕（通过映射表判断）
-        if (ProjMap.ContainsKey(proj.whoAmI) && !proj.active)
-            ProjMap.TryRemove(proj.whoAmI, out _);
+        if (ProjMap.ContainsKey(proj.key.Index) && !proj.active)
+            ProjMap.TryRemove(proj.key.Index, out _);
 
         orig(proj);
 
         // 修改后的友好弹幕伤害玩家方法
         if (Config.Enabled)
         {
-            if (proj.active && proj.hostile && !proj.friendly && ProjMap.TryGetValue(proj.whoAmI, out var npcIdx))
+            if (proj.active && proj.hostile && !proj.friendly && ProjMap.TryGetValue(proj.key.Index, out var npcIdx))
             {
                 var dmg = proj.damage > 0 ? proj.damage : 1;
                 var reason = PlayerDeathReason.ByNPC(npcIdx);
