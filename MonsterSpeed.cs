@@ -35,9 +35,7 @@ public class MonsterSpeed : TerrariaPlugin
     public override void Initialize()
     {
         if (!Directory.Exists(Paths))
-        {
             Directory.CreateDirectory(Paths);
-        }
 
         LoadConfig();
         GeneralHooks.ReloadEvent += ReloadConfig;
@@ -121,7 +119,7 @@ public class MonsterSpeed : TerrariaPlugin
         }
         else
         {
-            ExtractData(); // 释放内嵌依赖项
+            // ExtractData(); // 释放内嵌依赖项
 
             Console.WriteLine($"\n---------------------------{LogName}---------------------------");
             TShock.Log.ConsoleError($"\n          缺失依赖项: AutoCompile.dll —— 自动编译插件", 80, 142, 200);
