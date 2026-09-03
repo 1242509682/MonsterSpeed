@@ -6,6 +6,7 @@ using Terraria.ID;
 using TShockAPI;
 using static MonsterSpeed.Configuration;
 using static MonsterSpeed.MonsterSpeed;
+using Terraria.DataStructures;
 
 namespace MonsterSpeed;
 
@@ -223,15 +224,6 @@ public class UpProj
         if (npc == null || !npc.active || st == null) return;
         var updList = new List<int>();
 
-        // 取消友善标记
-        if (p.friendly)
-        {
-            p.friendly = false;
-            p.hostile = true;
-            p.npcProj = true;
-            Add(updList, ups.Index);
-        }
-
         // 指示物注入AI
         if (cur.MarkerToAI != null && cur.MarkerToAI.Count > 0)
         { MarkManager.InjectAI(st, cur.MarkerToAI, p); Add(updList, ups.Index); }
@@ -423,12 +415,8 @@ public class UpProj
         if (idx < 0 || idx >= Main.maxProjectiles) return;
         var p = Main.projectile[idx];
         if (p == null || !p.active) return;
-        p.active = false;
-        p.type = ProjectileID.None;
-        p.timeLeft = 0;
-        NetMessage.SendData((int)PacketTypes.ProjectileDestroy, -1, -1, null, idx);
-        NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, idx);
-        TSPlayer.All.RemoveProjectile(idx, -1);
+        var key = new ProjectileKey(p.key.Spawner, p.key.Index, p.key.Generation);
+        TSPlayer.All.SendData(PacketTypes.ProjectileDestroy, null, key);
     }
 
     /// <summary>添加新的弹幕更新状态（在弹幕生成时调用）</summary>

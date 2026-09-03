@@ -4,14 +4,14 @@ using System.Text;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
-using Terraria.ID;
 using Terraria.Enums;
+using Terraria.ID;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
 using static MonsterSpeed.Configuration;
-using static MonsterSpeed.Utils;
 using static MonsterSpeed.PxUtil;
+using static MonsterSpeed.Utils;
 
 namespace MonsterSpeed;
 
@@ -325,8 +325,8 @@ public class MonsterSpeed : TerrariaPlugin
             ProjMap.TryRemove(pid, out _);
     }
     private int OnNewProj(On.Terraria.Projectile.orig_NewProjectile_IEntitySource_float_float_float_float_int_int_float_int_float_float_float_NewProjectileModifier orig,
-        IEntitySource src, float x, float y, float spx, float spy,
-        int type, int dmg, float kb, int owner, float ai0, float ai1, float ai2, NewProjectileModifier modifer)
+    IEntitySource src, float x, float y, float spx, float spy,
+    int type, int dmg, float kb, int owner, float ai0, float ai1, float ai2, NewProjectileModifier modifer)
     {
         int idx = orig(src, x, y, spx, spy, type, dmg, kb, owner, ai0, ai1, ai2, modifer);
         Projectile p = Main.projectile[idx];

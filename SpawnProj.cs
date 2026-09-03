@@ -390,15 +390,7 @@ public class SpawnProj
         int pid = Projectile.NewProjectile(
             npc.GetSpawnSourceForNPCFromNPCAI(),
             pos.X, pos.Y, vel.X, vel.Y, d.Type,
-            dmg, d.KnockBack, Main.myPlayer, ai0, ai1, ai2, modifer: p => 
-            {
-                p.damage = d.Damage;
-                p.knockBack = d.KnockBack;
-                p.hostile = true;
-                p.friendly = false;
-                p.netImportant = true;
-                p.netUpdate = true;
-            }); 
+            dmg, d.KnockBack, Main.myPlayer, ai0, ai1, ai2); 
 
         if (pid < 0 || pid >= Main.maxProjectiles) return;
         var proj = Main.projectile[pid];
